@@ -110,7 +110,7 @@ mcp/                    the MCP server (npm package prompt-engine-mcp)
 data/                   output contract, lint rules and image/video tool syntax (with verification status)
 evals/                  test cases for `claude plugin eval`
 scripts/                build, validate, release and eval helpers (no dependencies)
-docs/                   install guide, compatibility, sources, architecture, publishing
+docs/                   install guide, compatibility, sources, architecture, publishing, manual checks
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) to change the method or add a domain, and [docs/architecture.md](docs/architecture.md) for how one source feeds every format.
