@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: spanish-quick
+expected_outcome: |
+  Replies in Spanish; the enhanced prompt is in Spanish and tells the model to respond in Spanish; no invented employer or job title.

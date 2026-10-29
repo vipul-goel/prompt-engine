@@ -1,0 +1,10 @@
+# eval run output (claude plugin eval writes here)
+evals/results/
+# build output
+dist/
+node_modules/
+*.log
+.DS_Store
+# transcripts written by eval runs that resume a history_file (keep only the fixtures)
+evals/**/*.jsonl
+!evals/**/history.jsonl

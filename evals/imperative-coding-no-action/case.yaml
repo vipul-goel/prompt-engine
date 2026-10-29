@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: imperative-coding-no-action
+expected_outcome: |
+  The skill improves the prompt (questions or an enhanced prompt) and does not edit or create files: nothing runs until the user picks.
+context:
+  scaffold_script: place-files.sh

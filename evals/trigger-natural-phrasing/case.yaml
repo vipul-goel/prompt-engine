@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: trigger-natural-phrasing
+expected_outcome: |
+  Natural phrasing without the skill name: the skill fires and works on the prompt rather than planning the trip.

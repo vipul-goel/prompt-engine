@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: no-trigger-plain-task
+expected_outcome: |
+  An ordinary task: the skill does not fire and the email is written directly.

@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: followup-partial-answers
+context:
+  history_file: history.jsonl
+expected_outcome: |
+  Resumes after a real question round and builds the full output with the user's answers.

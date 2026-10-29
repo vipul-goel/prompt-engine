@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: video-veo-quick
+expected_outcome: |
+  Quick mode, media rule for Veo: single continuous shot or timed segments with one camera move per shot, sound lines, settings (16:9, 8 s) outside the prose, no on-screen text, a negative prompt block.

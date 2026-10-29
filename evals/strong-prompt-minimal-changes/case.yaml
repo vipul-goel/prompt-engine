@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: strong-prompt-minimal-changes
+expected_outcome: |
+  Says the prompt is already strong; asks at most 2 questions or delivers an enhanced version that keeps the user wording and structure.

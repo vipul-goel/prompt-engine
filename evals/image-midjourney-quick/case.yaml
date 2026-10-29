@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: image-midjourney-quick
+expected_outcome: |
+  Quick mode, media rule: one copyable Midjourney line with parameters such as --ar at the end; no role, headings, tags or because-clauses inside the prompt; explanations outside; menu offers Done instead of Run.

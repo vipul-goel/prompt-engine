@@ -1,0 +1,13 @@
+{
+  "name": "vipul-goel",
+  "description": "Plugins by vipul-goel, including prompt-engine.",
+  "owner": { "name": "vipul-goel", "url": "https://github.com/vipul-goel" },
+  "plugins": [
+    {
+      "name": "prompt-engine",
+      "source": "./",
+      "description": "Turns rough prompts into detailed, LLM-ready prompts using multiple-choice questions with recommended answers.",
+      "category": "productivity"
+    }
+  ]
+}
