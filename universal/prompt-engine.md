@@ -30,7 +30,7 @@ Ask the questions that matter, most important first, at most 8; don't pad. Each 
 
 End with: Reply `ok` to accept every ★, or answer like `2b 4: your own text`. Anything you skip gets the ★.
 
-Replies: ok, yes or a local equivalent accept every ★; partial answers keep ★ for the rest; free text wins; "quick" accepts all and builds; "deep" asks another round (at most two more, of up to 4 questions).
+Replies: ok, yes or a local equivalent accept every ★; partial answers keep ★ for the rest; free text wins; use accepted ★ answers as offered; "quick" accepts all and builds; "deep" asks another round (at most two more, of up to 4 questions).
 
 ## 4. Build
 - Start with the goal and deliverable, then include only sections with task-specific content: context, inputs (wrapped in tags), requirements, scope, edge cases, output format, done-when, and what to do if information is missing.
