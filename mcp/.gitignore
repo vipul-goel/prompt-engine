@@ -1,6 +1,5 @@
-# build outputs (dist/ and node_modules/ are ignored by the root .gitignore)
+# Build outputs (dist/ and node_modules/ are ignored by the root .gitignore)
 mcpb/server/
-mcpb/manifest.json
 dist-mcpb/
-# wrangler dev/deploy state
+# State from wrangler dev and wrangler deploy --dry-run
 .wrangler/

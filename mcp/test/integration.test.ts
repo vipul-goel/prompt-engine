@@ -193,6 +193,50 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
   });
 });
 
+describe('tool result size', () => {
+  // Hosts cap tool results (8,000 tokens is a common budget). At a conservative
+  // 3 characters per token, every result has to stay under 24,000 characters,
+  // counting everything sent: text content and structured content.
+  const TOKEN_SAFE_CHARS = 24_000;
+  const size = (result: { content?: unknown; structuredContent?: unknown }) =>
+    JSON.stringify(result.content ?? []).length + JSON.stringify(result.structuredContent ?? {}).length;
+
+  it('stays under the budget for the largest inputs', async () => {
+    const conn = await connectHttp('modern');
+    try {
+      const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [
+        { name: 'enhance_prompt', arguments: { mode: 'standard', target: 'x'.repeat(100) } },
+        ...DOMAINS.map((domain) => ({ name: 'get_checklist', arguments: { domain } })),
+        {
+          name: 'check_prompt',
+          arguments: { prompt: `You MUST [[a]] {{b}} think step by step, masterpiece 8k. ${'x'.repeat(200)}\n`.repeat(400).slice(0, 100_000) },
+        },
+        {
+          name: 'ask_user',
+          arguments: {
+            intro: 'i'.repeat(200),
+            questions: Array.from({ length: 8 }, (_, i) => ({
+              id: `q${i}`,
+              header: 'h'.repeat(12),
+              question: 'q'.repeat(200),
+              options: Array.from({ length: 4 }, (_, j) => ({ label: `${j}`.repeat(80), description: 'd'.repeat(160) })),
+              recommended: 0,
+              why: 'w'.repeat(120),
+            })),
+          },
+        },
+      ];
+      for (const call of calls) {
+        const result = await conn.client.callTool(call);
+        expect(result.isError, call.name).toBeFalsy();
+        expect(size(result), call.name).toBeLessThan(TOKEN_SAFE_CHARS);
+      }
+    } finally {
+      await conn.close();
+    }
+  });
+});
+
 describe('ask_user with a client that supports form elicitation', () => {
   const content = { audience: 'Employees', length: 'About 600 words', notes: 'Keep it upbeat' };
 

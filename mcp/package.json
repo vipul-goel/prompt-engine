@@ -41,9 +41,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json",
     "test": "npm run build && tsc -p test/tsconfig.json && vitest run",
     "test:inspector": "npm run build && node scripts/inspector-gates.mjs",
+    "test:worker": "node scripts/worker-smoke.mjs",
     "bundle": "node scripts/bundle.mjs",
     "pack:mcpb": "npm run bundle && node scripts/pack-mcpb.mjs",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "prepack": "node scripts/license.mjs copy",
+    "postpack": "node scripts/license.mjs remove"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "2.1.2",

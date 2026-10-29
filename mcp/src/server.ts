@@ -100,8 +100,8 @@ const ChecklistInput = z.object({
 });
 
 const OptionSchema = z.object({
-  label: z.string().min(1).max(100).describe('The option, in the user\'s language.'),
-  description: z.string().max(200).optional().describe('What choosing it means (optional; shown in forms).'),
+  label: z.string().min(1).max(80).describe('The option, in the user\'s language.'),
+  description: z.string().max(160).optional().describe('What choosing it means (optional; shown in forms).'),
 });
 
 const QuestionSchema = z.object({
@@ -110,15 +110,15 @@ const QuestionSchema = z.object({
     .regex(/^[A-Za-z][A-Za-z0-9_-]{0,39}$/)
     .describe('Short unique identifier such as "audience" or "length" (letters, digits, - and _; "notes" is reserved).'),
   header: z.string().min(1).max(HEADER_MAX_CHARS).optional().describe(`A tag of up to ${HEADER_MAX_CHARS} characters, such as "Audience".`),
-  question: z.string().min(1).max(300).describe('One decision in plain words, in the user\'s language.'),
+  question: z.string().min(1).max(200).describe('One decision in plain words, in the user\'s language.'),
   options: z.array(OptionSchema).min(MIN_OPTIONS).max(MAX_OPTIONS).describe(`${MIN_OPTIONS}-${MAX_OPTIONS} concrete, mutually exclusive options.`),
   recommended: z.number().int().min(0).max(MAX_OPTIONS - 1).describe('0-based index of the recommended option.'),
-  why: z.string().max(160).optional().describe('Reason for the recommendation, 12 words or fewer.'),
+  why: z.string().max(120).optional().describe('Reason for the recommendation, 12 words or fewer.'),
 });
 
 const AskUserInput = z.object({
   questions: z.array(QuestionSchema).min(1).max(MAX_QUESTIONS).describe('Most important first.'),
-  intro: z.string().max(300).optional().describe('One opening line in the user\'s language. Defaults to an English line.'),
+  intro: z.string().max(200).optional().describe('One opening line in the user\'s language. Defaults to an English line.'),
 });
 
 const AnswerSchema = z.object({
@@ -160,7 +160,7 @@ const CheckOutput = z.object({
       severity: z.enum(['warning', 'info']),
       message: z.string(),
       excerpt: z.string(),
-      line: z.number().int(),
+      line: z.number().int().min(1),
     }),
   ),
   summary: z.string(),
@@ -174,7 +174,7 @@ const DESCRIPTIONS = {
   get_checklist:
     'Use after enhance_prompt, once you know what the prompt is about. Returns the full checklist for that domain: must-haves, each item with an example question and its recommended (★) default, and a worked example. Domains: coding (code, agents, tool instructions), writing (copy, marketing, emails, posts, stories), research (research, analysis, comparisons, data), image-video (image or video generation; includes each tool\'s syntax), general (anything else, including system prompts and custom-assistant instructions).',
   ask_user:
-    'Use in standard and deep modes to ask the user your clarifying questions, instead of writing them in your reply. Pass 1-8 questions in the user\'s language, most important first, each with 2-4 options, the 0-based index of the recommended option and a reason of 12 words or fewer; header is an optional tag of up to 12 characters. Where the app supports forms, the user answers one form (recommended answers preselected, plus a notes field) and this returns the answers: source "chosen" means the user picked it; "recommended" means they didn\'t confirm it, so list it under Assumptions. If the user declines the form, you get the recommended answers. Where forms aren\'t supported, it returns the questions as numbered text: show that to the user in their language, then stop and wait for their reply.',
+    'Use in standard and deep modes to ask the user your clarifying questions, instead of writing them in your reply. Pass 1-8 questions in the user\'s language, most important first, each with 2-4 options, the 0-based index of the recommended option and a reason of 12 words or fewer; header is an optional tag of up to 12 characters. Where the app supports forms, the user answers one form (recommended answers preselected, plus a notes field) and this returns the answers: source "chosen" means the user picked it; "recommended" means they didn\'t confirm it, so list it under Assumptions. If the user declines the form, you get the recommended answers. Where forms aren\'t supported, it returns the questions as numbered text: show that to the user in their language, then stop and wait for their reply. If the call fails, ask the same questions in your reply in the brief\'s numbered format.',
   check_prompt:
     'Use on your draft enhanced prompt before presenting it (optional). Returns a deterministic, heuristic report: for each scored area (Clear goal, Context, Constraints, Output format, Edge cases) whether the draft explicitly mentions it, with short evidence, plus lint findings such as capitalized pressure words, requests to expose reasoning, prefill instructions, leftover template variables and open [[placeholders]]. It gives no score; score with the brief\'s anchors. Pass target (for example "Midjourney") so image and video conventions apply.',
 } as const;
@@ -236,12 +236,10 @@ function dismissedResult(status: 'declined' | 'cancelled', questions: Question[]
 function textModeResult(questions: Question[], intro: string | undefined): CallToolResult {
   const questionsText = buildTextBatch(questions, intro);
   const next =
-    "This app can't show a form, so ask in the chat: send questionsText to the user as your whole reply, in their language (translate the opening and closing lines if needed; keep the numbers, letters and ★ marks), then stop and wait. Read their reply as the brief says: ok accepts every ★, partial answers keep ★ for the rest, and free text wins.";
+    "This app can't show a form, so ask in the chat: send questionsText to the user as your whole reply, in their language (translate the opening and closing lines if needed; keep the numbers, letters and ★ marks), then stop and wait. Read their reply as the brief says: ok accepts every ★, partial answers keep ★ for the rest, and free text wins. Answers they accept, ★ ones included, are [your answer], not assumptions.";
+  // The text block already carries everything, so no JSON mirror here.
   return {
-    content: [
-      { type: 'text', text: `${next}\n\n${questionsText}` },
-      { type: 'text', text: JSON.stringify({ status: 'ask_in_chat', questionsText, next }, null, 2) },
-    ],
+    content: [{ type: 'text', text: `${next}\n\n${questionsText}` }],
     structuredContent: { status: 'ask_in_chat', questionsText, next },
   };
 }

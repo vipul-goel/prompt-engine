@@ -124,6 +124,9 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
     const actualPort = typeof address === 'object' && address ? address.port : port;
     const shownHost = host.includes(':') ? `[${host}]` : host;
     log(`${VERSION} listening on http://${shownHost}:${actualPort}${MCP_PATH} (allowed hosts: ${allowedHosts.join(', ')})`);
+    const loopback = ['127.0.0.1', 'localhost', '::1'].includes(host);
+    const onlyLocalNames = allowedHosts.every((h) => localhostAllowedHostnames().includes(h));
+    if (!loopback && onlyLocalNames) log('note: only localhost Host headers are accepted; pass --allowed-hosts with the name clients use to reach this server');
   });
 
   const stop = () => {
@@ -152,7 +155,8 @@ function main(): void {
     serveOverStdio();
     return;
   }
-  const host = args.host?.trim() || DEFAULT_HOST;
+  // Accept IPv6 written either way (::1 or [::1]); listen() wants it bare.
+  const host = args.host?.trim().replace(/^\[(.*)\]$/, '$1') || DEFAULT_HOST;
   const port = args.port === undefined ? DEFAULT_PORT : Number(args.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535) fail(`--port must be an integer from 0 to 65535 (got ${args.port})`);
   const allowedHosts = parseAllowedHosts(args['allowed-hosts'] ?? process.env.PROMPT_ENGINE_ALLOWED_HOSTS);
