@@ -3,11 +3,12 @@
 //   data/media-targets.json              -> skills/prompt-engine/references/media-targets.md
 //   skills/prompt-engine/references/*.md -> universal/prompt-engine-knowledge.md
 //   skills/, universal/ and data/        -> mcp/src/generated/content.ts (when mcp/ exists)
+//   SKILL.md and references/            -> the skill text inside evals/*/history.jsonl
 // Zero dependencies: Node >= 20 built-ins only. Output is deterministic (no timestamps),
 // so `node scripts/build.mjs && git diff --exit-code` detects stale generated files.
 // `node scripts/build.mjs --check` exits 1 instead of writing when anything is stale.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -120,6 +121,43 @@ export function renderContentModule({ version, skillBody, universal, refs, contr
   ].join('\n');
 }
 
+const SKILL_HEADER = 'Base directory for this skill:';
+
+// Follow-up eval cases resume a recorded conversation (evals/*/history.jsonl), which
+// holds the skill text and the reference files as they were when it was recorded
+// (scripts/eval/record-history.mjs rewrites the plugin path to /plugin). Both are
+// refreshed here so the follow-up turn is tested against the current method; the
+// recorded questions and answers stay as they were.
+export function refreshHistory(jsonl, skillBody, readPluginFile) {
+  const readPaths = new Map();
+  return jsonl.split('\n').map((line) => {
+    if (!line.trim()) return line;
+    const row = JSON.parse(line);
+    const parts = Array.isArray(row.message?.content) ? row.message.content : [];
+    let changed = false;
+    for (const part of parts) {
+      if (part.type === 'tool_use' && part.name === 'Read') {
+        const m = String(part.input?.file_path ?? '').match(/^\/plugin\/(.+)$/);
+        if (m) readPaths.set(part.id, m[1]);
+      } else if (part.type === 'tool_result' && readPaths.has(part.tool_use_id) && typeof part.content === 'string') {
+        const current = readPluginFile(readPaths.get(part.tool_use_id));
+        // Claude Code's Read result: each line prefixed with its number and a tab.
+        const numbered = current?.split('\n').map((l, i) => `${i + 1}\t${l}`).join('\n');
+        if (numbered !== undefined && numbered !== part.content) { part.content = numbered; changed = true; }
+      } else if (part.type === 'text' && part.text.startsWith(SKILL_HEADER)) {
+        // "<header line>\n\n<SKILL.md body>\n\n\nARGUMENTS: <args>"
+        const start = part.text.indexOf('\n# ') + 1;
+        const args = part.text.lastIndexOf('ARGUMENTS:');
+        const end = args >= 0 ? args : part.text.length;
+        const gap = part.text.slice(0, end).match(/\s*$/)[0];
+        const text = `${part.text.slice(0, start)}${skillBody}${gap}${part.text.slice(end)}`;
+        if (start > 0 && text !== part.text) { part.text = text; changed = true; }
+      }
+    }
+    return changed ? JSON.stringify(row) : line;
+  }).join('\n');
+}
+
 export function buildAll() {
   const outputs = {};
   const media = JSON.parse(read('data/media-targets.json'));
@@ -130,12 +168,17 @@ export function buildAll() {
     refs[k] = outputs[p] ?? read(p);
   }
   outputs['universal/prompt-engine-knowledge.md'] = renderKnowledge(refs);
+  const skillBody = read('skills/prompt-engine/SKILL.md').replace(/^---\n[\s\S]*?\n---\n/, '').trim();
+  const readPluginFile = (p) => outputs[p] ?? (existsSync(join(root, p)) ? read(p) : undefined);
+  for (const entry of readdirSync(join(root, 'evals'), { withFileTypes: true })) {
+    const p = `evals/${entry.name}/history.jsonl`;
+    if (entry.isDirectory() && existsSync(join(root, p))) outputs[p] = refreshHistory(read(p), skillBody, readPluginFile);
+  }
   if (existsSync(join(root, 'mcp', 'package.json'))) {
-    const skill = read('skills/prompt-engine/SKILL.md');
     const strip = ({ $comment, ...rest }) => rest;
     outputs['mcp/src/generated/content.ts'] = renderContentModule({
       version: JSON.parse(read('.claude-plugin/plugin.json')).version,
-      skillBody: skill.replace(/^---\n[\s\S]*?\n---\n/, '').trim(),
+      skillBody,
       universal: read('universal/prompt-engine.md'),
       refs,
       contract: strip(JSON.parse(read('data/contract.json'))),

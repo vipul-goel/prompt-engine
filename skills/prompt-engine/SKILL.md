@@ -61,9 +61,9 @@ How to ask depends on the app:
 - **When the AskUserQuestion tool is available (Claude Code):** use it for every round. One call holds at most 4 questions, so ask 5–8 questions as two consecutive calls, most important first. Give each question a header of at most 12 characters, put the recommended option first with " (Recommended)" at the end of its label, and put the reason in that option's description. The tool adds its own free-text option, so don't add one.
 - **Everywhere else, or if the tool is missing, denied, fails, or the dialog is dismissed:** send one message with numbered questions, lettered options and ★ on the recommendation, ending with: "Reply `ok` to accept every ★, or answer like `2b 4: your own text`. Anything you skip gets the ★." Write it in the user's language.
 
-Don't tell the user which tools are or aren't available; just use the format that fits.
+If AskUserQuestion isn't among your tools, use the text format straight away rather than searching for it. Don't tell the user which tools are or aren't available; just use the format that fits.
 
-Reading replies: `ok`, `yes` or the user's local equivalent accept every ★. Partial answers keep the ★ for the rest. Free text wins over options. A reply of just `quick` accepts every ★ and moves on; `deep` asks a further round. In deep mode, after each round look for new high-impact gaps opened by the answers and ask up to two more rounds of at most 4 questions; stop when nothing qualifies or the user says go.
+Reading replies: `ok`, `yes` or the user's local equivalent accept every ★. Partial answers keep the ★ for the rest. Free text wins over options. Use each accepted ★ answer as offered, without rewording its meaning, and tag it [your answer]; it is not an assumption. A reply of just `quick` accepts every ★ and moves on; `deep` asks a further round. In deep mode, after each round look for new high-impact gaps opened by the answers and ask up to two more rounds of at most 4 questions; stop when nothing qualifies or the user says go.
 
 ### 4. Build
 
@@ -90,11 +90,11 @@ Use the structure in `references/output-format.md`, in this order and nothing el
 7. **Score** — original vs enhanced, 0–5 on Clear goal, Context, Constraints, Output format and Edge cases, with the caveat line.
 8. **What next?** — Run it now ★ · Refine · Save to file.
 
-In Claude Code, show "What next?" with AskUserQuestion (header "Next step"); elsewhere, as a numbered list.
+Show "What next?" with AskUserQuestion (header "Next step") when that tool is among your tools. Otherwise end the same message with the menu as a numbered list, because some apps show only your final message.
 
 ### 6. Next step (only after the user picks)
 
 - **Run it now** — carry out the full prompt as if the user had just sent it, then reply normally from then on (no more score or menu). If placeholders are still open, ask for their values first. If the prompt is meant for another tool, call the option "Try it here (results there may differ)". If it is an image or video prompt and you can't generate media, offer "Done" instead and explain where to paste it.
 - **Refine** — apply "change N: …" or new details, or run a deep round, then show the updated prompt, what changed, and the new score.
-- **Save to file** — only where you can write files (Claude Code and other local coding agents). The menu shows the suggested path, `prompts/<short-name>.md`. Picking it saves the full prompt there, or at the path the user gives instead (for example `3 prompts/launch.md`), without asking again. Never overwrite an existing file; add `-2` to the name instead. Then reply with the saved path.
+- **Save to file** — only where you can write files (Claude Code and other local coding agents). The menu shows the suggested path, `prompts/<short-name>.md`. Picking it saves the full prompt there, or at the path the user gives instead (for example `3 prompts/launch.md`), without asking again. Never overwrite an existing file; add `-2` to the name instead. Look the path up first, then create the file with your file-writing tool rather than a shell command, so the user sees a plain file-creation request. Then reply with the saved path.
 - If the user dismisses the menu or says nothing, stop and wait.

@@ -11,7 +11,7 @@ One method ships in four formats, so most changes start in one place and flow ou
 | The method (single source) | `skills/prompt-engine/SKILL.md`, `skills/prompt-engine/references/*.md` | Edit by hand |
 | Hand-written mirror | `universal/prompt-engine.md` | When you change the workflow or the output format in `SKILL.md`, make the same change here. It must stay under 7,500 characters |
 | Data | `data/contract.json` (output contract and size budgets), `data/lint-rules.json`, `data/media-targets.json` | Edit by hand |
-| Generated | `universal/prompt-engine-knowledge.md`, `skills/prompt-engine/references/media-targets.md`, `mcp/src/generated/content.ts` | Never edit; run `node scripts/build.mjs` |
+| Generated | `universal/prompt-engine-knowledge.md`, `skills/prompt-engine/references/media-targets.md`, `mcp/src/generated/content.ts`, and the skill text inside `evals/*/history.jsonl` | Never edit; run `node scripts/build.mjs` |
 
 ## Setup
 
@@ -89,7 +89,7 @@ claude plugin eval . --case 'image-*' --runs 1 --max-cost-usd 1 --no-publish
 ```
 
 - **Cases that grant tools or run scaffold scripts.** The full suite needs `--allow-tools Write Edit --scaffold`. Read a case's `scaffold_script` before you run it.
-- **Follow-up cases.** These resume a recorded first turn. Record one with `node scripts/eval/record-history.mjs evals/<case>/history.jsonl "<first message>"`. The script keeps only the conversation, rewrites local paths and refuses to write a file that still contains an e-mail address. Read the file before you commit it anyway.
+- **Follow-up cases.** These resume a recorded first turn. Record one with `node scripts/eval/record-history.mjs evals/<case>/history.jsonl "<first message>"`. The script keeps only the conversation, rewrites local paths and refuses to write a file that still contains an e-mail address. Read the file before you commit it anyway. Afterwards, `node scripts/build.mjs` keeps the skill text and reference files inside the recording up to date, so re-record only when the recorded question round itself should change.
 - **Results.** They go to `evals/results/`, which is ignored by git. Run transcripts can include details of your account, so don't commit them.
 - **Universal prompt.** It has its own two-turn test: `node scripts/eval/universal-test.mjs`.
 - **Reading outputs side by side.** Run the evals with `--json result.json --keep-temp`, then `node scripts/eval/to-review.mjs result.json <workspace>/iteration-1`. This converts the results into the workspace layout used by the review viewer in Anthropic's skill-creator skill.

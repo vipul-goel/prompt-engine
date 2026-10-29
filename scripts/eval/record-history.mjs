@@ -7,7 +7,8 @@
 // The raw session transcript contains local paths, request metadata and injected
 // account context (for example the signed-in user's email), so only user and
 // assistant messages are kept, paths are rewritten, and the result is checked
-// for e-mail addresses before it is written.
+// for e-mail addresses before it is written. Later, scripts/build.mjs keeps the skill
+// text and reference files inside the recording in step with the current files.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, readdirSync, statSync, realpathSync } from 'node:fs';

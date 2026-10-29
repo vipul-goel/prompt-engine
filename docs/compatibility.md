@@ -36,8 +36,13 @@ Behavior evals use `claude plugin eval` (Claude Sonnet 5.5 as the agent under te
 | 1 (smoke subset) | 6 | 6/6 passed (score 1.00) | mean score 0.56 | $0.72 |
 | 1 (follow-ups, with the skill only) | 2 | 2/2 passed | — | $0.20 |
 | 2 (save-to-file, with the skill only) | 1 | 1/1 passed | — | $0.10 |
+| 2 (full suite) | 17 | 14/17 passed (mean score 0.94) | 6/14 passed (mean score 0.65) | $2.04 |
+| 2 (re-run after fixes) | 5 | 5/5 passed | — | $0.69 |
 
-The full-suite results are added here after the final run.
+Round 2's three failures and their fixes:
+- **Research prompt.** The output was right, but after writing it the model looked for the question-dialog tool, which headless runs don't have. It then sent the "What next?" menu as a separate last message. `claude -p` prints only the last message, so headless users would have seen the menu without the prompt. The skill now uses the text format straight away when the dialog tool isn't loaded, and keeps the menu in the same message as the output.
+- **Partial answers to the questions.** The recorded first turn carried an older copy of the output rules, so the model listed skipped ★ answers as assumptions and reworded one of them. The build now keeps the skill text and reference files inside recorded conversations current. The skill also now says to use accepted ★ answers as offered.
+- **Secret redaction.** The skill replaced the API key with an `OPENAI_API_KEY` environment variable and told the user to rotate the key, but the grader accepted only a `[[placeholder]]`. The grader now accepts either.
 
 The universal prompt's two-turn test, round 1: 4 cases, 36/36 checks passed, $0.17.
 
