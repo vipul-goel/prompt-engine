@@ -58,10 +58,10 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 **What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. Tag every bullet:
 - **[you]** — something the user said, restated or made precise;
-- **[your answer]** — something from their answers to your questions;
+- **[your answer]** — something from their answers to your questions, including ★ recommendations they accepted with `ok` or by skipping a question;
 - **[best practice]** — something the method adds, such as success criteria or an uncertainty rule.
 
-Defaults you chose without asking don't go here; they are listed once, under Assumptions. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
+Defaults you chose without asking don't go here; they are listed once, under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
 
 **Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. At most 8; merge minor ones. End with the "change N" line. If there are no assumptions, write "None."
 

@@ -1,0 +1,87 @@
+{
+  "$comment": "The output contract shared by every format (skill, universal prompt, MCP server). scripts/validate.mjs checks that each artifact listed under 'artifacts' contains every string in 'required'. Change the contract here first, then update the artifacts.",
+  "required": {
+    "headings": [
+      "Full prompt",
+      "Short version",
+      "Fill before running",
+      "What I added & why",
+      "Assumptions",
+      "Score",
+      "What next?"
+    ],
+    "scoreDimensions": [
+      "Clear goal",
+      "Context",
+      "Constraints",
+      "Output format",
+      "Edge cases"
+    ],
+    "scoreCaveat": [
+      "Self-assessed coverage of five areas, not a prediction of output quality."
+    ],
+    "provenanceTags": [
+      "[you]",
+      "[your answer]",
+      "[best practice]"
+    ],
+    "markers": [
+      "★",
+      "[["
+    ],
+    "menu": [
+      "Run it now",
+      "Refine",
+      "Save to file"
+    ],
+    "replyLine": [
+      "Reply `ok` to accept every ★"
+    ]
+  },
+  "artifacts": {
+    "skills/prompt-engine/references/output-format.md": [
+      "headings",
+      "scoreDimensions",
+      "scoreCaveat",
+      "provenanceTags",
+      "markers",
+      "menu"
+    ],
+    "skills/prompt-engine/references/questions.md": [
+      "replyLine"
+    ],
+    "skills/prompt-engine/SKILL.md": [
+      "headings",
+      "scoreDimensions",
+      "provenanceTags",
+      "markers",
+      "replyLine",
+      "menu"
+    ],
+    "universal/prompt-engine.md": [
+      "headings",
+      "scoreDimensions",
+      "scoreCaveat",
+      "provenanceTags",
+      "markers",
+      "replyLine",
+      "menu"
+    ]
+  },
+  "budgets": {
+    "skillBodyMaxChars": 18000,
+    "skillBodyMaxLines": 500,
+    "skillKeySectionsWithinChars": 8000,
+    "skillKeySections": [
+      "### 1. Intake",
+      "### 3. Ask",
+      "### 5. Present"
+    ],
+    "universalCoreMaxChars": 7500,
+    "descriptionMaxChars": 200,
+    "descriptionHardMaxChars": 1024,
+    "skillFolderMaxFiles": 50,
+    "skillFolderMaxBytes": 1048576,
+    "skillFileMaxBytes": 262144
+  }
+}
