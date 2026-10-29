@@ -22,7 +22,8 @@ First version.
 - **MCP server** `prompt-engine-mcp`: serves the method, checklists and a deterministic prompt check to any MCP client, and asks questions as forms where the client supports elicitation. It makes no model calls and needs no API key. Runs over stdio, over HTTP, or as a Claude Desktop `.mcpb` bundle.
 - **Checks and tests**:
   - a zero-dependency build and validator with mutation tests;
-  - 16 behavior eval cases for `claude plugin eval`;
+  - 17 behavior eval cases for `claude plugin eval`;
+  - trigger tests for the skill description (24 requests, half of them near-misses);
   - a two-turn test of the universal prompt;
   - MCP server tests;
   - CI, release and monthly data re-verification workflows.

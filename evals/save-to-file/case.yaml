@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: save-to-file
+context:
+  history_file: history.jsonl
+expected_outcome: |
+  After the user picks option 3, saves the full prompt to the path the menu showed, without asking again, and replies with the saved path.

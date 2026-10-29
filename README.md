@@ -78,7 +78,8 @@ It explained the additions. For example, the amber window light against blue moo
 
 ## How it's tested
 
-- **Behavior evals** with Claude Code's official runner (`claude plugin eval`), run with and without the skill. The cases cover question rounds, quick mode, follow-up replies, Spanish and Japanese prompts, secret redaction, prompt injection, "nothing runs until you choose", and trigger and non-trigger cases. Results are in [docs/compatibility.md](docs/compatibility.md).
+- **Behavior evals** with Claude Code's official runner (`claude plugin eval`), run with and without the skill. The cases cover question rounds, quick mode, follow-up replies, Spanish and Japanese prompts, secret redaction, prompt injection, saving to a file, "nothing runs until you choose", and trigger and non-trigger cases. Results are in [docs/compatibility.md](docs/compatibility.md).
+- **Trigger tests** of the skill description: 24 requests, half of them near-misses such as "translate this prompt" or "run this prompt". In testing with Claude Sonnet 5.5, it started on all 12 prompt requests and on none of the near-misses.
 - **Two-turn tests** of the universal prompt with every tool disabled, the way a chatbot would use it.
 - **Static checks** (`node scripts/validate.mjs`) for portability rules, prompt lint, size budgets and the shared output contract, plus mutation tests that confirm each check catches what it should.
 - **MCP server tests** covering both protocol versions, with and without form questions, over stdio and HTTP.

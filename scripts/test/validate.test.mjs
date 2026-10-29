@@ -58,7 +58,7 @@ test('rejects a description over the cap', () =>
   withMutation((d) => edit(d, SKILL, (t) => t.replace(/^description: ".*"$/m, `description: "${'word '.repeat(60).trim()}"`)), /description is \d+ chars/));
 
 test('rejects angle brackets in the description', () =>
-  withMutation((d) => edit(d, SKILL, (t) => t.replace('Use when asked', 'Use <when> asked')), /must not contain < or >/));
+  withMutation((d) => edit(d, SKILL, (t) => t.replace(/^description: ".*"$/m, 'description: "Use <when> asked to improve a prompt."')), /must not contain < or >/));
 
 test('rejects a $N placeholder that Claude Code would substitute', () =>
   withMutation((d) => edit(d, 'skills/prompt-engine/references/writing.md', (t) => `${t}\nPrices start at $1 per month.\n`), /\$N/));

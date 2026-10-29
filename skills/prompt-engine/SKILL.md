@@ -1,6 +1,6 @@
 ---
 name: prompt-engine
-description: "Turns a rough prompt into a detailed, LLM-ready prompt. Finds gaps, asks multiple-choice questions with recommended answers, and explains every addition. Use when asked to improve or write a prompt."
+description: "Use to improve, critique or write a prompt for any AI tool (ChatGPT, Cursor, Midjourney, Veo), or when a message starts with prompt-engine. Asks multiple-choice questions with recommended answers."
 license: MIT
 allowed-tools: Read
 metadata:
@@ -96,5 +96,5 @@ In Claude Code, show "What next?" with AskUserQuestion (header "Next step"); els
 
 - **Run it now** — carry out the full prompt as if the user had just sent it, then reply normally from then on (no more score or menu). If placeholders are still open, ask for their values first. If the prompt is meant for another tool, call the option "Try it here (results there may differ)". If it is an image or video prompt and you can't generate media, offer "Done" instead and explain where to paste it.
 - **Refine** — apply "change N: …" or new details, or run a deep round, then show the updated prompt, what changed, and the new score.
-- **Save to file** — only where you can write files (Claude Code and other local coding agents). Suggest `prompts/<short-name>.md`, show the path, let the user change it, and never overwrite an existing file.
+- **Save to file** — only where you can write files (Claude Code and other local coding agents). The menu shows the suggested path, `prompts/<short-name>.md`. Picking it saves the full prompt there, or at the path the user gives instead (for example `3 prompts/launch.md`), without asking again. Never overwrite an existing file; add `-2` to the name instead. Then reply with the saved path.
 - If the user dismisses the menu or says nothing, stop and wait.
