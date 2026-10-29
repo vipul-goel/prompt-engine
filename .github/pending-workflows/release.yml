@@ -1,0 +1,69 @@
+name: Release
+
+# Push a tag such as v0.1.0 (matching .claude-plugin/plugin.json) to publish.
+# Secrets: NPM_TOKEN (npm publish). The MCP Registry uses GitHub OIDC, no secret.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # create the GitHub release
+  id-token: write   # npm provenance and MCP Registry login
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Install and test the MCP server
+        working-directory: mcp
+        run: |
+          npm ci
+          npm run build
+          npm test
+      - name: Build release artifacts (zip, universal files, MCPB, checksums)
+        run: node scripts/release.mjs --tag "${GITHUB_REF_NAME}"
+      - name: Create the GitHub release (pre-release while the version is 0.x)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "${GITHUB_REF_NAME}" in v0.*) prerelease="--prerelease";; esac
+          gh release create "${GITHUB_REF_NAME}" $prerelease --generate-notes \
+            dist/prompt-engine.zip dist/prompt-engine.mcpb \
+            dist/prompt-engine.md dist/prompt-engine-knowledge.md dist/SHA256SUMS
+      - name: Publish to npm
+        working-directory: mcp
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if npm view "prompt-engine-mcp@${version}" version >/dev/null 2>&1; then
+            echo "prompt-engine-mcp@${version} is already on npm"
+            exit 0
+          fi
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "::warning::NPM_TOKEN is not set; skipping npm publish (publish by hand, see docs/publishing.md)"
+            exit 0
+          fi
+          npm publish --provenance --access public
+      - name: Publish to the MCP Registry
+        working-directory: mcp
+        run: |
+          # The registry checks the npm package's mcpName, so this version must be on npm first.
+          version="$(node -p 'require("./package.json").version')"
+          for attempt in 1 2 3 4 5 6; do
+            npm view "prompt-engine-mcp@${version}" version >/dev/null 2>&1 && break
+            if [ "${attempt}" = 6 ]; then
+              echo "::warning::prompt-engine-mcp@${version} is not on npm; skipping the MCP Registry (see docs/publishing.md)"
+              exit 0
+            fi
+            sleep 10
+          done
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.6/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

@@ -112,14 +112,19 @@ for (const f of skillFiles) {
   for (const [re, label] of SUBSTITUTIONS) if (re.test(t)) err(`${f}: contains ${label}, which Claude Code substitutes in skill text`);
 }
 
-// Instruction text the models read directly: no pressure words, no requests to expose reasoning.
+// Instruction text the models read directly: lint rules marked selfCheck in
+// data/lint-rules.json (pressure words, requests to expose reasoning) must not occur.
+const lint = JSON.parse(read('data/lint-rules.json'));
+for (const r of lint.rules) {
+  try { new RegExp(r.pattern, r.flags); } catch (e) { err(`data/lint-rules.json ${r.id}: bad pattern (${e.message})`); }
+}
 const INSTRUCTION_FILES = [SKILL, 'universal/prompt-engine.md'];
 for (const f of INSTRUCTION_FILES) {
   const t = read(f);
-  const pressure = t.match(/\b(MUST|NEVER|ALWAYS|CRITICAL|IMPORTANT)\b/);
-  if (pressure) err(`${f}: capitalized pressure word "${pressure[0]}" (current models over-apply these)`);
-  const reasoning = t.match(/think step by step|<thinking>|show your (reasoning|thinking)|chain[- ]of[- ]thought|scratchpad/i);
-  if (reasoning) err(`${f}: "${reasoning[0]}" reads as a request to expose reasoning, which current Claude models may refuse`);
+  for (const r of lint.rules.filter((x) => x.selfCheck)) {
+    const m = t.match(new RegExp(r.pattern, r.flags));
+    if (m) err(`${f}: "${m[0]}" (${r.id}): ${r.message}`);
+  }
 }
 
 // Budgets

@@ -64,10 +64,10 @@ test('rejects a $N placeholder that Claude Code would substitute', () =>
   withMutation((d) => edit(d, 'skills/prompt-engine/references/writing.md', (t) => `${t}\nPrices start at $1 per month.\n`), /\$N/));
 
 test('rejects capitalized pressure words in SKILL.md', () =>
-  withMutation((d) => edit(d, SKILL, (t) => `${t}\nYou MUST do this.\n`), /pressure word "MUST"/));
+  withMutation((d) => edit(d, SKILL, (t) => `${t}\nYou MUST do this.\n`), /"MUST" \(pressure-words\)/));
 
 test('rejects a request to expose reasoning in the universal prompt', () =>
-  withMutation((d) => edit(d, 'universal/prompt-engine.md', (t) => `${t}\nThink step by step before answering.\n`), /expose reasoning/));
+  withMutation((d) => edit(d, 'universal/prompt-engine.md', (t) => `${t}\nThink step by step before answering.\n`), /visible-reasoning-request/));
 
 test('rejects a package.json at the plugin root', () =>
   withMutation((d) => writeFileSync(join(d, 'package.json'), '{}'), /package\.json: not allowed at the repo root/));

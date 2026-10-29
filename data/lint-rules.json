@@ -1,0 +1,61 @@
+{
+  "$comment": "Anti-patterns for enhanced prompts. Used by scripts/validate.mjs (rules with selfCheck: true are applied to prompt-engine's own instruction files) and by the MCP server's check_prompt tool. Patterns are JavaScript regular expressions; 'flags' are passed to new RegExp().",
+  "rules": [
+    {
+      "id": "pressure-words",
+      "pattern": "\\b(MUST|NEVER|ALWAYS|CRITICAL|IMPORTANT)\\b",
+      "flags": "",
+      "severity": "warning",
+      "selfCheck": true,
+      "message": "Capitalized pressure words make current models over-apply the rule. Write it plainly and give the reason; keep 'always' and 'never' for true invariants."
+    },
+    {
+      "id": "visible-reasoning-request",
+      "pattern": "think step by step|<thinking>|show your (reasoning|thinking)|chain[- ]of[- ]thought|scratchpad|explain your reasoning before",
+      "flags": "i",
+      "severity": "warning",
+      "selfCheck": true,
+      "message": "Asks the model to expose its internal reasoning. Current Claude models may refuse this, and reasoning models don't need it. Ask for the result plus a brief explanation or evidence instead."
+    },
+    {
+      "id": "magic-phrase",
+      "pattern": "take a deep breath|think (really )?hard|you are (a|an) world[- ]class|this is very important to my career",
+      "flags": "i",
+      "severity": "info",
+      "selfCheck": false,
+      "message": "Magic phrases and generic personas add little. Use effort or reasoning settings where available, and a specific role only when it changes the answer."
+    },
+    {
+      "id": "prefill-instruction",
+      "pattern": "prefill (the|your|an?) (response|answer|reply|assistant)|assistant turn begins with",
+      "flags": "i",
+      "severity": "warning",
+      "selfCheck": false,
+      "message": "Prefilled assistant turns are an API setting, and current Claude models don't support them. Describe the output format instead."
+    },
+    {
+      "id": "template-leftover",
+      "pattern": "\\{\\{\\s*[\\w .-]*\\s*\\}\\}",
+      "flags": "",
+      "severity": "warning",
+      "selfCheck": false,
+      "message": "An unfilled template variable. Replace it, or use a [[placeholder]] the user knows to fill."
+    },
+    {
+      "id": "open-placeholder",
+      "pattern": "\\[\\[[^\\]]+\\]\\]",
+      "flags": "",
+      "severity": "info",
+      "selfCheck": false,
+      "message": "Placeholder still open. List it under 'Fill before running' and fill it before the prompt is used."
+    },
+    {
+      "id": "vague-quality-words",
+      "pattern": "\\b(masterpiece|best quality|8k|ultra[- ]detailed|award[- ]winning)\\b",
+      "flags": "i",
+      "severity": "info",
+      "selfCheck": false,
+      "message": "Generic quality tags carry little meaning for natural-language image and video models. Name concrete materials, light sources and framing instead."
+    }
+  ]
+}

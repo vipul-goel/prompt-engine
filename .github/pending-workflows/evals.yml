@@ -1,0 +1,40 @@
+name: Evals
+
+# Behavior evals with Claude Code's runner. These are real, billed model calls,
+# so this workflow only runs when started by hand. Secret: ANTHROPIC_API_KEY.
+on:
+  workflow_dispatch:
+    inputs:
+      max_cost_usd:
+        description: Hard cost ceiling for the run, in USD
+        default: "5"
+      runs:
+        description: Runs per case and arm
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Run the eval suite
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.312
+          claude plugin eval . --trust-plugin --no-publish \
+            --runs "${{ inputs.runs }}" --max-cost-usd "${{ inputs.max_cost_usd }}" \
+            --allow-tools Write Edit --scaffold -j 3 --json eval-results.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: eval-results
+          path: |
+            eval-results.json
+            evals/results/

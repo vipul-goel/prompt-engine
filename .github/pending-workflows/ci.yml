@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  skill:
+    name: Skill, plugin and universal prompt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Generated files are up to date
+        run: node scripts/build.mjs --check
+      - name: Validate (portability, lint, budgets, contract, manifests)
+        run: node scripts/validate.mjs
+      - name: Validator mutation tests
+        run: node --test scripts/test/*.test.mjs
+      - name: Skill zip layout
+        run: node scripts/release.mjs --zip
+      - name: Claude Code plugin validation
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.312
+          claude plugin validate . --strict
+
+  mcp:
+    name: MCP server (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: MCP Inspector gates (needs Node >= 22.19)
+        if: matrix.node == 22
+        run: npm run test:inspector
+      - name: Package checks
+        if: matrix.node == 22
+        run: |
+          npm pack --dry-run
+          npm run pack:mcpb

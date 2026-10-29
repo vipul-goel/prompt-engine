@@ -1,0 +1,40 @@
+name: Re-verify tool data
+
+# Image and video tools change often. Once a month, open an issue listing
+# entries in data/media-targets.json that haven't been rechecked for 60 days.
+on:
+  schedule:
+    - cron: '17 6 3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Find stale entries
+        id: stale
+        run: |
+          node -e '
+            const d = require("./data/media-targets.json");
+            const limit = Date.now() - 60 * 864e5;
+            const stale = d.targets.filter(t => Date.parse(t.last_verified) < limit)
+              .map(t => `- ${t.name} (last checked ${t.last_verified}, status ${t.status})`);
+            require("fs").writeFileSync("stale.md", stale.join("\n"));
+            console.log(stale.length + " stale entries");
+          '
+      - name: Open an issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -s stale.md ]; then
+            { echo "These image and video tool entries in data/media-targets.json are over 60 days old. Recheck each against the vendor's current docs, update the entry and its last_verified date, then run node scripts/build.mjs."; echo; cat stale.md; } > body.md
+            gh issue create --title "Re-verify image/video tool data" --body-file body.md
+          fi
