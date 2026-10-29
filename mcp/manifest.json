@@ -1,0 +1,64 @@
+{
+  "manifest_version": "0.3",
+  "name": "prompt-engine",
+  "display_name": "Prompt Engine",
+  "version": "0.1.0",
+  "description": "Turns rough prompts into detailed, LLM-ready prompts by asking multiple-choice questions with recommended answers.",
+  "long_description": "Prompt Engine finds what a rough prompt leaves out (goal, audience, context, constraints, format, edge cases), asks you a few multiple-choice questions with a recommended answer for each, then has Claude write a detailed prompt that explains every addition. It includes checklists for coding agents, writing, research, and image and video tools. The server never calls a model, needs no API key, makes no network calls and doesn't log prompts.",
+  "author": {
+    "name": "vipul-goel",
+    "url": "https://github.com/vipul-goel"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vipul-goel/prompt-engine"
+  },
+  "homepage": "https://github.com/vipul-goel/prompt-engine",
+  "documentation": "https://github.com/vipul-goel/prompt-engine/tree/main/mcp#readme",
+  "support": "https://github.com/vipul-goel/prompt-engine/issues",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ]
+    }
+  },
+  "tools": [
+    {
+      "name": "enhance_prompt",
+      "description": "Returns the Prompt Engine method brief for improving a prompt."
+    },
+    {
+      "name": "get_checklist",
+      "description": "Returns the full checklist for a domain: coding, writing, research, image-video or general."
+    },
+    {
+      "name": "ask_user",
+      "description": "Asks your clarifying questions in a form, with the recommended answers preselected."
+    },
+    {
+      "name": "check_prompt",
+      "description": "A heuristic structure-and-lint report on a draft prompt."
+    }
+  ],
+  "keywords": [
+    "prompt engineering",
+    "prompts",
+    "prompt improver",
+    "clarifying questions"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  }
+}

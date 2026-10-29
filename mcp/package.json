@@ -1,0 +1,62 @@
+{
+  "name": "prompt-engine-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Prompt Engine: turns a rough prompt into a detailed, LLM-ready prompt by asking multiple-choice questions with recommended answers. No API key, no network calls.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "prompt-engineering",
+    "prompts",
+    "prompt-improver",
+    "clarifying-questions",
+    "elicitation",
+    "claude"
+  ],
+  "homepage": "https://github.com/vipul-goel/prompt-engine/tree/main/mcp#readme",
+  "bugs": {
+    "url": "https://github.com/vipul-goel/prompt-engine/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vipul-goel/prompt-engine.git",
+    "directory": "mcp"
+  },
+  "license": "MIT",
+  "author": "vipul-goel (https://github.com/vipul-goel)",
+  "type": "module",
+  "bin": {
+    "prompt-engine-mcp": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "mcpName": "io.github.vipul-goel/prompt-engine",
+  "scripts": {
+    "generate": "node ../scripts/build.mjs",
+    "build": "node scripts/clean.mjs dist && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json",
+    "test": "npm run build && tsc -p test/tsconfig.json && vitest run",
+    "test:inspector": "npm run build && node scripts/inspector-gates.mjs",
+    "bundle": "node scripts/bundle.mjs",
+    "pack:mcpb": "npm run bundle && node scripts/pack-mcpb.mjs",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/inspector": "2.13.0",
+    "@types/node": "22.20.5",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vitest": "3.2.7"
+  }
+}

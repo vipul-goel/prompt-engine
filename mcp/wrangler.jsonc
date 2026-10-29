@@ -1,0 +1,15 @@
+// Cloudflare Workers config for the hosted, stateless Prompt Engine MCP server.
+// Deploy from this folder with `npx wrangler@4.155.0 deploy` (see README.md).
+{
+  "name": "prompt-engine-mcp",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-20",
+  "workers_dev": true,
+  "observability": { "enabled": false },
+  "vars": {
+    // Host header names to accept, comma-separated. Add your workers.dev hostname
+    // (for example "prompt-engine-mcp.<your-subdomain>.workers.dev") or custom domain
+    // before deploying; localhost covers `wrangler dev`.
+    "ALLOWED_HOSTS": "localhost,127.0.0.1"
+  }
+}
