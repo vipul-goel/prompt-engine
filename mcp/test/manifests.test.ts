@@ -1,6 +1,7 @@
 // package.json, the MCPB manifest and the MCP Registry server.json agree with
 // each other and with the plugin version, and validate against their schemas.
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -30,12 +31,25 @@ describe('package.json', () => {
     expect(pkg.name).toBe('prompt-engine-mcp');
     expect(pkg.type).toBe('module');
     expect(pkg.bin).toEqual({ 'prompt-engine-mcp': 'dist/cli.js' });
-    expect(pkg.files).toEqual(['dist']);
+    // The Cloudflare Worker entry is built into dist/ but isn't part of the npm package.
+    expect(pkg.files).toEqual(['dist', '!dist/worker.js']);
     expect(pkg.engines).toEqual({ node: '>=20' });
     expect(pkg.license).toBe('MIT');
     expect(pkg.mcpName).toBe(server.name);
     expect(pkg.repository).toMatchObject({ url: 'git+https://github.com/vipul-goel/prompt-engine.git', directory: 'mcp' });
     for (const script of ['build', 'test', 'test:inspector', 'bundle', 'pack:mcpb', 'prepublishOnly']) expect(pkg.scripts[script], script).toBeTruthy();
+  });
+
+  it('packs the built server without the Cloudflare Worker entry', () => {
+    // npm sets npm_execpath when it runs the tests; fall back to npm on PATH.
+    const npm = process.env.npm_execpath?.endsWith('.js') ? [process.execPath, process.env.npm_execpath] : ['npm'];
+    const r = spawnSync(npm[0]!, [...npm.slice(1), 'pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: PKG, encoding: 'utf8' });
+    expect(r.status, r.stderr).toBe(0);
+    const files: string[] = JSON.parse(r.stdout)[0].files.map((f: { path: string }) => f.path);
+    expect(files).toContain('dist/cli.js');
+    expect(files).toContain('dist/generated/content.js');
+    expect(files).not.toContain('dist/worker.js');
+    expect(files.filter((f) => !f.startsWith('dist/')).sort()).toEqual(['README.md', 'package.json']);
   });
 
   it('pins every dependency exactly', () => {
@@ -68,6 +82,12 @@ describe('manifest.json (MCPB)', () => {
     const require = createRequire(import.meta.url);
     const schemaPath = join(dirname(require.resolve('@anthropic-ai/mcpb')), 'mcpb-manifest-v0.3.schema.json');
     expect(schemaErrors(readJson(schemaPath), manifest)).toBeUndefined();
+  });
+
+  it('ships a 512x512 PNG icon', () => {
+    const png = readFileSync(join(PKG, 'icon.png'));
+    expect(png.subarray(1, 4).toString('latin1')).toBe('PNG');
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([512, 512]);
   });
 
   it('runs the single-file bundle with node and lists the real tools', () => {

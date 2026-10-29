@@ -1,5 +1,5 @@
 {
-  "$comment": "Anti-patterns for enhanced prompts. Used by scripts/validate.mjs (rules with selfCheck: true are applied to prompt-engine's own instruction files) and by the MCP server's check_prompt tool. Patterns are JavaScript regular expressions; 'flags' are passed to new RegExp().",
+  "$comment": "Anti-patterns for enhanced prompts. Used by scripts/validate.mjs (rules with selfCheck: true are applied to prompt-engine's own instruction files) and by the MCP server's check_prompt tool, which matches each pattern one line at a time. Patterns are JavaScript regular expressions; 'flags' are passed to new RegExp(). Keep every pattern linear-time: bound each repetition, for example [^\\n]{0,80} instead of * or +, and don't repeat groups (a ? after a group is fine). scripts/test/lint-rules.test.mjs times every rule against adversarial input, and check_prompt skips a rule with an unbounded or nested repetition.",
   "rules": [
     {
       "id": "pressure-words",
@@ -35,7 +35,7 @@
     },
     {
       "id": "template-leftover",
-      "pattern": "\\{\\{\\s*[\\w .-]*\\s*\\}\\}",
+      "pattern": "\\{\\{[^{}\\n]{0,80}\\}\\}",
       "flags": "",
       "severity": "warning",
       "selfCheck": false,
@@ -43,7 +43,7 @@
     },
     {
       "id": "open-placeholder",
-      "pattern": "\\[\\[[^\\]]+\\]\\]",
+      "pattern": "\\[\\[[^\\[\\]\\n]{1,120}\\]\\]",
       "flags": "",
       "severity": "info",
       "selfCheck": false,

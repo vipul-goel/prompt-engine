@@ -29,7 +29,8 @@
     "prompt-engine-mcp": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/worker.js"
   ],
   "engines": {
     "node": ">=20"

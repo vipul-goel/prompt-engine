@@ -21,7 +21,7 @@ jobs:
         run: node scripts/build.mjs --check
       - name: Validate (portability, lint, budgets, contract, manifests)
         run: node scripts/validate.mjs
-      - name: Validator mutation tests
+      - name: Script tests (validator mutations, version bumps, lint-rule timing)
         run: node --test scripts/test/*.test.mjs
       - name: Skill zip layout
         run: node scripts/release.mjs --zip

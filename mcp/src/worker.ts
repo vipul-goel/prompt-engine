@@ -9,10 +9,11 @@ import {
   preloadSchemas,
 } from '@modelcontextprotocol/server';
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/server/validators/cf-worker';
+import { parseAllowedHosts, portsIgnoredWarning } from './hosts.js';
 import { createServer } from './server.js';
 
 export interface Env {
-  /** Comma-separated Host header names to accept, for example "prompt-engine.example.workers.dev". */
+  /** Comma-separated Host header names to accept, without ports, for example "prompt-engine.example.workers.dev". */
   ALLOWED_HOSTS?: string;
 }
 
@@ -24,12 +25,15 @@ preloadSchemas();
 const jsonSchemaValidator = new CfWorkerJsonSchemaValidator();
 const mcp = createMcpHandler(() => createServer({ jsonSchemaValidator }));
 
+// ALLOWED_HOSTS doesn't change within an isolate, so parse it (and warn about ports) once.
+let parsed: { value: string | undefined; hosts: string[] } | undefined;
 function allowedHosts(value: string | undefined): string[] {
-  return (value ?? '')
-    .split(',')
-    .map((h) => h.trim().toLowerCase())
-    .filter(Boolean)
-    .map((h) => (h.includes(':') && !h.startsWith('[') ? `[${h}]` : h));
+  if (!parsed || parsed.value !== value) {
+    const { hosts, portsIgnored } = parseAllowedHosts(value);
+    if (portsIgnored.length) console.warn(`prompt-engine-mcp: ${portsIgnoredWarning('ALLOWED_HOSTS', portsIgnored)}`);
+    parsed = { value, hosts };
+  }
+  return parsed.hosts;
 }
 
 const json = (status: number, body: unknown) =>

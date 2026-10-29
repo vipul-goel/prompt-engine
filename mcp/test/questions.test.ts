@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_INTRO,
   NOTES_FIELD,
+  NOTES_HINT,
+  NOTES_MAX_CHARS,
   NOTES_TITLE,
   REPLY_LINE,
   buildElicitationSchema,
@@ -10,6 +12,7 @@ import {
   mapFormAnswers,
   recommendedAnswers,
   supportsFormElicitation,
+  truncate,
   validateQuestions,
   type Question,
 } from '../src/questions.js';
@@ -23,6 +26,7 @@ const q = (overrides: Partial<Question> = {}): Question => ({
   question: 'What is the main goal?',
   options: [{ label: 'Inform' }, { label: 'Persuade' }],
   recommended: 0,
+  why: 'readers need the facts first',
   ...overrides,
 });
 
@@ -50,6 +54,11 @@ describe('validateQuestions', () => {
     expect(validateQuestions([q({ id: NOTES_FIELD })]).join('\n')).toMatch(/reserved/);
     expect(validateQuestions([q({ options: [{ label: 'A' }, { label: 'A' }] })]).join('\n')).toMatch(/appears twice/);
     expect(validateQuestions([q({ options: [{ label: 'A' }], recommended: 0 })]).join('\n')).toMatch(/give 2-4 options/);
+  });
+
+  it('rejects a recommendation without a reason', () => {
+    expect(validateQuestions([q({ why: '   ' })]).join('\n')).toMatch(/give why/);
+    expect(validateQuestions([{ ...q(), why: undefined } as unknown as Question]).join('\n')).toMatch(/give why/);
   });
 
   it('rejects an empty list and more than 8 questions', () => {
@@ -83,10 +92,10 @@ describe('buildTextBatch', () => {
     for (const line of optionLines) expect(line.match(/★/g)).toHaveLength(1);
   });
 
-  it('uses a custom intro and omits the reason when there is none', () => {
-    const batch = buildTextBatch([q({ recommended: 1 })], 'Unas preguntas rápidas (★ = recomendado):');
+  it('uses a custom intro and always gives the reason next to the ★', () => {
+    const batch = buildTextBatch([q({ recommended: 1, why: ' los gerentes deciden ' })], 'Unas preguntas rápidas (★ = recomendado):');
     expect(batch.split('\n')[0]).toBe('Unas preguntas rápidas (★ = recomendado):');
-    expect(batch).toContain('   a) Inform  b) Persuade ★\n');
+    expect(batch).toContain('   a) Inform  b) Persuade ★ (los gerentes deciden)\n');
   });
 });
 
@@ -97,7 +106,8 @@ describe('buildElicitationSchema', () => {
     expect(schema.type).toBe('object');
     for (const field of Object.values(schema.properties)) {
       expect(field.type).toBe('string');
-      expect(Object.keys(field).every((k) => ['type', 'title', 'description', 'enum', 'default'].includes(k))).toBe(true);
+      // The keys MCP's primitive string and single-select enum field schemas allow.
+      expect(Object.keys(field).every((k) => ['type', 'title', 'description', 'enum', 'default', 'maxLength'].includes(k))).toBe(true);
     }
   });
 
@@ -105,7 +115,7 @@ describe('buildElicitationSchema', () => {
     expect(schema.properties.audience).toEqual({
       type: 'string',
       title: 'Who will read it?',
-      description: 'Audience · Recommended: Team managers (they decide remote-work policy) · Team managers: They set policy',
+      description: 'Audience · Team managers ★ (they decide remote-work policy) · Team managers: They set policy',
       enum: ['Employees', 'Team managers', 'Job seekers'],
       default: 'Team managers',
     });
@@ -113,10 +123,21 @@ describe('buildElicitationSchema', () => {
     expect(schema.required).toEqual(['audience', 'length']);
   });
 
-  it('adds one optional free-text notes field', () => {
-    expect(schema.properties[NOTES_FIELD]).toMatchObject({ type: 'string', title: NOTES_TITLE });
-    expect(schema.properties[NOTES_FIELD]).not.toHaveProperty('enum');
+  it('adds one optional free-text notes field with a length limit', () => {
+    expect(schema.properties[NOTES_FIELD]).toEqual({ type: 'string', title: NOTES_TITLE, description: NOTES_HINT, maxLength: NOTES_MAX_CHARS });
     expect(schema.required).not.toContain(NOTES_FIELD);
+  });
+
+  it('has no fixed English words: the caller can give the notes label and hint', () => {
+    const es = buildElicitationSchema(
+      [{ ...questions[0]!, question: '¿Quién lo leerá?', header: 'Público', options: [{ label: 'Empleados' }, { label: 'Gerentes' }], recommended: 1, why: 'deciden la política' }],
+      { label: '¿Algo que añadir?', hint: 'Opcional. Lo que escribas aquí manda.' },
+    );
+    expect(es.properties.audience!.description).toBe('Público · Gerentes ★ (deciden la política)');
+    expect(es.properties[NOTES_FIELD]).toMatchObject({ title: '¿Algo que añadir?', description: 'Opcional. Lo que escribas aquí manda.' });
+    expect(JSON.stringify(es)).not.toMatch(/Recommended|Optional|Anything/);
+    // Blank strings fall back to the defaults.
+    expect(buildElicitationSchema(questions, { label: ' ', hint: '' }).properties[NOTES_FIELD]).toMatchObject({ title: NOTES_TITLE, description: NOTES_HINT });
   });
 
   it('uses the intro as the form message, or a default', () => {
@@ -143,6 +164,21 @@ describe('answers', () => {
         { id: 'length', answer: 'About 1,200 words', source: 'recommended' },
       ],
     });
+  });
+
+  it('cuts notes to the field limit and says so', () => {
+    const long = mapFormAnswers(questions, { notes: `${'pasted brief '.repeat(400)}` });
+    expect([...long.notes!].length).toBe(NOTES_MAX_CHARS);
+    expect(long.notes!.endsWith('…')).toBe(true);
+    expect(long.notesCut).toBe(true);
+    const exact = mapFormAnswers(questions, { notes: 'x'.repeat(NOTES_MAX_CHARS) });
+    expect(exact.notes).toHaveLength(NOTES_MAX_CHARS);
+    expect(exact).not.toHaveProperty('notesCut');
+  });
+
+  it('truncates by characters, not UTF-16 units', () => {
+    expect(truncate('😀😀😀😀', 3)).toBe('😀😀…');
+    expect(truncate('abc', 3)).toBe('abc');
   });
 
   it('lists every ★ answer as recommended', () => {

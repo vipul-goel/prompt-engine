@@ -62,12 +62,41 @@ export function adaptMethod(method: string = UNIVERSAL_METHOD): string {
   return KNOWLEDGE_SENTENCE.test(method) ? method.replace(KNOWLEDGE_SENTENCE, CHECKLIST_SENTENCE) : method;
 }
 
+// The skill's reference files describe Claude Code's AskUserQuestion dialog. Over
+// MCP the clarifying questions go through ask_user, and the "What next?" menu is
+// plain text at the end of the reply, as in the brief.
+const FORMAT_A = `## Format A — the ask_user tool (this server)
+
+Call ask_user for every round: 1–8 questions per call, each with 2–4 options, the 0-based index of the recommended option, why (its reason, 12 words or fewer) and an optional header of up to 12 characters. Where the app supports forms, the user answers one form with the recommended answers preselected and a notes field, and ask_user returns the answers. If the app can't show forms, or the user closes the form without answering, ask_user returns the questions in Format B: send them as your whole reply and wait. If the user declines the form, it returns the recommended answers; list them under Assumptions. If the call fails, fall back to Format B in your next message. Never guess the answers.
+
+`;
+const MENU_SENTENCE = 'End the same message with the menu as a numbered list, because some apps show only your final message. Use ask_user for clarifying questions only.';
+const REFERENCE_ADAPTATIONS: Partial<Record<ReferenceResource, Array<[RegExp, string]>>> = {
+  questions: [
+    [/^## Format A\b[^\n]*\n[\s\S]*?(?=^## )/m, FORMAT_A],
+    [/^(## Format B — one text message) \(all other apps\)$/m, '$1'],
+  ],
+  'output-format': [
+    [/ \(or "\(Recommended\)" in AskUserQuestion\)/, ''],
+    [/^In Claude Code, use AskUserQuestion[^\n]*$/m, MENU_SENTENCE],
+  ],
+};
+const ASK_USER_NOTE = '> Over MCP, ask clarifying questions with the ask_user tool and show the "What next?" menu as text; ignore any mention of AskUserQuestion below.\n\n';
+
+/** A reference file adapted for MCP clients: questions go through ask_user, never AskUserQuestion. */
+export function adaptReference(name: ReferenceResource, text: string): string {
+  let out = text;
+  for (const [pattern, replacement] of REFERENCE_ADAPTATIONS[name] ?? []) out = out.replace(pattern, replacement);
+  // If the source changed so that a passage above no longer matches, say which tool to use instead.
+  return /AskUserQuestion/.test(out) ? `${ASK_USER_NOTE}${out}` : out;
+}
+
 const SERVER_SECTION = `## How to use this server
 These steps replace the instruction above to send the questions in your own message.
 1. Call get_checklist with the domain (coding, writing, research, image-video or general) for its full checklist and ★ defaults. Use two domains if the prompt spans them.
-2. Standard and deep modes: call ask_user with the questions that matter, written in the user's language: 1–8 questions, each with 2–4 options, the 0-based index of the recommended option, a reason of 12 words or fewer, and a header of up to 12 characters. Pass intro in the user's language if it isn't English. Where the app supports forms, the user answers in a form and ask_user returns the answers. Otherwise it returns the questions as text: show them to the user in their language, then stop and wait for the reply. Deep mode can call ask_user again for later rounds. Skip this step in quick mode.
+2. Standard and deep modes: call ask_user with the questions that matter, written in the user's language: 1–8 questions, each with 2–4 options, the 0-based index of the recommended option, why (a reason of 12 words or fewer), and a header of up to 12 characters. If the user's language isn't English, also pass intro, notes_label and notes_hint in it. Where the app supports forms, the user answers in a form and ask_user returns the answers. If the app can't show forms, or the user closes the form without answering, it returns the questions as text: show them to the user in their language, then stop and wait for the reply. If the user declines the form, it returns the ★ answers: list them under Assumptions. Deep mode can call ask_user again for later rounds. Skip this step in quick mode.
 3. With the answers in hand, write the enhanced prompt yourself and present it in exactly the format of section 5. Answers with source "chosen" are [your answer]; answers with source "recommended" that the user never confirmed go under Assumptions, and so do the defaults you chose without asking.
-4. Optionally call check_prompt on your draft full prompt and fix what it flags before presenting it. Its findings are keyword heuristics, so score with the anchors above, not with the tool.
+4. Optionally call check_prompt on your draft full prompt and consider what it flags before presenting it. Its findings are English keyword heuristics, so score with the anchors above, not with the tool.
 This server never calls a model and doesn't receive the user's prompt unless you pass a draft to check_prompt.`;
 
 export interface BriefOptions {
@@ -100,9 +129,9 @@ export function buildChecklist(domain: Domain): string {
   return `${parts.join('\n\n---\n\n')}\n`;
 }
 
-/** A reference file's text, with paths pointing at this server's resources. */
+/** A reference file's text, adapted for MCP, with paths pointing at this server's resources. */
 export function buildReference(name: ReferenceResource): string {
-  return `${rewriteReferencePaths(referenceText(name)).trim()}\n`;
+  return `${rewriteReferencePaths(adaptReference(name, referenceText(name))).trim()}\n`;
 }
 
 export function referenceTitle(name: Domain | ReferenceResource): string {

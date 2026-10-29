@@ -143,7 +143,7 @@ try {
       await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)));
       const asked = await client.callTool({
         name: 'ask_user',
-        arguments: { questions: [{ id: 'tone', question: 'Which tone?', options: [{ label: 'Formal' }, { label: 'Friendly' }], recommended: 1 }] },
+        arguments: { questions: [{ id: 'tone', question: 'Which tone?', options: [{ label: 'Formal' }, { label: 'Friendly' }], recommended: 1, why: 'suits a newsletter' }] },
       });
       check(client.getProtocolEra() === 'modern' && asked.structuredContent?.status === 'answered' && asked.structuredContent.answers?.[0]?.answer === 'Formal', 'a 2026-07-28 client gets a form and its answers back', JSON.stringify(asked.structuredContent));
       await client.close();

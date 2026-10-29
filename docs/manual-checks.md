@@ -78,4 +78,5 @@ Install `prompt-engine.mcpb` from a release by double-clicking it, or through Se
 Expected:
 - [ ] Claude calls the `enhance_prompt` tool.
 - [ ] Questions appear as a form if your Claude Desktop version supports MCP elicitation, and as a numbered list otherwise.
+- [ ] If you close the form without answering, Claude asks the same questions as a numbered list instead of guessing. If you decline it, the recommended answers appear under Assumptions.
 - [ ] The final output follows the same order as check 2.

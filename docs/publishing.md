@@ -78,7 +78,7 @@ A directory listing reaches people on claude.ai, in Cowork and in Claude Code (w
 - each version is reviewed before it's published;
 - the portal applies more rules than `claude plugin validate`, so a clean local run doesn't guarantee approval.
 
-The listing icon comes from `.claude-plugin/icon.png`. According to the validator, that icon is taken only the first time the plugin is saved or submitted in the portal, so changing the file later doesn't change the listing.
+The listing icon comes from `.claude-plugin/icon.png`. According to the validator, that icon is taken only the first time the plugin is saved or submitted in the portal, so changing the file later doesn't change the listing. The `.mcpb` bundle uses `mcp/icon.png`, the same image at 512×512 pixels; if you change the plugin icon, resize it into that file too.
 
 Submit only the plugin. Anthropic's directory no longer takes `.mcpb` submissions, so the bundle ships through GitHub releases.
 

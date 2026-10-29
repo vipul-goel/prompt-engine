@@ -53,7 +53,7 @@ Ask for it in plain words: "improve this prompt: write a blog post about remote 
 
 What happens:
 1. The model calls `enhance_prompt` and gets the method brief, then `get_checklist` for the prompt's domain.
-2. In standard and deep modes it calls `ask_user` with its questions. Where your client supports MCP form elicitation, they appear as one form, with the recommended answers as defaults and a notes field. Otherwise the model shows them as a numbered list; reply `ok` to accept every ★, or answer like `2b 4: your own text`.
+2. In standard and deep modes it calls `ask_user` with its questions. Where your client supports MCP form elicitation, they appear as one form, with the recommended answers as defaults and a notes field. Otherwise, or if you close the form without answering, the model shows them as a numbered list; reply `ok` to accept every ★, or answer like `2b 4: your own text`.
 3. It writes the enhanced prompt in a fixed format: the full prompt, a short version, what it added and why, assumptions, a score, and a "What next?" menu.
 
 The `enhance` prompt gives the same start from a client's prompt menu. In Claude Code, write your rough prompt first, then run `/mcp__prompt-engine__enhance`, optionally followed by `quick`, `standard` or `deep`. Claude Code passes one word per argument, so the mode is the prompt's only argument.
@@ -68,8 +68,8 @@ Every tool is annotated read-only, non-destructive, idempotent and closed-world.
 |---|---|---|
 | `enhance_prompt` | `mode?`: `quick`, `standard` or `deep`; `target?`: where the prompt will run, such as `Midjourney` | The method brief as text. It echoes the mode and target and never needs the prompt itself. |
 | `get_checklist` | `domain`: `coding`, `writing`, `research`, `image-video` or `general` | The domain's checklist with ★ defaults and an example. `image-video` also includes each tool's syntax. |
-| `ask_user` | `questions`: 1–8 of `{ id, header?, question, options: [{ label, description? }] (2–4), recommended, why? }`; `intro?` | Structured `{ status, answers?, notes?, questionsText?, next }`, plus a JSON text mirror |
-| `check_prompt` | `prompt`; `target?` | Structured `{ heuristic, targetKind, dimensions, issues, summary }`, plus a readable text version |
+| `ask_user` | `questions`: 1–8 of `{ id, header?, question, options: [{ label, description? }] (2–4), recommended, why }`; `intro?`, `notes_label?`, `notes_hint?` (the form's message and its notes field's label and hint, in the user's language) | Structured `{ status, answers?, notes?, questionsText?, next }`, plus a JSON text mirror |
+| `check_prompt` | `prompt` (up to 100,000 characters); `target?` | Structured `{ heuristic, targetKind, mostlyEnglish, dimensions, issues, summary }`, plus a readable text version |
 
 How `ask_user` asks:
 
@@ -79,9 +79,14 @@ How `ask_user` asks:
 | Supports form elicitation, 2025-era protocol over stdio | A form, through an `elicitation/create` request |
 | 2025-era protocol over HTTP | `status: "ask_in_chat"` with `questionsText`, because stateless HTTP serving can't send the client a request |
 | No form support | `status: "ask_in_chat"` with `questionsText` for the model to show |
-| The user declines or dismisses the form | `status: "declined"` or `"cancelled"`, with the recommended answers marked `source: "recommended"` so they are listed as assumptions |
+| The user declines the form | `status: "declined"`, with the recommended answers marked `source: "recommended"` so they are listed as assumptions |
+| The user closes the form without answering | `status: "ask_in_chat"` with `questionsText`, so the model asks in the chat instead of guessing |
+
+The form has a single-choice field per question, preselected on the recommended answer, and an optional notes field of up to 1,000 characters; longer notes are cut. The only text the server adds to a form is the ★ marker and, unless the model passes `intro`, `notes_label` and `notes_hint` in your language, an English opening line and notes label and hint.
 
 `check_prompt` is a heuristic. For each scored area (Clear goal, Context, Constraints, Output format, Edge cases) it reports whether the draft explicitly mentions it, with short evidence, plus lint findings from [`data/lint-rules.json`](../data/lint-rules.json): capitalized pressure words, requests to expose reasoning, prefill instructions, template leftovers, open `[[placeholders]]` and similar. It gives no score; the model scores with the shared rubric.
+
+The area checks match English keywords and headings only. When a draft looks mostly non-English, an area without a match is reported as `unknown` rather than `not found`, and the lint still runs. Patterns are matched one line at a time and each runs in time linear in the draft's length; the tests time hostile 100,000-character drafts.
 
 ### Prompt
 
@@ -114,9 +119,9 @@ This serves Streamable HTTP at `http://127.0.0.1:8787/mcp`. Options:
 |---|---|---|
 | `--host <address>` | `127.0.0.1` | Address to bind |
 | `--port <number>` | `8787` | Port; `0` picks a free one |
-| `--allowed-hosts <a,b>` | `localhost,127.0.0.1,[::1]` | `Host` header names to accept; also read from `PROMPT_ENGINE_ALLOWED_HOSTS` |
+| `--allowed-hosts <a,b>` | `localhost,127.0.0.1,[::1]` | `Host` header names to accept, without ports; also read from `PROMPT_ENGINE_ALLOWED_HOSTS`. A port in an entry is ignored, with a warning |
 
-Requests with any other `Host` header get `403`, which protects a local server from DNS rebinding. Browser requests are accepted only from an allowed host's origin; requests without an `Origin` header, which is what non-browser clients send, are accepted. To serve on a network, bind the interface and name the hostname clients use:
+Requests with any other `Host` header get `403`, which protects a local server from DNS rebinding. A request with an `Origin` header gets `403` unless the origin's hostname is allowed too; requests without one, which is what non-browser clients send, are accepted. Browser clients aren't supported: the server sends no CORS headers, so a browser's preflight `OPTIONS` request gets `405`. To serve on a network, bind the interface and name the hostname clients use:
 
 ```bash
 npx -y prompt-engine-mcp --http --host 0.0.0.0 --port 8080 --allowed-hosts mcp.example.com
@@ -128,7 +133,7 @@ Connect a client with, for example, `claude mcp add --transport http prompt-engi
 
 `src/worker.ts` serves the same server statelessly on Cloudflare Workers, with the SDK's Workers JSON Schema validator. From this folder:
 
-1. Set `ALLOWED_HOSTS` in `wrangler.jsonc` (or in the dashboard) to the hostname clients will use, such as `prompt-engine-mcp.<your-subdomain>.workers.dev`. Requests for any other host get `403`; if the variable is empty, every request gets `500`.
+1. Set `ALLOWED_HOSTS` in `wrangler.jsonc` (or in the dashboard) to the hostname clients will use, such as `prompt-engine-mcp.<your-subdomain>.workers.dev`, without a port. Requests for any other host get `403`; if the variable is empty, every request gets `500`. A port in an entry is ignored, with a warning in the Worker's log.
 2. Deploy with `npx wrangler@4.155.0 deploy` (Wrangler needs Node.js 22 or later).
 3. Connect clients to `https://<your hostname>/mcp`.
 
@@ -136,7 +141,7 @@ Connect a client with, for example, `claude mcp add --transport http prompt-engi
 
 ## Privacy
 
-- **No prompt logging.** The server writes nothing to stdout except protocol messages, and logs only errors to stderr, with quoted text removed so request content can't leak into logs.
+- **No prompt logging.** Over stdio, stdout carries only protocol messages. On stderr the server writes its start-up line (`--http` only), warnings about its own settings, and one line per error, and it logs nothing for requests that succeed. A rejected or unreadable request is logged as a fixed phrase with the SDK's reason code, such as `rejected a request (method-header-missing)`, never with text from the request. Any other error, such as a socket failing, is logged as its type and message, with quoted text removed and cut to 200 characters. The Worker's own code logs nothing but the `ALLOWED_HOSTS` port warning.
 - **No API key and no network calls.** It never calls a model or any other service.
 - **Your prompt stays with your model.** `enhance_prompt` never receives it. Only `check_prompt` sees a draft, and only when the model calls it.
 - Self-hosted and Workers deployments keep nothing between requests.
@@ -155,11 +160,13 @@ npm run test:worker      # Cloudflare Worker dry-run and wrangler dev smoke test
 ```
 
 `npm test` covers:
-- the `check_prompt` heuristics and lint rules, and the question validation, text format and form schema;
-- every tool, the prompt and the resources through a real SDK client, in both the 2025-era and the 2026-07-28 protocol, including form answers, declines, cancellations and the text fallback;
-- the built `dist/cli.js` over stdio, and over real HTTP with `Host` and `Origin` checks;
-- budgets: instructions under 3,500 characters, tool descriptions under 1,500, brief and checklist results under 32,000;
+- the `check_prompt` heuristics, language detection and lint rules, with timing tests on hostile 100,000-character drafts, and the question validation, text format and form schema;
+- every tool, the prompt and the resources through a real SDK client, in both the 2025-era and the 2026-07-28 protocol, including form answers, declines, closed forms and the text fallback;
+- the built `dist/cli.js` over stdio, and over real HTTP with `Host` and `Origin` checks, ports in `--allowed-hosts`, and what gets logged for rejected and unreadable requests;
+- budgets: instructions under 3,500 characters, tool descriptions under 1,500, and every tool result under 24,000 characters for the largest inputs the schemas allow;
 - version and schema checks for `package.json`, `manifest.json` (MCPB) and `server.json` (MCP Registry).
+
+The lint patterns in `data/lint-rules.json` are also timed on adversarial input by `node --test scripts/test/*.test.mjs` at the repository root.
 
 To try the server by hand, run the Inspector: `npx @modelcontextprotocol/inspector@2.13.0 --cli node dist/cli.js --method tools/list`.
 

@@ -2,8 +2,9 @@
 // Packs the MCPB bundle for Claude Desktop: dist-mcpb/prompt-engine.mcpb.
 // Run `npm run bundle` first (`npm run pack:mcpb` does both). The bundle holds
 // manifest.json, server/index.js (one self-contained file), the project's LICENSE
-// and, when the plugin has one, its icon. After packing, the archive is unpacked
-// and its server is started the way Claude Desktop does, and must list the tools.
+// and icon.png (the plugin icon at 512x512, the size MCPB expects). After packing,
+// the archive is unpacked and its server is started the way Claude Desktop does,
+// and must list the tools.
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -39,7 +40,7 @@ try {
   cpSync(join(pkg, 'mcpb', 'server'), join(stage, 'server'), { recursive: true });
   const license = join(repo, 'LICENSE');
   if (existsSync(license)) copyFileSync(license, join(stage, 'LICENSE'));
-  const icon = join(repo, '.claude-plugin', 'icon.png');
+  const icon = join(pkg, 'icon.png');
   if (existsSync(icon)) {
     copyFileSync(icon, join(stage, 'icon.png'));
     manifest.icon = 'icon.png';

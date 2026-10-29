@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // prompt-engine-mcp: serves Prompt Engine over stdio (default) or Streamable HTTP.
-// stdout is the protocol channel in stdio mode, so everything else goes to stderr.
-// Nothing here logs request bodies or prompt text.
+// stdout is the protocol channel in stdio mode, so everything else goes to stderr:
+// the start-up line, warnings, and one line per error, which never quotes a
+// request (see log.ts).
 
 import { createServer as createHttpServer } from 'node:http';
 import { parseArgs } from 'node:util';
@@ -14,6 +15,8 @@ import {
 } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { VERSION } from './generated/content.js';
+import { parseAllowedHosts, portsIgnoredWarning } from './hosts.js';
+import { describeError } from './log.js';
 import { createServer } from './server.js';
 
 const NAME = 'prompt-engine-mcp';
@@ -31,35 +34,15 @@ Options:
   --http                   serve HTTP instead of stdio
   --host <address>         address to bind (default ${DEFAULT_HOST})
   --port <number>          port to listen on (default ${DEFAULT_PORT}; 0 picks a free port)
-  --allowed-hosts <a,b>    Host header names to accept, comma-separated (default:
-                           localhost, 127.0.0.1, [::1]; env PROMPT_ENGINE_ALLOWED_HOSTS)
+  --allowed-hosts <a,b>    Host header names to accept, comma-separated, without ports
+                           (default: localhost, 127.0.0.1, [::1]; env PROMPT_ENGINE_ALLOWED_HOSTS)
   -v, --version            print the version
   -h, --help               print this help
 
-Browser requests must come from an allowed host too; requests without an Origin header are accepted.`;
+A request with an Origin header must come from an allowed host. Browser clients
+aren't supported: there is no CORS, so a browser's preflight request gets 405.`;
 
 const log = (message: string) => process.stderr.write(`[${NAME}] ${message}\n`);
-
-/** Error messages can quote request bodies (JSON parse errors do), so drop quoted text and cap the length. */
-function describeError(error: unknown): string {
-  const e = error instanceof Error ? error : new Error(String(error));
-  const message = e.message.replace(/(["'`])(?:(?!\1)[\s\S])*\1/g, '$1…$1').replace(/\s+/g, ' ').slice(0, 200);
-  return `${e.name}: ${message}`;
-}
-
-/** Hostnames for the Host/Origin allowlists: lower-cased, IPv6 in brackets. */
-function parseAllowedHosts(value: string | undefined): string[] {
-  if (!value?.trim()) return localhostAllowedHostnames();
-  return [
-    ...new Set(
-      value
-        .split(',')
-        .map((h) => h.trim().toLowerCase())
-        .filter(Boolean)
-        .map((h) => (h.includes(':') && !h.startsWith('[') ? `[${h}]` : h)),
-    ),
-  ];
-}
 
 function fail(message: string): never {
   process.stderr.write(`${NAME}: ${message}\n\n${USAGE}\n`);
@@ -159,8 +142,10 @@ function main(): void {
   const host = args.host?.trim().replace(/^\[(.*)\]$/, '$1') || DEFAULT_HOST;
   const port = args.port === undefined ? DEFAULT_PORT : Number(args.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535) fail(`--port must be an integer from 0 to 65535 (got ${args.port})`);
-  const allowedHosts = parseAllowedHosts(args['allowed-hosts'] ?? process.env.PROMPT_ENGINE_ALLOWED_HOSTS);
-  serveOverHttp(host, port, allowedHosts);
+  const fromFlag = args['allowed-hosts'] !== undefined;
+  const { hosts, portsIgnored } = parseAllowedHosts(fromFlag ? args['allowed-hosts'] : process.env.PROMPT_ENGINE_ALLOWED_HOSTS);
+  if (portsIgnored.length) log(portsIgnoredWarning(fromFlag ? '--allowed-hosts' : 'PROMPT_ENGINE_ALLOWED_HOSTS', portsIgnored));
+  serveOverHttp(host, port, hosts.length ? hosts : localhostAllowedHostnames());
 }
 
 main();

@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import {
   DOMAINS,
   MODES,
+  REFERENCE_RESOURCES,
   adaptMethod,
+  adaptReference,
   buildBrief,
   buildChecklist,
   buildReference,
@@ -42,6 +44,19 @@ describe('the method brief', () => {
     for (const tool of ['get_checklist', 'ask_user', 'check_prompt']) expect(brief).toContain(tool);
     expect(brief).toMatch(/user's language/);
     expect(brief).toMatch(/section 5/);
+    expect(brief).toMatch(/intro, notes_label and notes_hint/);
+  });
+
+  it('says what each form outcome means: closed asks in the chat, declined uses the ★ answers', () => {
+    expect(brief).toMatch(/closes the form without answering, it returns the questions as text/);
+    expect(brief).toMatch(/declines the form, it returns the ★ answers: list them under Assumptions/);
+  });
+
+  it('treats check_prompt as an English heuristic to consider, not a list of fixes', () => {
+    expect(brief).toMatch(/check_prompt on your draft full prompt and consider what it flags/);
+    expect(brief).toMatch(/English keyword heuristics/);
+    expect(brief).not.toMatch(/fix what it flags/);
+    expect(INSTRUCTIONS).not.toMatch(/fix what it flags/);
   });
 
   it('echoes the requested mode and target', () => {
@@ -88,6 +103,30 @@ describe('checklists and references', () => {
     expect(buildChecklist('coding')).not.toContain(`# ${REFERENCES['media-targets']!.title}`);
   });
 
+  it('adapts the questions and output-format references to ask_user', () => {
+    const questions = buildReference('questions');
+    expect(questions).not.toMatch(/AskUserQuestion|Claude Code/);
+    expect(questions).toMatch(/^## Format A — the ask_user tool \(this server\)$/m);
+    expect(questions).toMatch(/closes the form without answering, ask_user returns the questions in Format B/);
+    expect(questions).toMatch(/Never guess the answers/);
+    expect(questions).toMatch(/^## Format B — one text message$/m);
+    expect(questions).toContain('## Reading the reply');
+    const format = buildReference('output-format');
+    expect(format).not.toMatch(/AskUserQuestion/);
+    expect(format).toMatch(/End the same message with the menu as a numbered list/);
+    // The skill's own files still describe AskUserQuestion; only the served copies change.
+    expect(REFERENCES.questions!.text).toMatch(/AskUserQuestion/);
+    for (const name of REFERENCE_RESOURCES) expect(buildReference(name), name).not.toMatch(/AskUserQuestion/);
+    for (const domain of DOMAINS) expect(buildChecklist(domain), domain).not.toMatch(/AskUserQuestion/);
+    expect(buildBrief()).not.toMatch(/AskUserQuestion/);
+  });
+
+  it('falls back to a note when a passage it adapts has changed', () => {
+    const changed = adaptReference('questions', '# Asking\n\n## Dialogs\nUse AskUserQuestion when you can.\n');
+    expect(changed.startsWith('> Over MCP, ask clarifying questions with the ask_user tool')).toBe(true);
+    expect(adaptReference('blueprint', '# Blueprint\n')).toBe('# Blueprint\n');
+  });
+
   it('points reference paths at this server instead of files', () => {
     expect(rewriteReferencePaths('see `references/media-targets.md` and references/coding.md')).toBe(
       'see `prompt-engine://media-targets` and `prompt-engine://checklists/coding`',
@@ -124,6 +163,12 @@ describe('generated content', () => {
   const build = join(REPO, 'scripts', 'build.mjs');
   it.skipIf(!existsSync(build))('is up to date with the repository sources', () => {
     const r = spawnSync(process.execPath, [build, '--check'], { cwd: REPO, encoding: 'utf8' });
-    expect(`${r.stdout}${r.stderr}`).not.toMatch(/stale: mcp\/src\/generated\/content\.ts/);
+    expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+    expect(r.stdout).toContain('generated files are up to date');
+  });
+
+  it('carries only what the server uses', async () => {
+    const generated = await import('../src/generated/content.js');
+    expect(Object.keys(generated).sort()).toEqual(['CONTRACT', 'LINT_RULES', 'MEDIA_TARGETS', 'REFERENCES', 'UNIVERSAL_METHOD', 'VERSION']);
   });
 });

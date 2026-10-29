@@ -76,7 +76,14 @@ Then run `node scripts/build.mjs`.
 
 ### Add a lint rule
 
-Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript regular expression `pattern`, `flags`, a `severity` and a `message` that says what to do instead. Set `selfCheck: true` only if Prompt Engine's own instructions must never match it, and add a test for it in `scripts/test/validate.test.mjs`. The MCP server's `check_prompt` tool uses the same rules.
+Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript regular expression `pattern`, `flags`, a `severity` and a `message` that says what to do instead. Set `selfCheck: true` only if Prompt Engine's own instructions must never match it, and add a test for it in `scripts/test/validate.test.mjs`. The MCP server's `check_prompt` tool uses the same rules, one line at a time, on drafts of up to 100,000 characters from anyone who can reach the server.
+
+Keep the pattern linear-time, so a hostile draft can't stall the server:
+- bound every repetition, for example `[^\n]{0,80}` instead of `*` or `+`, up to `{0,200}`;
+- repeat only single characters or classes, never groups (`?` after a group is fine);
+- don't use backreferences.
+
+`check_prompt` skips a rule that breaks these, and `scripts/test/lint-rules.test.mjs` times every rule on adversarial input, so a slow pattern fails the checks above.
 
 ## Behavior evals
 

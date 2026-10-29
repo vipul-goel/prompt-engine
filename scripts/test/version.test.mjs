@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const SKIP = new Set(['.git', 'node_modules', 'results', 'dist', 'dist-mcpb']);
+// Build output and tool state the checks don't read: copying them only slows the tests down.
+const SKIP = new Set(['.git', 'node_modules', 'results', 'dist', 'dist-mcpb', 'mcpb', '.wrangler']);
 
 function copyRepo() {
   const dir = mkdtempSync(join(tmpdir(), 'pe-version-'));

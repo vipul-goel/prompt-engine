@@ -8,7 +8,11 @@ export const MAX_OPTIONS = 4;
 export const HEADER_MAX_CHARS = 12;
 /** The one free-text field of the form; question ids can't use it. */
 export const NOTES_FIELD = 'notes';
+/** The notes field's longest answer; longer notes are cut to this many characters. */
+export const NOTES_MAX_CHARS = 1_000;
+/** English defaults for the notes field's label and hint; ask_user's notes_label and notes_hint replace them. */
 export const NOTES_TITLE = 'Anything to add or change?';
+export const NOTES_HINT = 'Optional. Anything you write here wins over the choices above.';
 export const DEFAULT_INTRO = 'A few quick questions so the prompt fits what you need (★ = recommended):';
 export const REPLY_LINE = 'Reply `ok` to accept every ★, or answer like `2b 4: your own text`. Anything you skip gets the ★.';
 const DEFAULT_FORM_MESSAGE = 'A few quick questions so the prompt fits what you need. Each one starts on the recommended answer; change any you like.';
@@ -25,7 +29,8 @@ export interface Question {
   options: QuestionOption[];
   /** 0-based index into options. */
   recommended: number;
-  why?: string | undefined;
+  /** The reason for the recommendation, shown next to the ★. */
+  why: string;
 }
 
 export type AnswerSource = 'chosen' | 'recommended';
@@ -39,6 +44,8 @@ export interface Answer {
 export interface FormAnswers {
   answers: Answer[];
   notes?: string;
+  /** Set when the notes were longer than NOTES_MAX_CHARS and were cut. */
+  notesCut?: true;
 }
 
 /** A flat elicitation schema: one property per question plus the notes field. */
@@ -60,6 +67,13 @@ export interface TextField {
   type: 'string';
   title: string;
   description?: string;
+  maxLength: number;
+}
+
+/** The notes field's label and hint, in the user's language when the caller gives them. */
+export interface NotesText {
+  label?: string | undefined;
+  hint?: string | undefined;
 }
 
 /** Rules a JSON Schema can't express; returns one message per problem. */
@@ -77,6 +91,7 @@ export function validateQuestions(questions: readonly Question[]): string[] {
     if (!Number.isInteger(q.recommended) || q.recommended < 0 || q.recommended >= q.options.length) {
       errors.push(`${at}: recommended must be a 0-based option index from 0 to ${q.options.length - 1} (got ${q.recommended})`);
     }
+    if (typeof q.why !== 'string' || !q.why.trim()) errors.push(`${at}: give why, the reason for the recommended option`);
     const labels = new Set<string>();
     for (const o of q.options) {
       if (labels.has(o.label)) errors.push(`${at}: option "${o.label}" appears twice; labels must be unique`);
@@ -97,10 +112,7 @@ export function buildTextBatch(questions: readonly Question[], intro?: string): 
   const lines = [intro?.trim() || DEFAULT_INTRO, ''];
   questions.forEach((q, i) => {
     lines.push(`${i + 1}. ${q.question.trim()}`);
-    const options = q.options.map((o, j) => {
-      const star = j === q.recommended ? ` ★${q.why?.trim() ? ` (${q.why.trim()})` : ''}` : '';
-      return `${letter(j)}) ${o.label.trim()}${star}`;
-    });
+    const options = q.options.map((o, j) => `${letter(j)}) ${o.label.trim()}${j === q.recommended ? ` ★ (${q.why.trim()})` : ''}`);
     lines.push(`   ${options.join('  ')}`);
   });
   lines.push('', REPLY_LINE);
@@ -112,11 +124,13 @@ export function buildFormMessage(intro?: string): string {
   return intro?.trim() || DEFAULT_FORM_MESSAGE;
 }
 
+// Only the caller's text and the language-neutral ★ appear here, so the form
+// reads in the user's language when the questions are in it.
 function fieldDescription(q: Question): string | undefined {
   const rec = q.options[q.recommended];
   const parts: string[] = [];
   if (q.header?.trim()) parts.push(q.header.trim());
-  if (rec) parts.push(`Recommended: ${rec.label}${q.why?.trim() ? ` (${q.why.trim()})` : ''}`);
+  if (rec) parts.push(`${rec.label} ★ (${q.why.trim()})`);
   const described = q.options.filter((o) => o.description?.trim()).map((o) => `${o.label}: ${o.description?.trim()}`);
   if (described.length) parts.push(described.join('; '));
   return parts.length ? parts.join(' · ') : undefined;
@@ -126,7 +140,7 @@ function fieldDescription(q: Question): string | undefined {
  * One flat form: a single-choice enum field per question (default = the
  * recommended label) and one optional free-text notes field.
  */
-export function buildElicitationSchema(questions: readonly Question[]): ElicitationSchema {
+export function buildElicitationSchema(questions: readonly Question[], notes: NotesText = {}): ElicitationSchema {
   const properties: Record<string, EnumField | TextField> = {};
   for (const q of questions) {
     const field: EnumField = {
@@ -139,7 +153,12 @@ export function buildElicitationSchema(questions: readonly Question[]): Elicitat
     if (description) field.description = description;
     properties[q.id] = field;
   }
-  properties[NOTES_FIELD] = { type: 'string', title: NOTES_TITLE, description: 'Optional. Anything you write here wins over the choices above.' };
+  properties[NOTES_FIELD] = {
+    type: 'string',
+    title: notes.label?.trim() || NOTES_TITLE,
+    description: notes.hint?.trim() || NOTES_HINT,
+    maxLength: NOTES_MAX_CHARS,
+  };
   return { type: 'object', properties, required: questions.map((q) => q.id) };
 }
 
@@ -151,7 +170,7 @@ export function recommendedAnswers(questions: readonly Question[]): Answer[] {
 /**
  * Maps accepted form content to answers. Values arrive from the client, so
  * anything that isn't one of the question's labels falls back to the ★ answer
- * and is marked "recommended".
+ * and is marked "recommended", and notes are cut to NOTES_MAX_CHARS characters.
  */
 export function mapFormAnswers(questions: readonly Question[], content: Record<string, unknown> | undefined): FormAnswers {
   const answers: Answer[] = questions.map((q) => {
@@ -159,8 +178,16 @@ export function mapFormAnswers(questions: readonly Question[], content: Record<s
     if (typeof value === 'string' && q.options.some((o) => o.label === value)) return { id: q.id, answer: value, source: 'chosen' };
     return { id: q.id, answer: recommendedLabel(q), source: 'recommended' };
   });
-  const notes = content?.[NOTES_FIELD];
-  return typeof notes === 'string' && notes.trim() ? { answers, notes: notes.trim() } : { answers };
+  const raw = content?.[NOTES_FIELD];
+  if (typeof raw !== 'string' || !raw.trim()) return { answers };
+  const notes = truncate(raw.trim(), NOTES_MAX_CHARS);
+  return notes === raw.trim() ? { answers, notes } : { answers, notes, notesCut: true };
+}
+
+/** At most max characters (code points), the last one "…" when the text was cut. */
+export function truncate(text: string, max: number): string {
+  const chars = [...text];
+  return chars.length <= max ? text : `${chars.slice(0, max - 1).join('').trimEnd()}…`;
 }
 
 /**
