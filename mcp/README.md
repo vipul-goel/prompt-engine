@@ -53,7 +53,7 @@ Ask for it in plain words: "improve this prompt: write a blog post about remote 
 
 What happens:
 1. The model calls `enhance_prompt` and gets the method brief, then `get_checklist` for the prompt's domain.
-2. In standard and deep modes it calls `ask_user` with its questions. Where your client supports MCP form elicitation, they appear as one form with the recommended answers preselected and a notes field. Otherwise the model shows them as a numbered list; reply `ok` to accept every ★, or answer like `2b 4: your own text`.
+2. In standard and deep modes it calls `ask_user` with its questions. Where your client supports MCP form elicitation, they appear as one form, with the recommended answers as defaults and a notes field. Otherwise the model shows them as a numbered list; reply `ok` to accept every ★, or answer like `2b 4: your own text`.
 3. It writes the enhanced prompt in a fixed format: the full prompt, a short version, what it added and why, assumptions, a score, and a "What next?" menu.
 
 The `enhance` prompt gives the same start from a client's prompt menu. In Claude Code, write your rough prompt first, then run `/mcp__prompt-engine__enhance`, optionally followed by `quick`, `standard` or `deep`. Claude Code passes one word per argument, so the mode is the prompt's only argument.
@@ -132,7 +132,7 @@ Connect a client with, for example, `claude mcp add --transport http prompt-engi
 2. Deploy with `npx wrangler@4.155.0 deploy` (Wrangler needs Node.js 22 or later).
 3. Connect clients to `https://<your hostname>/mcp`.
 
-`npm run test:worker` checks the Worker without deploying: a `wrangler deploy --dry-run`, then a local `wrangler dev` that must answer `tools/list` and `enhance_prompt` and reject a foreign `Host`.
+`npm run test:worker` checks the Worker without deploying: a `wrangler deploy --dry-run`, then a local `wrangler dev` that must answer `tools/list` and `enhance_prompt`, reject a foreign `Host`, and return `ask_user` form answers to a 2026-07-28 client.
 
 ## Privacy
 

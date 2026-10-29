@@ -2,8 +2,9 @@
 // Checks the Cloudflare Workers build without deploying anything:
 //   1. `wrangler deploy --dry-run` bundles src/worker.ts;
 //   2. `wrangler dev` serves it locally, and raw JSON-RPC POSTs (tools/list,
-//      tools/call enhance_prompt) succeed, while a foreign Host header gets 403.
-// Needs Node >= 22 and network access to fetch the pinned wrangler with npx.
+//      tools/call enhance_prompt) succeed, a foreign Host header gets 403, and a
+//      2026-07-28 client gets ask_user's form answers back.
+// Needs Node >= 22 and network access to fetch the pinned Wrangler.
 //
 //   npm run test:worker
 
@@ -14,10 +15,17 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
 const WRANGLER = 'wrangler@4.155.0';
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..');
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
+/** Runs the pinned Wrangler through npm's own CLI when started by npm (portable), else through npx. */
+function wrangler(...args) {
+  const npmCli = process.env.npm_execpath;
+  if (npmCli && /npm-cli\.js$/.test(npmCli)) return [process.execPath, [npmCli, 'exec', '--yes', `--package=${WRANGLER}`, '--', 'wrangler', ...args]];
+  return ['npx', ['-y', WRANGLER, ...args]];
+}
 
 let failures = 0;
 const check = (ok, label, detail = '') => {
@@ -82,13 +90,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 1. Dry-run deploy.
 const outdir = mkdtempSync(join(tmpdir(), 'pe-worker-'));
-const dry = spawnSync(npx, ['-y', WRANGLER, 'deploy', '--dry-run', '--outdir', outdir], { cwd: pkg, encoding: 'utf8', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+const dry = spawnSync(...wrangler('deploy', '--dry-run', '--outdir', outdir), { cwd: pkg, encoding: 'utf8', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
 check(dry.status === 0, 'wrangler deploy --dry-run', dry.status === 0 ? (dry.stdout.match(/Total Upload: [^\n]+/)?.[0] ?? '') : (dry.stderr || dry.stdout).slice(-800));
 rmSync(outdir, { recursive: true, force: true });
 
 // 2. Local dev server.
 const port = await freePort();
-const dev = spawn(npx, ['-y', WRANGLER, 'dev', '--ip', '127.0.0.1', '--port', String(port), '--log-level', 'warn'], {
+const dev = spawn(...wrangler('dev', '--ip', '127.0.0.1', '--port', String(port), '--log-level', 'warn'), {
   cwd: pkg,
   env: { ...process.env, WRANGLER_SEND_METRICS: 'false' },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -127,6 +135,21 @@ try {
 
     const foreign = await post(port, list, 'evil.example.com');
     check(foreign.status === 403, 'a foreign Host header is rejected', `HTTP ${foreign.status}`);
+
+    // A 2026-07-28 client answering ask_user's form through multi-round-trip results.
+    try {
+      const client = new Client({ name: 'worker-smoke', version: '0.0.0' }, { capabilities: { elicitation: { form: {} } }, versionNegotiation: { mode: 'auto' } });
+      client.setRequestHandler('elicitation/create', async () => ({ action: 'accept', content: { tone: 'Formal' } }));
+      await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)));
+      const asked = await client.callTool({
+        name: 'ask_user',
+        arguments: { questions: [{ id: 'tone', question: 'Which tone?', options: [{ label: 'Formal' }, { label: 'Friendly' }], recommended: 1 }] },
+      });
+      check(client.getProtocolEra() === 'modern' && asked.structuredContent?.status === 'answered' && asked.structuredContent.answers?.[0]?.answer === 'Formal', 'a 2026-07-28 client gets a form and its answers back', JSON.stringify(asked.structuredContent));
+      await client.close();
+    } catch (error) {
+      check(false, 'a 2026-07-28 client gets a form and its answers back', String(error));
+    }
   }
 } finally {
   stopDev();

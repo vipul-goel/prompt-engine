@@ -16,13 +16,13 @@ if (!existsSync(CLI)) throw new Error('dist/cli.js is missing; run npm run build
 
 const TOOLS = ['ask_user', 'check_prompt', 'enhance_prompt', 'get_checklist'];
 
-function stdioClient(era: 'legacy' | 'modern', elicit?: () => { action: 'accept'; content: Record<string, string> }) {
+function stdioClient(era: 'legacy' | 'modern', elicit?: () => { action: 'accept'; content: Record<string, string> }, stderr: 'pipe' | 'ignore' = 'ignore') {
   const client = new Client(
     { name: 'prompt-engine-e2e', version: '0.0.0' },
     { capabilities: elicit ? { elicitation: { form: {} } } : {}, ...(era === 'modern' ? { versionNegotiation: { mode: 'auto' as const } } : {}) },
   );
   if (elicit) client.setRequestHandler('elicitation/create', async () => elicit());
-  const transport = new StdioClientTransport({ command: process.execPath, args: [CLI], stderr: 'pipe' });
+  const transport = new StdioClientTransport({ command: process.execPath, args: [CLI], stderr });
   return { client, transport };
 }
 
@@ -45,7 +45,7 @@ describe('the built CLI', () => {
 
 describe('stdio', () => {
   it('legacy era: lists tools, returns the brief, and asks in text mode without elicitation', async () => {
-    const { client, transport } = stdioClient('legacy');
+    const { client, transport } = stdioClient('legacy', undefined, 'pipe');
     let stderr = '';
     transport.stderr?.on('data', (d) => (stderr += d));
     await client.connect(transport);

@@ -28,6 +28,7 @@ import {
   buildReference,
   isDomain,
   normalizeMode,
+  normalizeTarget,
   referenceTitle,
   type Domain,
 } from './brief.js';
@@ -342,7 +343,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       annotations: ANNOTATIONS,
     },
     async ({ prompt, target }) => {
-      const report: CheckReport = checkPrompt(prompt, target);
+      const report: CheckReport = checkPrompt(prompt, normalizeTarget(target));
       return { content: [{ type: 'text', text: formatReport(report) }], structuredContent: { ...report } };
     },
   );
