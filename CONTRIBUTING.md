@@ -85,7 +85,7 @@ Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript reg
 The MCP server's `check_prompt` tool uses the same rules on drafts of up to 100,000 characters from anyone who can reach the server. It matches one line at a time, after turning each control character into a space and each run of whitespace into one space, so a rule about tabs, double spaces or other whitespace never fires there. It matches a line over 2,300 characters in overlapping windows.
 
 `check_prompt` skips a rule, and names it in its summary, if the pattern:
-- is invalid, or uses something the check can't measure: a repeated lookaround, or under the `v` flag a `\q{…}` string or a property of strings such as `\p{RGI_Emoji}`;
+- is invalid, or uses something the check can't measure: a repeated lookaround, a `\q` escape under any flags (as in a `\q{…}` string under `v`), a `\c` that isn't followed by a letter, or under the `v` flag a property of strings such as `\p{RGI_Emoji}`;
 - repeats without a bound (`*`, `+`, `{n,}`), more than `{0,200}` times, or repeats a group (`?` after a group is fine);
 - uses a backreference;
 - can match the empty string, as `(TODO)?` and `\b` can;
