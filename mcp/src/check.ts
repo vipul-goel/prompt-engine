@@ -655,7 +655,8 @@ export function looksMostlyEnglish(prompt: string): boolean {
 /**
  * Whether a sample looks mostly English, or 'short' when it is too short to tell.
  * Letters of other scripts making up most of the letters, or a fifth of them (unless
- * a short sample has two English function words), mean no. So does a sample of 12
+ * a short sample has two English function words or the sample opens in English), mean
+ * no. So does a sample of 12
  * words or more without enough English function words and with clear signs of
  * another language: two different function words of a listed language, or three
  * words with accented letters.
@@ -689,12 +690,22 @@ function judgeLanguage(sample: string): boolean | 'short' {
   // character (a lone π or θ is more likely a symbol). A fifth of the letters is enough,
   // so a few tool names don't make a Chinese draft English. A quoted sign or title in
   // an English image prompt is usually less, and a short sample with two English
-  // function words ("Poster with the words '夢を見る' and '東京'") stays English.
+  // function words ("Poster with the words '夢を見る' and '東京'") stays English. So
+  // does a sample that opens in English, as a request to translate or render a quoted
+  // sentence or name does ("Translate this tagline into English: 让每个人…"): three
+  // lowercase Latin-script words before the first letters of another script, and an
+  // English function word anywhere. Tool names are mostly capitalized, so "React with
+  // TypeScriptで…" doesn't open in English.
   let otherScript = 0;
+  let firstOther = sample.length;
   for (const m of sample.matchAll(/[^\P{L}\p{Script=Latin}](?:[^\P{L}\p{Script=Latin}]|\p{M})+|[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)) {
     otherScript += m[0].length;
+    firstOther = Math.min(firstOther, m.index);
   }
-  if (otherScript * 5 >= latin + nonLatin && (words.length >= 12 || english < 2)) return false;
+  // A word after a dot is a file extension or part of a name ("Next.js").
+  const opening = words.filter(({ 0: word, index }) => index < firstOther && /^(?=\p{Script=Latin})\p{Ll}/u.test(word) && sample[index - 1] !== '.');
+  const opensInEnglish = opening.length >= 3 && english >= 1;
+  if (otherScript * 5 >= latin + nonLatin && !opensInEnglish && (words.length >= 12 || english < 2)) return false;
   if (words.length < 12) return 'short';
   const share = (n: number) => n / words.length;
   // English function words outweigh the other signs when they are 5% of the words and

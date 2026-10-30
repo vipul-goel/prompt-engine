@@ -278,8 +278,10 @@ test('a slow rule fails on its time, not on how many inputs ran before it stoppe
 
 test('the timing check catches slow patterns', () => {
   for (const [pattern, flags] of [
-    // The old placeholder rule.
+    // The old placeholder rule, and the old template rule, which is slow only on
+    // one opening followed by a long run of spaces.
     [String.raw`\[\[[^\]]+\]\]`, ''],
+    [String.raw`\{\{\s*[\w .-]*\s*\}\}`, ''],
     // Nested repetition after [^], which JavaScript reads as a whole class, and
     // slow only on one literal followed by a run of another.
     ['[^](a+)+]', ''],
