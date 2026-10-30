@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   DIMENSIONS,
   EXCERPT_CHARS,
@@ -8,7 +12,10 @@ import {
   formatReport,
   isBoundedPattern,
   looksMostlyEnglish,
+  matchesInLine,
+  patternProblem,
   targetKind,
+  type CheckReport,
 } from '../src/check.js';
 import { CONTRACT, LINT_RULES } from '../src/generated/content.js';
 
@@ -210,56 +217,142 @@ describe('lint rules', () => {
     expect(checkPrompt('[[company\nname]]').issues).toEqual([]);
   });
 
-  it('runs every rule in data/lint-rules.json: none has an unbounded pattern', () => {
+  it('runs every rule in data/lint-rules.json: the gate refuses none', () => {
     expect(SKIPPED_LINT_RULES).toEqual([]);
-    for (const rule of LINT_RULES) expect(isBoundedPattern(rule.pattern, rule.flags), rule.id).toBe(true);
+    for (const rule of LINT_RULES) expect(patternProblem(rule.pattern, rule.flags), rule.id).toBeUndefined();
   });
 });
 
-describe('isBoundedPattern', () => {
+describe('lint-rule gate', () => {
+  // [pattern, flags]
+  type Case = [string, string?];
+  const show = ([pattern, flags = '']: Case) => `/${pattern}/${flags}`;
+
   it('accepts literals, classes, alternation, ? on anything, and bounded repetition of one character or class', () => {
-    for (const ok of [
-      String.raw`\b(MUST|NEVER)\b`,
-      'think (really )?hard',
-      'prefill (the|your|an?) (response|answer)',
-      String.raw`\{\{[^{}\n]{0,80}\}\}`,
-      String.raw`\[\[[^\[\]\n]{1,120}\]\]`,
-      String.raw`(?:^|\s)--no\s`,
-      String.raw`a{3}`,
-      String.raw`x{2,5}?`,
-      String.raw`[*+]`,
-      String.raw`\*\+`,
-      String.raw`(?<name>ab)c`,
-      String.raw`(?=a)b`,
-      '{literal}',
-    ]) {
-      expect(isBoundedPattern(ok), ok).toBe(true);
-    }
+    const cases: Case[] = [
+      [String.raw`\b(MUST|NEVER)\b`],
+      ['think (really )?hard'],
+      ['prefill (the|your|an?) (response|answer)'],
+      [String.raw`\{\{[^{}\n]{0,80}\}\}`],
+      [String.raw`\[\[[^\[\]\n]{1,120}\]\]`],
+      [String.raw`(?:^|\s)--no\s`],
+      ['a{3}'],
+      ['x{2,5}?'],
+      ['[*+]'],
+      [String.raw`\*\+`],
+      ['(?<name>ab)c'],
+      ['(?=a)b'],
+      ['(?<=no )TODO'],
+      ['(?<!no )TODO'],
+      ['{literal}'],
+      // As in JavaScript, [^] is any character and [] matches nothing.
+      ['[^]{0,10}x'],
+      ['x[^]{0,80}'],
+      ['[]|x'],
+      [String.raw`\p{L}{1,10}`, 'u'],
+      [String.raw`\p{Lu}{2,40}`, 'u'],
+      [String.raw`[\p{L}--[a-z]]{1,5}`, 'v'],
+      // Just within the limits: 200 x 5 ways to match, and 300 characters looked at.
+      ['[^x]{0,199}[^y]{0,4}z'],
+      ['a{150}b{150}'],
+      [String.raw`\p{L}{150}`, 'u'],
+    ];
+    for (const c of cases) expect(patternProblem(c[0], c[1]), show(c)).toBeUndefined();
   });
 
-  it('rejects unbounded, repeated-group, oversized and backreferencing patterns', () => {
-    for (const bad of [
-      'a*',
-      'a+',
-      'a{2,}',
-      String.raw`\{\{\s*[\w .-]*\s*\}\}`,
-      String.raw`\[\[[^\]]+\]\]`,
-      '(ab){2}',
-      '(a|b){0,3}',
-      'a{0,500}',
-      String.raw`(a)\1`,
-      String.raw`(?<x>a)\k<x>`,
-      '[abc',
-      '?a',
-    ]) {
-      expect(isBoundedPattern(bad), bad).toBe(false);
-    }
-    expect(isBoundedPattern(String.raw`\p{L}{0,10}`, 'u')).toBe(true);
-    expect(isBoundedPattern(String.raw`\p{L}+`, 'u')).toBe(false);
+  it('refuses unbounded, repeated-group, oversized and backreferencing patterns, reading [] and [^] as JavaScript does', () => {
+    const cases: Case[] = [
+      ['a*'],
+      ['a+'],
+      ['a{2,}'],
+      [String.raw`\{\{\s*[\w .-]*\s*\}\}`],
+      [String.raw`\[\[[^\]]+\]\]`],
+      ['(ab){2}'],
+      ['(a|b){0,3}'],
+      ['a{0,500}'],
+      [String.raw`(a)\1`],
+      [String.raw`(?<x>a)\k<x>`],
+      [String.raw`\p{L}+`, 'u'],
+      // A ] right after [ or [^ closes the class, so the rest is outside it.
+      ['[^](a+)+]'],
+      ['[](a+)+]'],
+      ['[^]*]'],
+      ['x[]|z*z*q]'],
+      ['[^]a*a*b]'],
+      ['you are[^](?:ж+)+]'],
+      [String.raw`\[\[[^]*?]]`],
+    ];
+    for (const c of cases) expect(patternProblem(c[0], c[1]), show(c)).toMatch(/unbounded|repeated group|above 200|backreference/);
+  });
+
+  it('refuses patterns that can match the empty string', () => {
+    const cases: Case[] = [
+      [''],
+      ['TODO|', 'u'],
+      ['(?:TODO)?', 'u'],
+      ['(?:TODO)?', 'v'],
+      [String.raw`\b`],
+      [String.raw`\B`, 'u'],
+      ['^(?:x)?'],
+      ['(?=a)'],
+      ['x?'],
+      ['[^]{0,10}'],
+      [String.raw`\p{L}{0,10}`, 'u'],
+      [String.raw`\b\p{Lu}{0,20}\b`, 'u'],
+      [String.raw`\b(?:a|)\b`, 'iu'],
+      [String.raw`\b(masterpiece|best quality|8k|ultra[- ]detailed|award[- ]winning|)\b`, 'iu'],
+      // An escape is one character, and so is a surrogate pair under u.
+      [String.raw`\u0041?`, 'u'],
+      [String.raw`\uD83D\uDE00?`, 'u'],
+      [String.raw`\01?`],
+      ['😀?', 'u'],
+    ];
+    for (const c of cases) expect(patternProblem(c[0], c[1]), show(c)).toBe('can match the empty string');
+  });
+
+  it('refuses patterns with more than 1,000 ways to match from one position', () => {
+    const cases: Case[] = [
+      // Repetitions that can match the same characters, side by side.
+      [String.raw`\{\{[^}\n]{0,200}[^}\n]{0,200}[^}\n]{0,200}\}\}`],
+      ['[^x]{0,200}[^x]{0,200}[^x]{0,200}x'],
+      ['a{0,200}a{0,200}!'],
+      ['[^x]{0,31}[^x]{0,31}x'],
+      ['(?:「)?[ぁ-ゖ]{0,200}[ぁ-ゖ]{0,200}[ぁ-ゖ]{0,200}[。！]'],
+      [String.raw`\p{Lu}{2,40} ?\p{Lu}{2,40} ?\p{Lu}{2,40}\b`, 'u'],
+      // Optional and alternative groups in a row.
+      [`${'(?:a|a)?'.repeat(22)}!`],
+      [`${'(?:a|a)'.repeat(24)}b`],
+    ];
+    for (const c of cases) expect(patternProblem(c[0], c[1]), show(c)).toBe('more than 1000 ways to match from one position');
+    expect(isBoundedPattern(String.raw`\bif\b[^.]{0,200}\bthen\b[^.]{0,200}\belse\b[^.]{0,200}\bend\b`, 'i')).toBe(false);
+  });
+
+  it('refuses patterns that look at more than 300 characters, which a window may not hold', () => {
+    const cases: Case[] = [
+      ['a{150}b{151}'],
+      [String.raw`\p{L}{151}`, 'u'],
+      [String.raw`(?<=[^\n]{200}[^\n]{97})TODO`],
+      [String.raw`x(?=[^\n]{200}[^\n]{99}$)`],
+      [String.raw`(?<=^[^\n]{200}[^\n]{99})x`],
+    ];
+    for (const c of cases) expect(patternProblem(c[0], c[1]), show(c)).toBe('looks at more than 300 characters');
+  });
+
+  it("refuses invalid patterns and syntax it doesn't read", () => {
+    const cases: Case[] = [['[abc'], ['?a'], ['a{2,1}'], ['(?P<x>a)'], ['(?=a)?b'], [String.raw`[\q{abc}]`, 'v'], [String.raw`\p{RGI_Emoji}`, 'v']];
+    for (const c of cases) expect(isBoundedPattern(c[0], c[1]), show(c)).toBe(false);
   });
 });
 
 describe('long lines', () => {
+  // A line over 2,300 characters is matched in windows that each own 2,000
+  // characters and see 300 more on either side. These tests put text at the
+  // window edges (2,000 and 4,000).
+  const lint = (line: string, id: string) => checkPrompt(line).issues.filter((i) => i.id === id);
+  // What a scan of the whole line finds: its non-empty matches, as [index, text].
+  const wholeLine = (line: string, pattern: RegExp) =>
+    [...line.matchAll(pattern)].filter((m) => m[0]).map((m): [number, string] => [m.index, m[0]]);
+
   it('checks text beyond the first window of a long line, once, with the right line number', () => {
     const filler = 'lorem ipsum dolor sit amet '.repeat(200); // about 5,400 characters
     const report = checkPrompt(`intro\n${filler}You MUST fill [[late placeholder]] now. ${filler}`);
@@ -270,14 +363,176 @@ describe('long lines', () => {
     expect(report.issues.filter((i) => i.id === 'pressure-words')).toHaveLength(1);
   });
 
-  it('finds a match that crosses a window edge exactly once, and no line-start heading mid-line', () => {
+  it('finds a match that crosses a window edge exactly once', () => {
     for (let shift = 1990; shift <= 2010; shift += 2) {
       const line = `${'x'.repeat(shift)} [[edge case]] ${'y '.repeat(1500)}`;
-      const report = checkPrompt(line);
-      expect(report.issues.filter((i) => i.id === 'open-placeholder'), `shift ${shift}`).toHaveLength(1);
+      expect(lint(line, 'open-placeholder'), `shift ${shift}`).toHaveLength(1);
     }
-    const midLine = `${'word '.repeat(400)}Goal: something`; // "Goal:" starts the second window
+  });
+
+  it('gives each window the context of the line around it', () => {
+    // "Goal:" starts the second window, not the line, so it isn't a heading.
+    const midLine = `${'word '.repeat(400)}Goal: something ${'filler '.repeat(100)}`;
+    expect(midLine.indexOf('Goal:')).toBe(2_000);
     expect(dim(checkPrompt(midLine), 'Clear goal').evidence).toEqual([]);
+    // "MUST" starts the second window, inside a word.
+    expect(lint(`${'a '.repeat(999)}aXMUST${' more'.repeat(100)}`, 'pressure-words')).toEqual([]);
+    // The first window's text ends after "MUST" in "MUSTARD"; only the second owns it, and sees the whole word.
+    expect(lint(`${'a '.repeat(1148)}MUSTARD${' more'.repeat(100)}`, 'pressure-words')).toEqual([]);
+  });
+
+  it("doesn't report a match that starts inside the one before it, across a window edge", () => {
+    // A scan of the whole line finds "prefill the assistant" and goes on after it.
+    const line = `${'x'.repeat(1987)} prefill the assistant turn begins with ${'filler '.repeat(400)}`;
+    expect(line.indexOf('assistant')).toBe(2_000);
+    expect(lint(line, 'prefill-instruction')).toHaveLength(1);
+  });
+
+  it('finds what a scan of the whole line finds, for patterns the gate accepts', () => {
+    const E = '😀';
+    const patterns: Array<[string, string]> = [
+      ['(?<=no )TODO', ''],
+      ['(?<!no )TODO', ''],
+      [String.raw`(?<=\bno [^\n]{0,100})TODO`, ''],
+      [String.raw`\bMUST\b`, ''],
+      ['prefill (the|your|an?) (response|answer|reply|assistant)|assistant turn begins with', 'i'],
+      [String.raw`BEGIN[^\n]{0,200}END`, ''],
+      [String.raw`\[\[[^\[\]\n]{1,120}\]\]`, ''],
+      ['END$', ''],
+      [String.raw`^\p{Extended_Pictographic}`, 'u'],
+      [String.raw`^\P{L}{0,3}TODO`, 'u'],
+      [String.raw`\p{Extended_Pictographic}[^\n]{0,140}`, 'u'],
+      [String.raw`\p{Lu}{2,40}`, 'u'],
+    ];
+    const lines = [
+      // An emoji whose two halves straddle a window start.
+      `${'a'.repeat(1999)}${E}ABC${' def'.repeat(600)}`,
+      `${'a'.repeat(3999)}${E} TODO${' def'.repeat(600)}`,
+      `${'a'.repeat(1999)}${E}${'b'.repeat(2400)}`,
+      // Lookbehind across a window start.
+      `${'x'.repeat(1998)}no TODO${' y'.repeat(1500)}`,
+      `${'x'.repeat(1997)}no TODO${' y'.repeat(1500)}`,
+      `${'x'.repeat(1900)} no ${'z'.repeat(90)} TODO${' y'.repeat(1500)}`,
+      // Matches across a window end, at the end of the line, and starting inside another.
+      `${'x '.repeat(975)}BEGIN${'z'.repeat(190)}END${' y'.repeat(1500)}`,
+      `${'q '.repeat(2000)}END`,
+      `${'x'.repeat(1987)} prefill the assistant turn begins with ${'filler '.repeat(400)}`,
+      `${'a '.repeat(1148)}MUSTARD${' more'.repeat(100)}`,
+      `${'a '.repeat(999)}aXMUST MUST${' more'.repeat(100)}`,
+      `${'𝐀'.repeat(1100)} ${'𝐁𝐂 '.repeat(1000)}`,
+      ...[1990, 1995, 1999, 2000, 2001, 2005].map((at) => `${'x'.repeat(at)} [[edge case]] ${'y '.repeat(1500)}`),
+    ];
+    const differences: string[] = [];
+    for (const [source, flags] of patterns) {
+      expect(patternProblem(source, flags), source).toBeUndefined();
+      lines.forEach((line, n) => {
+        expect(line.length).toBeGreaterThan(2_300);
+        const found = matchesInLine(line, new RegExp(source, `${flags}g`));
+        const whole = wholeLine(line, new RegExp(source, `${flags}g`));
+        if (JSON.stringify(found) !== JSON.stringify(whole)) differences.push(`/${source}/${flags} on line ${n}: ${JSON.stringify(found)}`);
+      });
+    }
+    expect(differences).toEqual([]);
+  });
+
+  it('steps past an empty match by a whole character, so u and v patterns finish on emoji', () => {
+    // The gate refuses patterns that can match the empty string, but the loop
+    // must still end on them. A loop that steps by one UTF-16 unit never leaves
+    // an emoji under u or v, and vitest can't stop a loop that never yields, so
+    // the built module runs in a child process with a timeout.
+    const checkJs = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'check.js');
+    if (!existsSync(checkJs)) throw new Error('dist/check.js is missing; run npm run build (npm test does it for you)');
+    const patterns = [
+      ['(?:TODO)?', 'u'],
+      ['(?:TODO)?', 'v'],
+      [String.raw`\b(?:a|)\b`, 'iu'],
+      [String.raw`\b\p{Lu}{0,20}\b`, 'u'],
+      [String.raw`\B`, 'u'],
+      [String.raw`\p{L}{0,10}`, 'u'],
+      [String.raw`\b(masterpiece|best quality|8k|ultra[- ]detailed|award[- ]winning|)\b`, 'iu'],
+      [String.raw`(?<=\p{Extended_Pictographic})`, 'u'],
+    ];
+    const lines = ['Great job🎉', 'ok 😀 ok', 'a🚀b', 'Write a launch email 🚀 for our app.', '😀'.repeat(1500), `${'x'.repeat(1999)}😀${' y'.repeat(1500)}`, 'TODO 😀 '.repeat(800)];
+    const script = [
+      `import { matchesInLine } from ${JSON.stringify(pathToFileURL(checkJs).href)};`,
+      'const results = [];',
+      `for (const [source, flags] of ${JSON.stringify(patterns)}) for (const line of ${JSON.stringify(lines)}) {`,
+      '  const found = matchesInLine(line, new RegExp(source, flags + "g"));',
+      '  const whole = [...line.matchAll(new RegExp(source, flags + "g"))].filter((m) => m[0]).map((m) => [m.index, m[0]]);',
+      '  results.push(JSON.stringify(found) === JSON.stringify(whole) ? "same" : `/${source}/${flags} differs on ${line.slice(0, 20)}`);',
+      '}',
+      'console.log(JSON.stringify(results));',
+    ].join('\n');
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 20_000 });
+    expect(run.signal, 'still running after 20 s: an empty match before an emoji never moved on').toBeNull();
+    expect(run.status, run.stderr).toBe(0);
+    expect(JSON.parse(run.stdout)).toEqual(Array(patterns.length * lines.length).fill('same'));
+  });
+});
+
+describe('excerpts', () => {
+  const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+  const CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
+  const texts = (report: CheckReport) => [...report.issues.map((i) => i.excerpt), ...report.dimensions.flatMap((d) => d.evidence)];
+  // The excerpt of a rule's first finding.
+  const lint1 = (prompt: string, id: string) => checkPrompt(prompt).issues.find((i) => i.id === id)?.excerpt;
+
+  it('are cut from the whole line, with "…" wherever text was cut', () => {
+    // MUST near the start of a later window still gets its left context.
+    for (const at of [2_000, 2_010, 4_000]) {
+      const line = `${'abcd '.repeat(at / 5)}MUST ${'filler '.repeat(800)}`;
+      expect(line.indexOf('MUST')).toBe(at);
+      expect(lint1(line, 'pressure-words'), `MUST at ${at}`).toMatch(/^…(abcd ){6}MUST filler.*…$/);
+    }
+    // ...and in a short last window.
+    expect(lint1(`${'a'.repeat(4009)} MUST ${'a'.repeat(35)}`, 'pressure-words')).toMatch(/^…a+ MUST a+$/);
+    // Evidence too.
+    expect(dim(checkPrompt(`${'a'.repeat(2002)} audience ${'a'.repeat(2990)}`), 'Context').evidence[0]).toMatch(/^…a+ audience a+…$/);
+  });
+
+  it('never split a surrogate pair', () => {
+    const drafts = [
+      `You MUST use them: ${'🚀'.repeat(200)}`,
+      `${'🚀'.repeat(100)}xx You MUST ${'a'.repeat(200)}`,
+      `Goal: ${'🎉'.repeat(100)}`,
+      `Output: one post for Instagram with emoji 😀😃😄😁😆😅😂🤣🥲😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😝😜🤪🤨🧐🤓😎🥸🤩🥳 and nothing else\nGoal: write it for our café's launch party ${'🎉'.repeat(60)}`,
+      `${'a'.repeat(1999)}🚀 You MUST ${'b '.repeat(1500)}`,
+    ];
+    for (const draft of drafts) {
+      const report = checkPrompt(draft);
+      expect(texts(report).length, draft.slice(0, 20)).toBeGreaterThan(0);
+      for (const t of texts(report)) expect(LONE_SURROGATE.test(t), JSON.stringify(t)).toBe(false);
+      expect(LONE_SURROGATE.test(formatReport(report))).toBe(false);
+    }
+  });
+
+  it('are well-formed and at most double in length when escaped as JSON, whatever the draft holds', () => {
+    // A draft that fills every cap (20 lint findings, 3 evidence items per area)
+    // with control characters or unpaired surrogates, most of which JSON writes
+    // as six-character escapes; check_prompt returns them as spaces and U+FFFD.
+    const capDraft = (u: string) => {
+      const run = (n: number) => u.repeat(n);
+      let k = 0;
+      const tag = () => String.fromCharCode(0x41 + (k++ % 26));
+      const around = (word: string) => `${run(39)}${tag()} ${word} ${tag()}${run(120)}`;
+      const lines: string[] = [];
+      for (const h of ['Goal:', 'Context:', 'Constraints:', 'Output:', 'Edge cases:']) for (let i = 0; i < 3; i++) lines.push(`${h}${tag()}${run(140)}`);
+      for (const w of ['MUST', 'NEVER', 'ALWAYS', 'CRITICAL', 'IMPORTANT']) lines.push(around(w));
+      for (const w of ['scratchpad', 'Scratchpad', 'sCratchpad', 'scRatchpad', 'scrAtchpad']) lines.push(around(w));
+      for (const w of ['prefill an answer', 'Prefill an answer', 'pRefill an answer', 'prEfill an answer', 'preFill an answer']) lines.push(around(w));
+      for (let i = 0; i < 5; i++) lines.push(`${run(9)}${tag()}{{${run(79)}${tag()}}}${run(120)}`);
+      return lines.join('\n');
+    };
+    for (const u of ['\u0001', '\u001b', '\u0085', '\ud800', '\udc00']) {
+      const report = checkPrompt(capDraft(u), `Claude ${u.repeat(90)}`);
+      expect(report.issues.filter((i) => i.severity === 'warning')).toHaveLength(20);
+      for (const d of report.dimensions) expect(d.evidence, d.name).toHaveLength(3);
+      for (const t of [...texts(report), report.target!]) {
+        expect(LONE_SURROGATE.test(t) || CONTROL.test(t), JSON.stringify(t)).toBe(false);
+        expect(JSON.stringify(t).length - 2, JSON.stringify(t)).toBeLessThanOrEqual(2 * t.length);
+      }
+      expect(JSON.stringify(report).length + formatReport(report).length).toBeLessThan(24_000);
+    }
   });
 });
 
@@ -320,12 +575,29 @@ describe('report', () => {
 });
 
 describe('time on adversarial input', () => {
-  // Each case is the largest prompt check_prompt accepts. A linear scan takes a
-  // few tens of milliseconds; the regular expressions this replaced took
-  // seconds to minutes. The bound is generous so slow CI machines pass.
-  const LIMIT_MS = 500;
+  // Each case is a draft check_prompt accepts: at most PROMPT_MAX_CHARS
+  // characters as zod counts them (code points), so the astral cases are up to
+  // twice as many UTF-16 units. Each must take less than FACTOR times as long
+  // as plain English of the same size, timed in the same run so the limit
+  // follows the machine's speed, and FLOOR_MS at least. The shipped code stays
+  // well under the limit; the old number signal \d[\d,]* goes well over it on
+  // "1," repeated.
+  const FACTOR = 50;
+  const FLOOR_MS = 50;
   const N = PROMPT_MAX_CHARS;
   const fill = (s: string) => s.repeat(Math.ceil(N / s.length)).slice(0, N);
+  const time = (prompt: string, target?: string) => {
+    const start = performance.now();
+    checkPrompt(prompt, target);
+    return performance.now() - start;
+  };
+  let limitMs = Infinity;
+  beforeAll(() => {
+    const english = fill('Write a short blog post about remote work for team leads, in a friendly tone. ');
+    for (let i = 0; i < 3; i++) time(english);
+    const runs = Array.from({ length: 7 }, () => time(english)).sort((a, b) => a - b);
+    limitMs = Math.max(FLOOR_MS, FACTOR * runs[3]!);
+  });
   const cases: Record<string, string> = {
     '"{{" then spaces': `{{${' '.repeat(N - 2)}`,
     '"{{" then spaces and newlines': `{{${' \n'.repeat(N / 2 - 1)}`,
@@ -343,16 +615,19 @@ describe('time on adversarial input', () => {
     'heading marks': fill('###### **'),
     'one short line after another': fill('a\n'),
     'every lint rule on one line': fill('You MUST [[fill]] {{x}} think step by step, masterpiece 8k, audience: managers, if missing ask. '),
+    'astral letters, one per line': '\u{1D400}\n'.repeat(N / 2),
+    'astral letters on one line': '\u{1D400}'.repeat(N),
+    'emoji between words': '😀 MUST [[😀]] {{😀}} if 😀 is missing '.repeat(N / 35),
   };
 
   for (const [name, prompt] of Object.entries(cases)) {
-    it(`${name} (${N.toLocaleString('en-US')} characters)`, () => {
-      expect(prompt.length).toBe(N);
+    const chars = [...prompt].length;
+    it(`${name} (${chars.toLocaleString('en-US')} characters, ${prompt.length.toLocaleString('en-US')} UTF-16 units)`, () => {
+      expect(chars).toBeLessThanOrEqual(N);
       for (const target of [undefined, 'Midjourney']) {
-        const start = performance.now();
-        checkPrompt(prompt, target);
-        const ms = performance.now() - start;
-        expect(ms, `${target ?? 'text'}: ${ms.toFixed(0)} ms`).toBeLessThan(LIMIT_MS);
+        // The best of three runs, so a pause elsewhere on the machine doesn't count.
+        const ms = Math.min(time(prompt, target), time(prompt, target), time(prompt, target));
+        expect(ms, `${target ?? 'text'}: ${ms.toFixed(0)} ms, limit ${limitMs.toFixed(0)} ms`).toBeLessThan(limitMs);
       }
     });
   }

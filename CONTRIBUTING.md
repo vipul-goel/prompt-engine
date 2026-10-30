@@ -76,14 +76,18 @@ Then run `node scripts/build.mjs`.
 
 ### Add a lint rule
 
-Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript regular expression `pattern`, `flags`, a `severity` and a `message` that says what to do instead. Set `selfCheck: true` only if Prompt Engine's own instructions must never match it, and add a test for it in `scripts/test/validate.test.mjs`. The MCP server's `check_prompt` tool uses the same rules, one line at a time, on drafts of up to 100,000 characters from anyone who can reach the server.
+Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript regular expression `pattern`, `flags`, a `severity` and a `message` that says what to do instead. Set `selfCheck: true` only if Prompt Engine's own instructions must never match it, and add a test for it in `scripts/test/validate.test.mjs`.
 
-Keep the pattern linear-time, so a hostile draft can't stall the server:
-- bound every repetition, for example `[^\n]{0,80}` instead of `*` or `+`, up to `{0,200}`;
-- repeat only single characters or classes, never groups (`?` after a group is fine);
-- don't use backreferences.
+The MCP server's `check_prompt` tool uses the same rules on drafts of up to 100,000 characters from anyone who can reach the server. It matches one line at a time, after turning each control character into a space and each run of whitespace into one space, so a rule about tabs, double spaces or other whitespace never fires there. It matches a line over 2,300 characters in overlapping windows.
 
-`check_prompt` skips a rule that breaks these, and `scripts/test/lint-rules.test.mjs` times every rule on adversarial input, so a slow pattern fails the checks above.
+`check_prompt` skips a rule, and names it in its summary, if the pattern:
+- repeats without a bound (`*`, `+`, `{n,}`), more than `{0,200}` times, or repeats a group (`?` after a group is fine);
+- uses a backreference;
+- can match the empty string, as `(TODO)?` and `\b` can;
+- has more than 1,000 ways to match from one position. Each repetition multiplies them by its number of choices (81 for `{0,80}`, 2 for `?`), and alternatives add theirs up, so `[a-z]{0,200}[a-z]{0,200}` has 40,401;
+- looks at more than 300 characters, so a match always fits in a window. This counts what a match consumes, what its lookarounds read, and one neighbour for each `\b`, `\B`, `^` and `$`, and each character counts as two under the `u` or `v` flag.
+
+The MCP tests fail if `check_prompt` skips a rule. These limits bound the work at each position of a draft, not the time it takes: a `\p{…}` class under the `u` flag, for example, is much slower than an ASCII class. `scripts/test/lint-rules.test.mjs` is a second, separate check: it times every rule on adversarial input built from the pattern's own pieces, and fails a rule that takes 100 ms or more on any of them.
 
 ## Behavior evals
 

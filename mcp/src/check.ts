@@ -2,33 +2,44 @@
 // prompt. English keyword and heading heuristics only; it gives no score,
 // because the host model scores with the shared rubric. Pure and SDK-free.
 //
-// Every regular expression here runs in time linear in the prompt's length,
-// whatever data/lint-rules.json holds:
-// - each run of whitespace within a line becomes one space before matching;
-// - matching is per line, and a long line is matched in windows that start every
-//   WINDOW_CHARS characters and overlap by WINDOW_OVERLAP, so no match attempt
-//   sees more than WINDOW_CHARS + WINDOW_OVERLAP + 1 characters;
+// How matching keeps the work at each position of a hostile draft bounded, so
+// the time grows linearly with its length:
+// - control characters become spaces, and each run of whitespace within a line
+//   one space, before matching;
+// - matching is per line, and a line longer than WINDOW_CHARS + WINDOW_OVERLAP
+//   is matched in windows that each own WINDOW_CHARS characters and also see
+//   WINDOW_OVERLAP characters on either side;
 // - the signals below use bounded repetition only;
-// - a lint rule runs only if its pattern passes isBoundedPattern (no unbounded
-//   or repeated-group repetition, no backreferences), which bounds the work at
-//   each position.
+// - a lint rule from data/lint-rules.json runs only if patternProblem finds
+//   nothing wrong with its pattern: no unbounded repetition, repeated group or
+//   backreference, no empty match, at most MAX_PATTERN_PATHS ways to match from
+//   one position, and nothing it looks at more than WINDOW_OVERLAP characters
+//   away. The timing tests in mcp/test/check.test.ts and
+//   scripts/test/lint-rules.test.mjs measure the speed separately.
 
 import { CONTRACT, LINT_RULES, MEDIA_TARGETS } from './generated/content.js';
 
 export type Dimension = (typeof CONTRACT.required.scoreDimensions)[number];
 export const DIMENSIONS: readonly Dimension[] = CONTRACT.required.scoreDimensions;
 
+/** The longest draft check_prompt takes. zod counts code points, so a draft can be up to twice as many UTF-16 units. */
 export const PROMPT_MAX_CHARS = 100_000;
 /** Excerpts and evidence are cut to this many characters, plus "…" marks. */
 export const EXCERPT_CHARS = 100;
 /** The largest repetition count a lint pattern may use, as in {0,200}. */
 export const MAX_PATTERN_REPEAT = 200;
+/** The most ways a lint pattern may have to match from one position (see patternProblem). */
+export const MAX_PATTERN_PATHS = 1_000;
 const MAX_EVIDENCE = 3;
 const MAX_ISSUES_PER_RULE = 5;
 const MAX_ISSUES = 20;
-/** Long lines are matched in windows of this many characters... */
+/** Long lines are matched in windows that each own this many characters... */
 const WINDOW_CHARS = 2_000;
-/** ...that overlap by this many, so a match that crosses a window edge is still found. */
+/**
+ * ...and see this many more on either side: as far as a lint pattern may look
+ * (see patternProblem), and further than the signals below look, so a match
+ * that starts in a window is found there, as in a scan of the whole line.
+ */
 const WINDOW_OVERLAP = 300;
 
 export type AreaStatus = 'found' | 'not found' | 'unknown';
@@ -138,86 +149,202 @@ function escapeRegExp(s: string): string {
 
 // ---------- lint rules ----------
 
-/**
- * Whether a lint pattern does a bounded amount of work at each position, so a
- * scan is linear in the input: no *, + or {n,} repetition, no {n,m} above
- * MAX_PATTERN_REPEAT or after a group (a ? after a group is fine), and no
- * backreferences. Conservative: a pattern it can't read is rejected.
- */
-export function isBoundedPattern(source: string, flags = ''): boolean {
+// The two halves of a surrogate pair.
+function isHigh(unit: number): boolean {
+  return unit >= 0xd800 && unit <= 0xdbff;
+}
+function isLow(unit: number): boolean {
+  return unit >= 0xdc00 && unit <= 0xdfff;
+}
+
+/** What patternProblem works out about a pattern, or a part of one. */
+interface Shape {
+  /** The fewest characters a match consumes. */
+  min: number;
+  /**
+   * The most UTF-16 units a match can look at: what it consumes, what its
+   * lookarounds read, and one neighbour for each \b, \B, ^ and $.
+   */
+  reach: number;
+  /** The most ways to match from one position, which bounds the backtracking there. */
+  paths: number;
+}
+
+// Properties of strings (v flag): they match sequences of several characters.
+const STRING_PROPERTY = /^(?:Basic_Emoji|Emoji_Keycap_Sequence|RGI_Emoji(?:_Flag_Sequence|_Modifier_Sequence|_Tag_Sequence|_ZWJ_Sequence)?)$/;
+
+/** Reads a valid pattern the way JavaScript does; throws on what it can't read or won't run. */
+function shapeOf(source: string, flags: string): Shape {
   const unicode = /[uv]/.test(flags);
-  let classDepth = 0;
-  // What a quantifier here would repeat: nothing, one character or class, or a group.
-  let last: 'none' | 'atom' | 'group' = 'none';
+  const sets = flags.includes('v');
+  // One character: one UTF-16 unit, or one code point (up to two units) under u or v.
+  const char: Shape = { min: 1, reach: unicode ? 2 : 1, paths: 1 };
+  const assertion: Shape = { min: 0, reach: 1, paths: 1 };
+  const quantifierAt = (at: number) => /^(?:[*+?]|\{\d+(?:,\d*)?\})/.test(source.slice(at));
   let i = 0;
-  while (i < source.length) {
+
+  // Alternatives add up their ways to match.
+  function disjunction(): Shape {
+    const branches = [sequence()];
+    while (source[i] === '|') {
+      i++;
+      branches.push(sequence());
+    }
+    return {
+      min: Math.min(...branches.map((b) => b.min)),
+      reach: Math.max(...branches.map((b) => b.reach)),
+      paths: branches.reduce((sum, b) => sum + b.paths, 0),
+    };
+  }
+
+  // Terms in a row multiply theirs.
+  function sequence(): Shape {
+    const shape: Shape = { min: 0, reach: 0, paths: 1 };
+    while (i < source.length && source[i] !== '|' && source[i] !== ')') {
+      const t = term();
+      shape.min += t.min;
+      shape.reach += t.reach;
+      shape.paths *= t.paths;
+    }
+    return shape;
+  }
+
+  function term(): Shape {
     const c = source[i]!;
-    if (c === '\\') {
-      const next = source[i + 1];
-      if (next === undefined) return false;
-      if (classDepth === 0 && (/[1-9]/.test(next) || next === 'k')) return false;
-      i += 2;
-      if (unicode && /[pPu]/.test(next) && source[i] === '{') {
-        const close = source.indexOf('}', i);
-        if (close < 0) return false;
-        i = close + 1;
-      }
-      if (classDepth === 0) last = 'atom';
-      continue;
+    if (c === '^' || c === '$' || (c === '\\' && /[bB]/.test(source[i + 1] ?? ''))) {
+      i += c === '\\' ? 2 : 1;
+      return assertion;
     }
-    if (classDepth > 0) {
-      if (c === '[' && flags.includes('v')) classDepth++;
-      else if (c === ']') classDepth--;
-      i++;
-      if (classDepth === 0) last = 'atom';
-      continue;
+    return c === '(' ? group() : repeated(single());
+  }
+
+  function group(): Shape {
+    i++;
+    let lookaround = false;
+    if (source[i] === '?') {
+      const head = /^\?(?:(<?[=!])|<[A-Za-z_$][\w$]*>|[ims]*(?:-[ims]*)?:)/.exec(source.slice(i));
+      if (!head) throw new Error('an unknown group');
+      lookaround = head[1] !== undefined;
+      i += head[0].length;
     }
-    if (c === '[') {
-      classDepth = 1;
-      i++;
-      if (source[i] === '^') i++;
-      if (source[i] === ']' && !unicode) i++; // "[]" or "[^]" opens with a literal ]
-      continue;
+    const inner = disjunction();
+    i++; // ")"
+    if (lookaround) {
+      // A lookaround consumes nothing, but what it reads counts toward the reach.
+      if (quantifierAt(i)) throw new Error('a repeated lookaround');
+      return { min: 0, reach: inner.reach, paths: inner.paths };
     }
-    if (c === '(') {
-      i++;
-      if (source[i] === '?') {
-        const head = /^\?(?::|=|!|<=|<!|<[A-Za-z_$][\w$]*>|[ims-]+:)/.exec(source.slice(i));
-        if (!head) return false;
-        i += head[0].length;
-      }
-      last = 'none';
-      continue;
+    if (source[i] === '?') {
+      i += source[i + 1] === '?' ? 2 : 1;
+      return { min: 0, reach: inner.reach, paths: inner.paths + 1 };
     }
-    if (c === ')') {
-      i++;
-      last = 'group';
-      continue;
-    }
-    if (c === '*' || c === '+') return false;
-    if (c === '?') {
-      if (last === 'none') return false;
-      i++;
-      if (source[i] === '?') i++;
-      last = 'none';
-      continue;
-    }
-    if (c === '{') {
-      const q = /^\{(\d+)(,(\d*))?\}/.exec(source.slice(i));
-      if (q) {
-        if (q[2] !== undefined && q[3] === '') return false;
-        if (Number(q[3] ?? q[1]) > MAX_PATTERN_REPEAT || last !== 'atom') return false;
-        i += q[0].length;
-        if (source[i] === '?') i++;
-        last = 'none';
+    if (quantifierAt(i)) throw new Error('a repeated group');
+    return inner;
+  }
+
+  // One character, class or escape.
+  function single(): Shape {
+    const c = source[i]!;
+    if (c === '[') characterClass();
+    else if (c === '\\') escape(false);
+    // Under u or v, a surrogate pair is one character.
+    else i += unicode && isHigh(source.charCodeAt(i)) && isLow(source.charCodeAt(i + 1)) ? 2 : 1;
+    return char;
+  }
+
+  function repeated(one: Shape): Shape {
+    const q = /^(?:([*+])|\?|\{(\d+)(,(\d*))?\})\??/.exec(source.slice(i));
+    if (!q) return one;
+    if (q[1] || q[4] === '') throw new Error('an unbounded repetition');
+    i += q[0].length;
+    if (q[2] === undefined) return { min: 0, reach: one.reach, paths: one.paths + 1 };
+    const low = Number(q[2]);
+    const high = q[3] ? Number(q[4]) : low;
+    if (high > MAX_PATTERN_REPEAT) throw new Error(`a repetition above ${MAX_PATTERN_REPEAT}`);
+    return { min: low * one.min, reach: high * one.reach, paths: (high - low + 1) * one.paths };
+  }
+
+  // As in JavaScript, a ] right after [ or [^ closes the class: [] matches
+  // nothing and [^] any character. Under v, classes nest.
+  function characterClass(): void {
+    let depth = 0;
+    for (;;) {
+      const c = source[i];
+      if (c === undefined) throw new Error('an unclosed class');
+      if (c === '\\') {
+        escape(true);
         continue;
       }
-      if (unicode) return false;
+      i++;
+      if (c === '[' && (depth === 0 || sets)) {
+        depth++;
+        if (source[i] === '^') i++;
+        if (source[i] !== ']') continue;
+        i++;
+        if (--depth === 0) return;
+      } else if (c === ']' && --depth === 0) return;
     }
-    last = c === '|' || c === '^' || c === '$' ? 'none' : 'atom';
-    i++;
   }
-  return classDepth === 0;
+
+  function escape(inClass: boolean): void {
+    const next = source[i + 1]!;
+    if (!inClass && /[1-9k]/.test(next)) throw new Error('a backreference');
+    if (next === 'q') throw new Error('a \\q{} string');
+    if (next === 'c' && !/[A-Za-z]/.test(source[i + 2] ?? '')) throw new Error('a \\c without a letter');
+    i += 2;
+    const rest = source.slice(i);
+    if (unicode && /[pPu]/.test(next) && rest[0] === '{') {
+      const close = rest.indexOf('}');
+      if (sets && STRING_PROPERTY.test(rest.slice(1, close))) throw new Error('a property of strings');
+      i += close + 1;
+    } else if (next === 'u' && /^[\dA-Fa-f]{4}/.test(rest)) {
+      // Under u or v, \uD83D\uDE00 is one character.
+      i += unicode && /^[dD][89aAbB][\dA-Fa-f]{2}\\u[dD][c-fC-F][\dA-Fa-f]{2}/.test(rest) ? 10 : 4;
+    } else if (next === 'x' && /^[\dA-Fa-f]{2}/.test(rest)) i += 2;
+    else if (next === 'c') i++;
+    else if (next === '0' && !unicode) i += /^[0-7]{0,2}/.exec(rest)![0].length; // a legacy octal escape
+  }
+
+  const shape = disjunction();
+  if (i < source.length) throw new Error('an unmatched )');
+  return shape;
+}
+
+/**
+ * Why check_prompt won't run a lint pattern, or undefined if it will. It
+ * refuses a pattern that is invalid or that it can't read, and one that:
+ * - repeats without a bound (*, +, {n,}), more than MAX_PATTERN_REPEAT times,
+ *   or repeats a group (a ? after a group is fine);
+ * - uses a backreference;
+ * - can match the empty string;
+ * - has more than MAX_PATTERN_PATHS ways to match from one position: a
+ *   repetition {m,n} multiplies them by n - m + 1, a ? by 2, and alternatives
+ *   add up theirs;
+ * - can look at more than WINDOW_OVERLAP characters (two per character under u
+ *   or v): what a match consumes, what its lookarounds read, and one neighbour
+ *   for each \b, \B, ^ and $.
+ */
+export function patternProblem(source: string, flags = ''): string | undefined {
+  let shape: Shape;
+  try {
+    new RegExp(source, flags.replace(/[gy]/g, ''));
+  } catch {
+    return 'an invalid pattern';
+  }
+  try {
+    shape = shapeOf(source, flags);
+  } catch (error) {
+    return (error as Error).message;
+  }
+  if (shape.min === 0) return 'can match the empty string';
+  if (shape.paths > MAX_PATTERN_PATHS) return `more than ${MAX_PATTERN_PATHS} ways to match from one position`;
+  if (shape.reach > WINDOW_OVERLAP) return `looks at more than ${WINDOW_OVERLAP} characters`;
+  return undefined;
+}
+
+/** Whether check_prompt runs a lint pattern (see patternProblem). */
+export function isBoundedPattern(source: string, flags = ''): boolean {
+  return patternProblem(source, flags) === undefined;
 }
 
 interface LintRule {
@@ -231,98 +358,130 @@ function compileRules(rules: typeof LINT_RULES): { rules: LintRule[]; skipped: s
   const compiled: LintRule[] = [];
   const skipped: string[] = [];
   for (const rule of rules) {
-    try {
-      if (!isBoundedPattern(rule.pattern, rule.flags)) throw new Error('unbounded');
-      const flags = `${rule.flags.replace(/[gy]/g, '')}g`;
-      compiled.push({ id: rule.id, severity: rule.severity, message: rule.message, pattern: new RegExp(rule.pattern, flags) });
-    } catch {
-      skipped.push(rule.id);
-    }
+    if (patternProblem(rule.pattern, rule.flags)) skipped.push(rule.id);
+    else compiled.push({ id: rule.id, severity: rule.severity, message: rule.message, pattern: new RegExp(rule.pattern, `${rule.flags.replace(/[gy]/g, '')}g`) });
   }
   return { rules: compiled, skipped };
 }
 
 const LINT = compileRules(LINT_RULES);
-/** Ids of rules in data/lint-rules.json that check_prompt doesn't run (unbounded or invalid patterns). */
+/** Ids of rules in data/lint-rules.json that check_prompt doesn't run (see patternProblem). */
 export const SKIPPED_LINT_RULES: readonly string[] = LINT.skipped;
 
 // ---------- matching ----------
 
+/** Whether position i of text falls between the two halves of a surrogate pair. */
+function splitsPair(text: string, i: number): boolean {
+  return isLow(text.charCodeAt(i)) && isHigh(text.charCodeAt(i - 1));
+}
+
 interface Window {
   text: string;
-  /** Matches must start in [from, to); text before `from` is context for \b and ^. */
+  /** Where text starts in the line. */
+  offset: number;
+  /** Matches must start in [from, to) of text; the text around that range is what lookarounds, \b, ^ and $ see. */
   from: number;
   to: number;
 }
 
-/** Called with each match's text, its window and where in the window it starts; returns whether to go on. */
-type Visit = (text: string, window: string, index: number) => boolean;
+interface Line {
+  number: number;
+  /** The line as matched (see linesOf). */
+  text: string;
+  windows: Window[];
+}
+
+/** Called with each match's text, its line and where in the line it starts; returns whether to go on. */
+type Visit = (text: string, line: Line, index: number) => boolean;
 
 function windowsOf(line: string): Window[] {
-  if (line.length <= WINDOW_CHARS + WINDOW_OVERLAP) return [{ text: line, from: 0, to: line.length }];
+  if (line.length <= WINDOW_CHARS + WINDOW_OVERLAP) return [{ text: line, offset: 0, from: 0, to: line.length }];
   const windows: Window[] = [];
-  for (let start = 0; start < line.length; start += WINDOW_CHARS) {
-    // Later windows keep one character before their start, so \b sees the real
-    // neighbour and ^ (line start) can't match mid-line.
-    const lead = start === 0 ? 0 : 1;
-    windows.push({ text: line.slice(start - lead, start + WINDOW_CHARS + WINDOW_OVERLAP), from: lead, to: lead + WINDOW_CHARS });
+  for (let start = 0; start < line.length; ) {
+    // No cut splits a surrogate pair, so u and v patterns see whole characters.
+    let end = Math.min(start + WINDOW_CHARS, line.length);
+    if (splitsPair(line, end)) end--;
+    let first = Math.max(0, start - WINDOW_OVERLAP);
+    if (splitsPair(line, first)) first--;
+    let last = Math.min(end + WINDOW_OVERLAP, line.length);
+    if (splitsPair(line, last)) last++;
+    windows.push({ text: line.slice(first, last), offset: first, from: start - first, to: end - first });
+    start = end;
   }
   return windows;
 }
 
 /**
  * Visits the non-empty matches of a global pattern in a line, in order, until
- * visit returns false. A long line is searched window by window, and each match
- * is reported once, by the window it starts in.
+ * visit returns false. A long line is searched window by window; each match is
+ * reported once, by the window it starts in, and none starts inside the one
+ * before it, as in a scan of the whole line.
  */
-function forEachMatch(windows: Window[], pattern: RegExp, visit: Visit): void {
-  for (const w of windows) {
-    pattern.lastIndex = w.from;
+function forEachMatch(line: Line, pattern: RegExp, visit: Visit): void {
+  let after = 0; // where the last match ended, in the line
+  for (const w of line.windows) {
+    const from = Math.max(w.from, after - w.offset);
+    pattern.lastIndex = from;
     for (let m = pattern.exec(w.text); m && m.index < w.to; m = pattern.exec(w.text)) {
-      if (!m[0]) {
-        pattern.lastIndex = m.index + 1;
+      if (!m[0] || m.index < from) {
+        // Step past an empty match, or one that u or v moved back to the start
+        // of a surrogate pair, by a whole character (two units for a pair under
+        // u or v, as matchAll does); one unit would land inside the pair again.
+        const pair = isHigh(w.text.charCodeAt(m.index)) && isLow(w.text.charCodeAt(m.index + 1));
+        pattern.lastIndex = m.index + (pair && /[uv]/.test(pattern.flags) ? 2 : 1);
         continue;
       }
-      if (!visit(m[0], w.text, m.index)) return;
+      const index = w.offset + m.index;
+      if (!visit(m[0], line, index)) return;
+      after = index + m[0].length;
     }
   }
 }
 
-/** An excerpt around the first match of a global pattern in a line. */
-function firstMatchExcerpt(windows: Window[], pattern: RegExp): string | undefined {
-  for (const w of windows) {
-    pattern.lastIndex = w.from;
-    for (let m = pattern.exec(w.text); m && m.index < w.to; m = pattern.exec(w.text)) {
-      if (m[0]) return excerptAround(w.text, m.index);
-      pattern.lastIndex = m.index + 1;
-    }
-  }
-  return undefined;
+/** The matches check_prompt finds for a global pattern in one line, as [index, text] pairs (for tests). */
+export function matchesInLine(line: string, pattern: RegExp): Array<[number, string]> {
+  const found: Array<[number, string]> = [];
+  forEachMatch({ number: 1, text: line, windows: windowsOf(line) }, pattern, (text, _, index) => {
+    found.push([index, text]);
+    return true;
+  });
+  return found;
 }
 
-/** About EXCERPT_CHARS characters of a line around a match, with "…" where it was cut. */
+/** About EXCERPT_CHARS characters of a line around a match, with "…" where text was cut; no cut splits a surrogate pair. */
 function excerptAround(line: string, index: number): string {
   const text = line.trim();
   if (text.length <= EXCERPT_CHARS) return text;
   const offset = line.length - line.trimStart().length;
-  const start = Math.max(0, Math.min(index - offset - 30, text.length - EXCERPT_CHARS));
-  const end = start + EXCERPT_CHARS;
+  let start = Math.max(0, Math.min(index - offset - 30, text.length - EXCERPT_CHARS));
+  if (splitsPair(text, start)) start++;
+  let end = start + EXCERPT_CHARS;
+  if (splitsPair(text, end)) end--;
   return `${start > 0 ? '…' : ''}${text.slice(start, end).trim()}${end < text.length ? '…' : ''}`;
 }
 
-interface Line {
-  number: number;
-  windows: Window[];
+/**
+ * Text that is safe to return: control characters other than \n become spaces
+ * and unpaired surrogates U+FFFD, so it is well-formed and at most doubles in
+ * length when escaped as JSON. Lengths don't change.
+ */
+function echoable(text: string): string {
+  return text
+    .replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, ' ')
+    .replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd');
 }
 
-/** Non-blank lines, each whitespace run (\r included) collapsed to one space, numbered as in the prompt. */
+/**
+ * Non-blank lines, numbered as in the prompt, as matched: made echoable, with
+ * each whitespace run (\r included) collapsed to one space.
+ */
 function linesOf(prompt: string): Line[] {
   const lines: Line[] = [];
-  prompt
+  echoable(prompt)
     .replace(/[^\S\n]+/g, ' ')
     .split('\n')
-    .forEach((line, i) => {
-      if (line.trim()) lines.push({ number: i + 1, windows: windowsOf(line) });
+    .forEach((text, i) => {
+      if (text.trim()) lines.push({ number: i + 1, text, windows: windowsOf(text) });
     });
   return lines;
 }
@@ -330,10 +489,15 @@ function linesOf(prompt: string): Line[] {
 function dimensionReport(name: Dimension, lines: Line[], kind: 'text' | 'media', english: boolean): DimensionReport {
   const pattern = DIMENSION_PATTERNS[kind][name];
   const evidence: string[] = [];
+  // The first match of each line, until there is enough evidence.
+  const visit: Visit = (_, line, index) => {
+    const snippet = excerptAround(line.text, index);
+    if (!evidence.includes(snippet)) evidence.push(snippet);
+    return false;
+  };
   for (const line of lines) {
     if (evidence.length >= MAX_EVIDENCE) break;
-    const snippet = firstMatchExcerpt(line.windows, pattern);
-    if (snippet !== undefined && !evidence.includes(snippet)) evidence.push(snippet);
+    forEachMatch(line, pattern, visit);
   }
   const status: AreaStatus = evidence.length ? 'found' : english ? 'not found' : 'unknown';
   return { name, status, evidence };
@@ -344,18 +508,16 @@ function lintIssues(lines: Line[]): Issue[] {
   for (const rule of LINT.rules) {
     // Each distinct match is reported once, for at most MAX_ISSUES_PER_RULE matches.
     const seen = new Set<string>();
-    let lineNumber = 0;
-    const visit: Visit = (text, window, index) => {
+    const visit: Visit = (text, line, index) => {
       if (!seen.has(text)) {
         seen.add(text);
-        issues.push({ id: rule.id, severity: rule.severity, message: rule.message, excerpt: excerptAround(window, index), line: lineNumber });
+        issues.push({ id: rule.id, severity: rule.severity, message: rule.message, excerpt: excerptAround(line.text, index), line: line.number });
       }
       return seen.size < MAX_ISSUES_PER_RULE;
     };
     for (const line of lines) {
       if (seen.size >= MAX_ISSUES_PER_RULE) break;
-      lineNumber = line.number;
-      forEachMatch(line.windows, rule.pattern, visit);
+      forEachMatch(line, rule.pattern, visit);
     }
   }
   const rank = { warning: 0, info: 1 } as const;
@@ -435,12 +597,12 @@ export function checkPrompt(prompt: string, target?: string): CheckReport {
         : 'All five areas are explicitly mentioned.'
       : `The draft looks mostly non-English, and the area checks match English keywords only${unknown.length ? `, so these areas are unknown: ${unknown.join(', ')}.` : '; all five areas were still found.'}`,
     issues.length ? `${issues.length} lint finding(s), ${warnings} warning(s).` : 'No lint findings.',
-    SKIPPED_LINT_RULES.length ? `Skipped lint rule(s) whose patterns could run slowly: ${SKIPPED_LINT_RULES.join(', ')}.` : '',
+    SKIPPED_LINT_RULES.length ? `Skipped lint rule(s) whose patterns could run slowly or miss matches: ${SKIPPED_LINT_RULES.join(', ')}.` : '',
   ]
     .filter(Boolean)
     .join(' ');
   const report: CheckReport = { heuristic: true, targetKind: kind, mostlyEnglish: english, dimensions, issues, summary };
-  if (target) report.target = target;
+  if (target) report.target = echoable(target);
   return report;
 }
 
