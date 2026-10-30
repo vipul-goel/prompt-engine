@@ -18,6 +18,7 @@ import {
   type CheckReport,
 } from '../src/check.js';
 import { CONTRACT, LINT_RULES } from '../src/generated/content.js';
+import { TOOL_DESCRIPTIONS } from '../src/server.js';
 
 const STRONG = `# Goal
 Write a launch email announcing [[app name]] to existing newsletter subscribers, so that as many as possible start a free trial.
@@ -82,9 +83,28 @@ describe('structure heuristics', () => {
   it("doesn't count the prompt's subject as an output format", () => {
     expect(found(checkPrompt('build a JSON parser in rust'), 'Output format')).toBe(false);
     expect(found(checkPrompt('Design a database schema for a library'), 'Output format')).toBe(false);
+    expect(found(checkPrompt('Fix this handler:\n```json\n{"id": 1}\n```'), 'Output format')).toBe(false);
     expect(found(checkPrompt('Return the result as valid JSON.'), 'Output format')).toBe(true);
     expect(found(checkPrompt('Respond in JSON.'), 'Output format')).toBe(true);
     expect(found(checkPrompt('Output a JSON object with two keys.'), 'Output format')).toBe(true);
+  });
+
+  it('counts common output instructions that name a format', () => {
+    for (const prompt of [
+      'Your response must be valid JSON.',
+      'Make sure your answer is valid JSON.',
+      'Extract every person and date from the text. Output: JSON.',
+      'JSON only, no prose.',
+      'Use this JSON shape: {"name": string, "age": number}',
+      'Give the answer in this JSON structure: {"verdict": "...", "reasons": []}',
+      'Use JSON for the response.',
+      'Respond using JSON.',
+      'Respond with nothing but JSON.',
+      'Wrap the result in a ```json code block.',
+      'Return HTML.',
+    ]) {
+      expect(found(checkPrompt(prompt), 'Output format'), prompt).toBe(true);
+    }
   });
 
   it('applies image and video conventions for media targets', () => {
@@ -125,6 +145,14 @@ describe('language', () => {
       'Write a blog post about remote work for team managers, around 1,200 words, friendly tone.',
       'cyberpunk city street, neon signs, rain, reflections, cinematic lighting, 35mm, shallow depth, puddles, crowd, umbrellas, night market, steam',
       'masterpiece, best quality, 1girl, solo, long hair, looking at viewer, smile, outdoors, cherry blossoms, petals, sunlight, depth of field, bokeh',
+      // One foreign word, a name, or two accented words doesn't make a terse prompt foreign.
+      'Van Gogh style sunflowers in a blue vase, thick impasto, warm light',
+      'Los Angeles to Las Vegas road trip montage, desert highway, golden hour, film',
+      'Album cover for a Björk-inspired electronic record: Reykjavík at night, aurora, glacier, Sigur Rós mood, minimalist typography',
+      'Crème brûlée on a marble counter, soft window light, shallow focus, food photography',
+      'Summarize per section, plus key takeaways, max 200 words, bullet points, plain language',
+      // English function words outweigh the "os" and "du" of pasted code.
+      'Make this work on Windows: for name in os.listdir(home): if os.path.isdir(path) and not name.startswith("."): subprocess.run(["du", "-sh", path])',
     ]) {
       expect(looksMostlyEnglish(english), english).toBe(true);
     }
@@ -135,11 +163,71 @@ describe('language', () => {
       'Tulis artikel blog tentang kerja jarak jauh untuk manajer tim. Panjang sekitar 1.200 kata dengan nada yang ramah. Jika ada informasi yang kurang, tanyakan dulu sebelum menulis.',
       'チームリーダー向けにリモートワークについてのブログ記事を書いてください。長さは約1200語、口調は親しみやすく。情報が足りない場合は先に質問してください。',
       'Напиши статью для блога об удалённой работе для руководителей команд. Объём: около 1200 слов. Тон: дружелюбный. Если информации не хватает, сначала спроси.',
+      // Languages known by their accented letters.
+      'Kirjoita blogikirjoitus etätyöstä tiiminvetäjille. Pituus noin 1 200 sanaa. Sävy: ystävällinen. Jos tietoa puuttuu, kysy ensin ennen kuin kirjoitat.',
+      'Írj egy blogbejegyzést a távmunkáról csapatvezetőknek. Hossz: körülbelül 1200 szó. Hangnem: barátságos. Ha hiányzik valamilyen információ, előbb kérdezz.',
+      'Viết một bài blog về làm việc từ xa dành cho các trưởng nhóm. Độ dài khoảng 1.200 từ. Giọng văn thân thiện. Nếu thiếu thông tin, hãy hỏi trước khi viết.',
+      // Short image and video prompts in non-Latin scripts.
+      '一只橘猫在窗台上睡觉，水彩风格，柔和光线',
+      '창가에서 자는 고양이, 수채화 스타일',
+      '夕暮れの海辺を歩く少女、シネマティック',
+      // Tool names don't make Japanese or Hindi English.
+      'Next.jsとTypeScriptでブログを作りたいです。Tailwind CSSとPrismaを使い、PostgreSQLに保存し、Vercelにデプロイします。認証はNextAuthでGitHubログイン。テストはVitestとPlaywright。',
+      'ChatGPT और Python के लिए प्रॉम्प्ट लिखें',
+      // A quoted English title or slogan doesn't either.
+      "Fasse das Buch 'The Power of Habit' von Charles Duhigg in fünf Stichpunkten zusammen, für Leser ohne Vorwissen.",
+      "Escribe tres variantes de un anuncio para Instagram de nuestra marca de café. El eslogan en inglés debe aparecer tal cual: 'Wake up and smell the future'. Tono: cercano. Máximo 40 palabras por variante.",
     ]) {
       expect(looksMostlyEnglish(other), other).toBe(false);
     }
     // Too short to tell: the English checks apply.
     expect(looksMostlyEnglish('Schreibe einen Artikel')).toBe(true);
+  });
+
+  it('judges the prose, not code blocks, inline code or URLs', () => {
+    const python = Array.from({ length: 20 }, (_, i) => `    total += row[${i}] if row and not row.startswith("#") else 0`).join('\n');
+    const chinese = `# 目标\n重构下面的代码，使其更易读、更易测试，行为必须保持不变。\n\n# 约束\n- 不要引入新的依赖。\n- 不要修改公共接口。\n\n# 不确定时\n如果有不清楚的地方，先提问，不要自行假设。`;
+    expect(looksMostlyEnglish(`${chinese}\n\n\`\`\`python\n${python}\n\`\`\``), 'Chinese draft with 20 lines of code').toBe(false);
+    expect(looksMostlyEnglish('请把 `getUserById` 重命名为 `findUser`，更新 `src/api` 和 `src/web` 里的所有调用。'), 'Chinese with inline code').toBe(false);
+    for (const english of [
+      'Fix the typo in this file:\n```json\n{ "title": "Guía para el uso de la aplicación", "body": "Para iniciar sesión, introduce tu correo y la contraseña. Si no la recuerdas, pulsa en el enlace de abajo y sigue los pasos." }\n```',
+      'Fix this CSS so the cards wrap on small screens:\n```css\n.card { padding: 1em 1.5em; margin: 0.5em auto; font-size: 1.1em; line-height: 1.4em; border-radius: 0.5em; }\n.grid { display: grid; gap: 1em; grid-template-columns: repeat(auto-fill, minmax(18em, 1fr)); }\n```',
+      'Check these localized docs links for broken redirects:\nhttps://www.example.com/en/docs/start\nhttps://www.example.com/es/docs/start\nhttps://www.example.com/pt/docs/start\nhttps://www.example.com/fr/docs/start',
+    ]) {
+      expect(looksMostlyEnglish(english), english).toBe(true);
+    }
+    // A draft in a text fence is prose, and a code block inside it is still code.
+    expect(looksMostlyEnglish(`Here is my draft:\n\`\`\`text\n${GERMAN}\n\`\`\``), 'German draft in a text fence').toBe(false);
+    expect(looksMostlyEnglish(`\`\`\`\`text\n${GERMAN}\n\n\`\`\`python\n${python}\n\`\`\`\n\`\`\`\``), 'code block inside a text fence').toBe(false);
+    // When nothing but code is left, the code counts.
+    expect(looksMostlyEnglish(`\`\`\`\n${GERMAN}\n\`\`\``), 'German draft in a bare fence').toBe(false);
+    expect(looksMostlyEnglish('```python\nimport os\nfor name in os.listdir("."):\n    print(name)\n```'), 'only code').toBe(true);
+  });
+
+  it('recognizes each Latin-script language the check_prompt description names', () => {
+    const drafts: Record<string, string> = {
+      German: GERMAN,
+      French: "Rédige un article de blog sur le télétravail pour les responsables d'équipe. Longueur : environ 1 200 mots. Ton : amical. Si des informations manquent, pose la question.",
+      Spanish: 'Escribe un artículo de blog sobre el teletrabajo para jefes de equipo. Extensión: unas 1.200 palabras. Tono: cercano. Si falta información, pregunta antes de escribir.',
+      Portuguese: 'Escreva um post de blog sobre trabalho remoto para gestores de equipe. Tamanho: cerca de 1.200 palavras. Tom: amigável. Se faltar informação, pergunte antes.',
+      Italian: 'Scrivi un articolo per il blog sul lavoro da remoto per i responsabili di team. Lunghezza: circa 1.200 parole. Tono: cordiale. Se mancano informazioni, chiedi prima.',
+      Dutch: 'Schrijf een blogartikel over thuiswerken voor teamleiders. Lengte: ongeveer 1.200 woorden. Toon: vriendelijk. Als er informatie ontbreekt, vraag het dan eerst.',
+      Polish: 'Napisz artykuł na bloga o pracy zdalnej dla kierowników zespołów. Długość: około 1200 słów. Ton: przyjazny. Jeśli brakuje informacji, najpierw zapytaj.',
+      Swedish: 'Skriv ett blogginlägg om distansarbete för teamledare. Längd: cirka 1 200 ord. Ton: vänlig. Om information saknas, fråga först innan du skriver.',
+      Turkish: 'Ekip liderleri için uzaktan çalışma hakkında bir blog yazısı yaz. Uzunluk: yaklaşık 1.200 kelime. Ton: samimi. Bilgi eksikse önce sor.',
+      Indonesian: 'Tulis artikel blog tentang kerja jarak jauh untuk manajer tim. Panjang sekitar 1.200 kata dengan nada yang ramah. Jika ada informasi yang kurang, tanyakan dulu sebelum menulis.',
+      Tagalog: 'Sumulat ka ng maikling sanaysay tungkol sa kahalagahan ng pagbabasa para sa mga kabataan. Gumamit ng simpleng salita at huwag lumampas sa tatlong daang salita. Kung kulang ang impormasyon, magtanong muna bago magsulat.',
+      Swahili: 'Andika makala ya blogu kuhusu kufanya kazi ukiwa mbali kwa ajili ya viongozi wa timu. Urefu: takriban maneno 1,200. Mtindo: wa kirafiki. Ikiwa taarifa fulani haipo, uliza kwanza kabla ya kuandika.',
+      'Romanized Hindi': 'Mere startup ke liye ek pitch deck banao jo investors ko impress kare. 10 slides chahiye, simple language mein. Agar koi data missing hai toh placeholder daal do.',
+    };
+    const description = TOOL_DESCRIPTIONS.check_prompt;
+    for (const [language, draft] of Object.entries(drafts)) {
+      expect(description, language).toContain(language);
+      expect(looksMostlyEnglish(draft), language).toBe(false);
+    }
+    expect(description).toMatch(/non-Latin scripts/);
+    expect(description).toMatch(/accented letters/);
+    expect(description).toMatch(/Other languages.{0,60} may be reported as not found/);
   });
 
   it('reports areas without a match as unknown in a mostly non-English draft, and still lints it', () => {

@@ -85,6 +85,8 @@ interface Signal {
 
 const heading = (words: string) =>
   new RegExp(`^\\s?(?:#{1,6}\\s?|<\\s?)(?:${words})\\b|^\\s?(?:\\*\\*)?(?:${words})(?:\\*\\*)?\\s?:`, 'i');
+/** Format words, which count only in an output phrase (see 'Output format'). */
+const FORMATS = 'json|yaml|csv|xml|markdown|html';
 
 // Each dimension counts as explicitly present when one line matches one of its
 // signals. Whitespace runs are collapsed before matching, so \s? stands for any
@@ -109,8 +111,16 @@ const SIGNALS: Record<Dimension, Signal[]> = {
   'Output format': [
     { pattern: heading('output|format|response format|structure|deliverables?|length|style|settings|parameters') },
     { pattern: /<\s?(output_format|output|format)\b/i },
-    // A format word only counts in an output phrase: "build a JSON parser" names the subject, not the format.
-    { pattern: /\b(format(ted)?( as)?|as (a|an) (table|list|bullet|paragraph|code block|report|email|summary)|in (a table|bullet points|plain text)|(as|in|into) (an? )?(valid |plain )?(json|yaml|csv|xml|markdown|html)|bullet(ed)? (points|list)|numbered list|headings?|sections?|json (object|array|output|response|schema)|(return|respond|reply|answer|output)(s|ing)? (only )?(with )?(an? )?(valid )?(json|yaml|csv|xml|markdown)|(output|response) schema|word count|tone)\b/i },
+    // A format word only counts in an output phrase: "build a JSON parser" names the
+    // subject, not the format. A phrase about what code returns still counts, as in
+    // "an endpoint that returns JSON".
+    {
+      pattern: new RegExp(
+        `\\b(format(ted)?( as)?|as (a|an) (table|list|bullet|paragraph|code block|report|email|summary)|in (a table|bullet points|plain text)|(as|in|into) (an? )?(valid |plain )?(${FORMATS})|(must|should) be (valid )?(${FORMATS})|(answer|response|reply|output|result) is (valid )?(${FORMATS})|(${FORMATS}) only|nothing but (an? )?(valid )?(${FORMATS})|output ?: ?(${FORMATS})|(use|using) (${FORMATS}) for the (response|output|answer|reply)|(this|the following) (${FORMATS}) (shape|structure|format|template|schema)|bullet(ed)? (points|list)|numbered list|headings?|sections?|json (object|array|output|response|schema)|(return|respond|reply|answer|output)(s|ing)? (only )?(with |using )?(an? )?(valid )?(${FORMATS})|(output|response) schema|word count|tone)\\b`,
+        'i',
+      ),
+    },
+    { pattern: new RegExp(`\`\`\`(${FORMATS}) (code )?(block|fence)`, 'i') },
     { pattern: /\b\d[\d,]{0,15}\s{0,3}(?:(?:-|–|to)\s{0,3}\d[\d,]{0,15}\s{0,3})?(words?|characters?|sentences?|paragraphs?|bullets?|lines?|pages?|items?|slides?)\b/i },
     { pattern: /(?:^|\s)--(ar|v|stylize|chaos|raw|motion|loop)\b|\baspect ratio\b|\b\d{1,2}:\d{1,2}\b|\bresolution\b|\b\d{1,4}\s{0,3}(s|sec|seconds)\b|\b(16:9|9:16|1:1|4:3|3:2)\b/i, kind: 'media' },
   ],
@@ -554,49 +564,110 @@ const ENGLISH_WORDS = new Set(
 );
 // Common function words of other languages written in Latin script (German,
 // French, Spanish, Portuguese, Italian, Dutch, Polish, Swedish, Turkish,
-// Indonesian), minus words that are also English.
+// Indonesian, Tagalog, Swahili, Romanized Hindi), minus words that are also
+// English. "per" and "plus" are left out for the same reason.
 const OTHER_WORDS = new Set(
   [
     'der das und ist nicht mit für ein eine einen einem einer zu von auf sie ich du wir wenn oder auch sind werden wird dem den des im zum zur über nach bei aus wie etwa',
-    'le la les des du et est une un que qui pour dans sur pas ne avec au aux ce cette il elle vous nous ou sont être par plus ses leur',
+    'le la les des du et est une un que qui pour dans sur pas ne avec au aux ce cette il elle vous nous ou sont être par ses leur',
     'el los las y en es por para con una del al lo como más pero sus se su si sin sobre este esta muy hay',
     'o os do da dos das em um uma não com na pelo pela ao à é são você',
-    'il gli di della che per non è sono nel alla anche questo questa',
+    'il gli di della che non è sono nel alla anche questo questa',
     'het een van dat op te voor niet zijn er je ik wordt worden ook aan bij',
     'się nie jest że jak dla od po oraz czy',
     'och att det som är på för med av inte till',
     've bir bu için ile çok daha olarak gibi',
     'yang dan di ke dari untuk dengan ini itu tidak akan ada adalah',
+    'ng mga ang',
+    'kwa kuhusu ya',
+    'hai mein aur liye',
   ]
     .join(' ')
     .split(' ')
     .filter((w) => !ENGLISH_WORDS.has(w)),
 );
 const LANGUAGE_SAMPLE_CHARS = 20_000;
+/** Fence info strings that mark prose (a prompt or a document), not code. */
+const PROSE_FENCE = /^(?:text|txt|plain|plaintext|markdown|md|prompt)$/i;
 
 /**
- * Whether a draft looks mostly English. Mostly non-Latin letters means no; so
- * does a draft of 12 words or more with almost no English function words and
- * clear signs of another language (its function words, or accented letters).
+ * Text without its code: fenced code blocks and inline code spans. A fence marked
+ * text or markdown holds prose and is kept, except for code blocks inside it.
+ */
+function withoutCode(prompt: string): string {
+  const kept: string[] = [];
+  let open: { marker: string; code: boolean } | undefined;
+  let inner: string | undefined; // the marker of a code block inside a prose fence
+  for (const line of prompt.split('\n')) {
+    const fence = /^ {0,3}(`{3,40}|~{3,40})[ \t]{0,9}([^\s`]{0,40})/.exec(line);
+    if (fence) {
+      const marker = fence[1] ?? '';
+      const info = fence[2] ?? '';
+      const closes = (opener: string) => !info && marker[0] === opener[0] && marker.length >= opener.length;
+      if (inner !== undefined) {
+        if (closes(inner)) inner = undefined;
+      } else if (open) {
+        if (closes(open.marker)) open = undefined;
+        else if (!open.code) inner = marker;
+      } else {
+        open = { marker, code: !PROSE_FENCE.test(info) };
+      }
+      continue;
+    }
+    if (inner === undefined && !open?.code) kept.push(line);
+  }
+  return kept.join('\n').replace(/`[^`\n]{1,200}`/g, ' ');
+}
+
+/**
+ * Whether a draft looks mostly English, judged without its code and URLs. Mostly
+ * non-Latin letters means no. So does a draft of 12 words or more without enough
+ * English function words and with clear signs of another language: two different
+ * function words of a listed language or words in another script, or three words
+ * with accented letters.
  */
 export function looksMostlyEnglish(prompt: string): boolean {
-  const sample = prompt.slice(0, LANGUAGE_SAMPLE_CHARS);
-  const letters = sample.replace(/[^\p{L}]/gu, '').length;
-  if (letters < 20) return true;
-  const latin = sample.replace(/[^\p{Script=Latin}]/gu, '').length;
-  if (latin < letters / 2) return false;
-  const words = sample.toLowerCase().match(/\p{L}+/gu) ?? [];
+  const text = prompt.replace(/(?:https?:\/\/|www\.)\S{1,500}/gi, ' ');
+  const prose = withoutCode(text);
+  // When only code is left (a prompt that is all code, or a whole draft in one bare fence), the code counts too.
+  const sample = (/\p{L}/u.test(prose) ? prose : text).slice(0, LANGUAGE_SAMPLE_CHARS);
+  const latin = sample.replace(/\P{Script=Latin}/gu, '').length;
+  // Letters and marks of other scripts (Devanagari vowel signs are marks, not letters); accents any script can carry don't count.
+  const nonLatin = sample.replace(/[^\p{L}\p{M}]|[\p{Script=Latin}\p{Script=Inherited}]/gu, '').length;
+  if (nonLatin > latin) return false;
+  if (latin + nonLatin < 20) return true;
+  // Words, split where the script changes: "Next.jsとTypeScriptで" is five words.
+  const words = [...sample.matchAll(/\p{Script=Latin}[\p{Script=Latin}\p{M}]*|[^\P{L}\p{Script=Latin}](?:[^\P{L}\p{Script=Latin}]|\p{M})*/gu)];
   if (words.length < 12) return true;
   let english = 0;
   let other = 0;
+  const otherWords = new Set<string>();
   let accented = 0;
-  for (const word of words) {
-    if (ENGLISH_WORDS.has(word)) english++;
-    else if (OTHER_WORDS.has(word)) other++;
-    if (/[^a-z]/.test(word) && /\p{Script=Latin}/u.test(word)) accented++;
+  for (const { 0: word, index } of words) {
+    // A capitalized word after a letter, digit or comma is likely a name ("to Las Vegas", "Sigur Rós"): no evidence.
+    if (/^\p{Lu}\p{Ll}/u.test(word) && /[\p{L}\p{M}\p{N},][ \t]{0,9}$/u.test(sample.slice(Math.max(0, index - 10), index))) continue;
+    const lower = word.toLowerCase();
+    if (!/\p{Script=Latin}/u.test(word)) {
+      // A word in another script counts against English; a lone π or θ is more likely a symbol.
+      if ([...word].length > 1) {
+        other++;
+        otherWords.add(lower);
+      }
+      continue;
+    }
+    if (ENGLISH_WORDS.has(lower)) english++;
+    else if (OTHER_WORDS.has(lower)) {
+      other++;
+      otherWords.add(lower);
+    }
+    if (/[^a-z]/.test(lower)) accented++;
   }
   const share = (n: number) => n / words.length;
-  return !(share(english) < 0.05 && (share(other) >= 0.08 || share(accented) >= 0.15));
+  // English function words outweigh the other signs when they are 5% of the words and
+  // at least half as many as the other-language words, so the "the" of a quoted title
+  // doesn't make a German draft English.
+  if (share(english) >= 0.05 && english * 2 >= other) return true;
+  return !((otherWords.size >= 2 && share(other) >= 0.08) || (accented >= 3 && share(accented) >= 0.15));
 }
 
 // ---------- report ----------
