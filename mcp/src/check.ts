@@ -13,9 +13,13 @@
 // - a lint rule from data/lint-rules.json runs only if patternProblem finds
 //   nothing wrong with its pattern: no unbounded repetition, repeated group or
 //   backreference, no empty match, at most MAX_PATTERN_PATHS ways to match from
-//   one position, and nothing it looks at more than WINDOW_OVERLAP characters
-//   away. The timing tests in mcp/test/check.test.ts and
-//   scripts/test/lint-rules.test.mjs measure the speed separately.
+//   one position, nothing it looks at more than WINDOW_OVERLAP characters away,
+//   and at most MAX_PATTERN_WORK steps (as Shape.work estimates them) to try
+//   every way to match from one position. The time of a step still depends on
+//   the pattern and the text: a \p{..} class under u, for example, is slower
+//   on letters outside ASCII than an ASCII class. The timing tests in
+//   mcp/test/check.test.ts and scripts/test/lint-rules.test.mjs measure the
+//   speed separately.
 
 import { CONTRACT, LINT_RULES, MEDIA_TARGETS } from './generated/content.js';
 
@@ -30,6 +34,8 @@ export const EXCERPT_CHARS = 100;
 export const MAX_PATTERN_REPEAT = 200;
 /** The most ways a lint pattern may have to match from one position (see patternProblem). */
 export const MAX_PATTERN_PATHS = 1_000;
+/** The most steps a lint pattern may take to try every way to match from one position (see patternProblem). */
+export const MAX_PATTERN_WORK = 1_000;
 const MAX_EVIDENCE = 3;
 const MAX_ISSUES_PER_RULE = 5;
 const MAX_ISSUES = 20;
@@ -166,8 +172,15 @@ interface Shape {
    * lookarounds read, and one neighbour for each \b, \B, ^ and $.
    */
   reach: number;
-  /** The most ways to match from one position, which bounds the backtracking there. */
+  /** The most ways to match from one position. */
   paths: number;
+  /**
+   * About how many steps it takes to try every way to match from one position,
+   * counting a step for each character read (two under u or v, as for reach)
+   * and for each assertion. In a sequence, each term is tried once for each
+   * way to match the terms before it, so this is at most paths x reach.
+   */
+  work: number;
 }
 
 // Properties of strings (v flag): they match sequences of several characters.
@@ -178,12 +191,12 @@ function shapeOf(source: string, flags: string): Shape {
   const unicode = /[uv]/.test(flags);
   const sets = flags.includes('v');
   // One character: one UTF-16 unit, or one code point (up to two units) under u or v.
-  const char: Shape = { min: 1, reach: unicode ? 2 : 1, paths: 1 };
-  const assertion: Shape = { min: 0, reach: 1, paths: 1 };
+  const char: Shape = { min: 1, reach: unicode ? 2 : 1, paths: 1, work: unicode ? 2 : 1 };
+  const assertion: Shape = { min: 0, reach: 1, paths: 1, work: 1 };
   const quantifierAt = (at: number) => /^(?:[*+?]|\{\d+(?:,\d*)?\})/.test(source.slice(at));
   let i = 0;
 
-  // Alternatives add up their ways to match.
+  // Alternatives add up their ways to match, and the work of trying them.
   function disjunction(): Shape {
     const branches = [sequence()];
     while (source[i] === '|') {
@@ -194,16 +207,19 @@ function shapeOf(source: string, flags: string): Shape {
       min: Math.min(...branches.map((b) => b.min)),
       reach: Math.max(...branches.map((b) => b.reach)),
       paths: branches.reduce((sum, b) => sum + b.paths, 0),
+      work: branches.reduce((sum, b) => sum + b.work, 0),
     };
   }
 
-  // Terms in a row multiply theirs.
+  // Terms in a row multiply their ways to match, and each term is tried once
+  // for each way to match the terms before it.
   function sequence(): Shape {
-    const shape: Shape = { min: 0, reach: 0, paths: 1 };
+    const shape: Shape = { min: 0, reach: 0, paths: 1, work: 0 };
     while (i < source.length && source[i] !== '|' && source[i] !== ')') {
       const t = term();
       shape.min += t.min;
       shape.reach += t.reach;
+      shape.work += shape.paths * t.work;
       shape.paths *= t.paths;
     }
     return shape;
@@ -232,11 +248,11 @@ function shapeOf(source: string, flags: string): Shape {
     if (lookaround) {
       // A lookaround consumes nothing, but what it reads counts toward the reach.
       if (quantifierAt(i)) throw new Error('a repeated lookaround');
-      return { min: 0, reach: inner.reach, paths: inner.paths };
+      return { min: 0, reach: inner.reach, paths: inner.paths, work: inner.work };
     }
     if (source[i] === '?') {
       i += source[i + 1] === '?' ? 2 : 1;
-      return { min: 0, reach: inner.reach, paths: inner.paths + 1 };
+      return { min: 0, reach: inner.reach, paths: inner.paths + 1, work: inner.work };
     }
     if (quantifierAt(i)) throw new Error('a repeated group');
     return inner;
@@ -257,11 +273,12 @@ function shapeOf(source: string, flags: string): Shape {
     if (!q) return one;
     if (q[1] || q[4] === '') throw new Error('an unbounded repetition');
     i += q[0].length;
-    if (q[2] === undefined) return { min: 0, reach: one.reach, paths: one.paths + 1 };
+    if (q[2] === undefined) return { min: 0, reach: one.reach, paths: one.paths + 1, work: one.work };
     const low = Number(q[2]);
     const high = q[3] ? Number(q[4]) : low;
     if (high > MAX_PATTERN_REPEAT) throw new Error(`a repetition above ${MAX_PATTERN_REPEAT}`);
-    return { min: low * one.min, reach: high * one.reach, paths: (high - low + 1) * one.paths };
+    // One character, so trying every count reads at most `high` of them.
+    return { min: low * one.min, reach: high * one.reach, paths: (high - low + 1) * one.paths, work: high * one.work };
   }
 
   // As in JavaScript, a ] right after [ or [^ closes the class: [] matches
@@ -318,11 +335,14 @@ function shapeOf(source: string, flags: string): Shape {
  * - uses a backreference;
  * - can match the empty string;
  * - has more than MAX_PATTERN_PATHS ways to match from one position: a
- *   repetition {m,n} multiplies them by n - m + 1, a ? by 2, and alternatives
- *   add up theirs;
+ *   repetition {m,n} multiplies them by n - m + 1, a ? adds one (skipping it),
+ *   and alternatives add up theirs;
  * - can look at more than WINDOW_OVERLAP characters (two per character under u
  *   or v): what a match consumes, what its lookarounds read, and one neighbour
- *   for each \b, \B, ^ and $.
+ *   for each \b, \B, ^ and $;
+ * - takes more than MAX_PATTERN_WORK steps to try every way to match from one
+ *   position (see Shape.work). The limits above alone would allow up to
+ *   MAX_PATTERN_PATHS x WINDOW_OVERLAP steps there.
  */
 export function patternProblem(source: string, flags = ''): string | undefined {
   let shape: Shape;
@@ -339,6 +359,7 @@ export function patternProblem(source: string, flags = ''): string | undefined {
   if (shape.min === 0) return 'can match the empty string';
   if (shape.paths > MAX_PATTERN_PATHS) return `more than ${MAX_PATTERN_PATHS} ways to match from one position`;
   if (shape.reach > WINDOW_OVERLAP) return `looks at more than ${WINDOW_OVERLAP} characters`;
+  if (shape.work > MAX_PATTERN_WORK) return `more than ${MAX_PATTERN_WORK} steps to try every way to match from one position`;
   return undefined;
 }
 

@@ -1,10 +1,11 @@
 // Times every rule in data/lint-rules.json on adversarial input: fragments of
-// the rule's own pattern (its literals, alone and in a row, and characters its
-// classes match, astral ones included), repeated to 50,000 characters. A
-// pattern that backtracks too much (and so could stall the MCP server's
-// check_prompt) takes LIMIT_MS or more on some input and fails; the shipped
-// rules take a few milliseconds. This is a second check, separate from the
-// gate in mcp/src/check.ts, which check_prompt applies to every rule.
+// the rule's own pattern (its literals, alone and in a row, characters its
+// classes match, astral ones included, and characters that two of its classes
+// both match), repeated to 50,000 characters. A pattern that backtracks too
+// much (and so could stall the MCP server's check_prompt) takes LIMIT_MS or
+// more on some input, in each of three tries, and fails; the shipped rules take
+// a few milliseconds. This is a second check, separate from the gate in
+// mcp/src/check.ts, which check_prompt applies to every rule.
 // Each scan runs under a vm timeout, so a catastrophic pattern fails the test
 // instead of hanging it. Zero dependencies.
 // Run with: node --test scripts/test/*.test.mjs
@@ -92,6 +93,8 @@ export function fragments(source, flags = '') {
   const unicode = /[uv]/.test(flags);
   const literals = [];
   const chars = new Set();
+  // The classes and class escapes, as patterns of one character.
+  const atoms = new Set();
   let run = '';
   const flush = () => {
     if (run) literals.push(run);
@@ -99,6 +102,7 @@ export function fragments(source, flags = '') {
   };
   const sample = (atom) => {
     flush();
+    atoms.add(atom);
     for (const c of samples(atom, flags)) chars.add(c);
   };
   for (let i = 0; i < source.length; i++) {
@@ -111,6 +115,7 @@ export function fragments(source, flags = '') {
         i = end;
       } else if (ESCAPE_SAMPLES[next]) {
         flush();
+        atoms.add(`\\${next}`);
         for (const ch of ESCAPE_SAMPLES[next]) chars.add(ch);
         i++;
       } else if (next === 'b' || next === 'B') {
@@ -147,6 +152,15 @@ export function fragments(source, flags = '') {
     else run += c;
   }
   flush();
+  // Repetitions of two classes side by side, such as \p{Script=Cyrillic}{1,30}
+  // and \p{Ll}{10}, backtrack only on text that both match (here the Cyrillic
+  // small letters, not Ж or the Latin a).
+  const list = [...atoms];
+  for (let a = 0; a < list.length; a++) {
+    for (let b = a + 1; b < list.length; b++) {
+      for (const c of samples(`(?=(?:${list[a]})$)(?:${list[b]})`, flags)) chars.add(c);
+    }
+  }
   return { literals, chars: [...chars] };
 }
 
@@ -202,23 +216,31 @@ const SCAN = new vm.Script(`(() => {
 /**
  * Runs a pattern over every adversarial input and returns the slowest one; stops
  * at the first input that takes `limitMs` or more (ms is Infinity on a timeout).
- * Also returns how many inputs ran and where the pattern first matched the empty string.
+ * An input that takes `limitMs` or more is timed twice more and keeps its
+ * fastest time, so one pause elsewhere on a busy machine doesn't fail a rule.
+ * Also returns how many inputs ran and where the pattern first matched the
+ * empty string. `now` is the clock, for tests.
  */
-export function slowestInput(source, flags = '', { size = SIZE, limitMs = LIMIT_MS, timeoutMs = TIMEOUT_MS } = {}) {
+export function slowestInput(source, flags = '', { size = SIZE, limitMs = LIMIT_MS, timeoutMs = TIMEOUT_MS, now = () => performance.now() } = {}) {
   const context = vm.createContext({ re: new RegExp(source, flags.includes('g') ? flags : `${flags}g`), s: '' });
+  // One scan of context.s: its time (Infinity on a timeout) and its empty matches.
+  const scan = () => {
+    const start = now();
+    try {
+      const empty = SCAN.runInContext(context, { timeout: timeoutMs });
+      return { ms: now() - start, empty };
+    } catch (error) {
+      if (error?.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT') return { ms: Infinity, empty: 0 };
+      throw error;
+    }
+  };
   let slowest = { label: 'no input', ms: 0, inputs: 0, empty: undefined };
   for (const [label, input] of adversarialInputs(source, flags, size)) {
     slowest.inputs++;
     context.s = input;
-    const start = performance.now();
-    let empty;
-    try {
-      empty = SCAN.runInContext(context, { timeout: timeoutMs });
-    } catch (error) {
-      if (error?.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT') return { ...slowest, label, ms: Infinity };
-      throw error;
-    }
-    const ms = performance.now() - start;
+    let { ms, empty } = scan();
+    for (let retry = 0; retry < 2 && ms >= limitMs && ms !== Infinity; retry++) ms = Math.min(ms, scan().ms);
+    if (ms === Infinity) return { ...slowest, label, ms };
     if (empty && !slowest.empty) slowest.empty = label;
     if (ms > slowest.ms) slowest = { ...slowest, label, ms };
     if (ms >= limitMs) break;
@@ -273,6 +295,29 @@ test('the timing check catches slow patterns', () => {
   }
 });
 
+test('the timing check catches patterns that are slow but not catastrophic', () => {
+  // Each took about 330 ms on its worst input when this test was written, so a
+  // limit of 500 ms would let them pass. The first is on emoji. The second,
+  // which check_prompt's gate accepts, is slow only on the Cyrillic small
+  // letters, which both of its classes match.
+  for (const [pattern, flags] of [
+    [String.raw`\p{Extended_Pictographic}{1,40} ?\p{Extended_Pictographic}{1,10}!`, 'u'],
+    [String.raw`\p{Script=Cyrillic}{1,30}\p{Ll}{10}!`, 'u'],
+  ]) {
+    const { ms, label } = slowestInput(pattern, flags);
+    assert.ok(ms >= LIMIT_MS, `/${pattern}/${flags}: ${Math.round(ms)} ms on ${label}`);
+  }
+});
+
+test('a rule fails only if every try of an input is slow, so one pause elsewhere on the machine is not enough', () => {
+  let readings = 0;
+  // The clock reads a second late once: at the end of the first scan.
+  const now = () => performance.now() + (++readings === 2 ? 1_000 : 0);
+  const { ms } = slowestInput(String.raw`\b(MUST|NEVER)\b`, '', { now });
+  assert.ok(ms < LIMIT_MS, `took ${ms} ms`);
+  assert.ok(readings > 2);
+});
+
 test('the scan steps past empty matches as check_prompt does, and reports them', () => {
   // The inputs include emoji; under u, stepping by one unit would never leave one.
   const { ms, empty } = slowestInput('(?:TODO)?', 'u', { size: 1_000, timeoutMs: 1_000 });
@@ -287,4 +332,11 @@ test('fragments reads [] and [^] as JavaScript does, and samples classes outside
   assert.ok(fragments(String.raw`\p{Lu}{2,40}`, 'u').chars.includes('𝐀'));
   assert.deepEqual(fragments(String.raw`\x41\u0042\u{1F600}`, 'u').literals, ['AB😀']);
   assert.deepEqual(fragments(String.raw`\bif\b[^.]{0,200}\bthen\b[^.]{0,200}\belse\b`).literals, ['if', 'then', 'else']);
+});
+
+test('fragments samples characters that two classes both match', () => {
+  // Cyrillic small a: neither class alone samples it.
+  assert.ok(!fragments(String.raw`\p{Script=Cyrillic}`, 'u').chars.includes('\u0430'));
+  assert.ok(!fragments(String.raw`\p{Ll}`, 'u').chars.includes('\u0430'));
+  assert.ok(fragments(String.raw`\p{Script=Cyrillic}{1,30}\p{Ll}{10}!`, 'u').chars.includes('\u0430'));
 });

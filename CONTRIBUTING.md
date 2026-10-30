@@ -84,10 +84,11 @@ The MCP server's `check_prompt` tool uses the same rules on drafts of up to 100,
 - repeats without a bound (`*`, `+`, `{n,}`), more than `{0,200}` times, or repeats a group (`?` after a group is fine);
 - uses a backreference;
 - can match the empty string, as `(TODO)?` and `\b` can;
-- has more than 1,000 ways to match from one position. Each repetition multiplies them by its number of choices (81 for `{0,80}`, 2 for `?`), and alternatives add theirs up, so `[a-z]{0,200}[a-z]{0,200}` has 40,401;
-- looks at more than 300 characters, so a match always fits in a window. This counts what a match consumes, what its lookarounds read, and one neighbour for each `\b`, `\B`, `^` and `$`, and each character counts as two under the `u` or `v` flag.
+- has more than 1,000 ways to match from one position. Each repetition multiplies them by its number of choices (81 for `{0,80}`), each `?` adds one (skipping it), and alternatives add theirs up, so `[a-z]{0,200}[a-z]{0,200}` has 40,401;
+- looks at more than 300 characters, so a match always fits in a window. This counts what a match consumes, what its lookarounds read, and one neighbour for each `\b`, `\B`, `^` and `$`, and each character counts as two under the `u` or `v` flag;
+- takes more than 1,000 steps to try every way to match from one position. A step is a character read (two under the `u` or `v` flag, as above) or a `\b`, `\B`, `^` or `$`, and each part of the pattern is tried once for each way to match the parts before it. So `\[\[[^\[\]\n]{1,120}\]\]` takes 2 + 120 + 120 + 120 = 362 steps, but `[^x]{0,30}[^x]{0,30}x` takes 30 + 31 × 30 + 961 = 1,921: each of its 961 ways to match ends by trying the `x`. Without this limit, the two limits above would allow up to 300,000 steps.
 
-The MCP tests fail if `check_prompt` skips a rule. These limits bound the work at each position of a draft, not the time it takes: a `\p{…}` class under the `u` flag, for example, is much slower than an ASCII class. `scripts/test/lint-rules.test.mjs` is a second, separate check: it times every rule on adversarial input built from the pattern's own pieces, and fails a rule that takes 100 ms or more on any of them.
+The MCP tests fail if `check_prompt` skips a rule. These limits bound the work at each position of a draft, so the time grows linearly with the draft's length. They don't bound the time of a step, which depends on the pattern and the text: a `\p{…}` class under the `u` flag, for example, is much slower on letters outside ASCII than an ASCII class. `scripts/test/lint-rules.test.mjs` is a second, separate check: it times every rule on adversarial input built from the pattern's own pieces, including characters that two of its classes both match, and fails a rule that takes 100 ms or more on any of them in each of three tries.
 
 ## Behavior evals
 

@@ -252,8 +252,9 @@ describe('lint-rule gate', () => {
       [String.raw`\p{L}{1,10}`, 'u'],
       [String.raw`\p{Lu}{2,40}`, 'u'],
       [String.raw`[\p{L}--[a-z]]{1,5}`, 'v'],
-      // Just within the limits: 200 x 5 ways to match, and 300 characters looked at.
-      ['[^x]{0,199}[^y]{0,4}z'],
+      // Just within the limits: 1,000 ways to match and 1,000 steps (1 + 9 +
+      // 10 x 9 + 100 x 9), and 300 characters looked at.
+      ['!x{0,9}y{0,9}z{0,9}'],
       ['a{150}b{150}'],
       [String.raw`\p{L}{150}`, 'u'],
     ];
@@ -325,6 +326,23 @@ describe('lint-rule gate', () => {
     ];
     for (const c of cases) expect(patternProblem(c[0], c[1]), show(c)).toBe('more than 1000 ways to match from one position');
     expect(isBoundedPattern(String.raw`\bif\b[^.]{0,200}\bthen\b[^.]{0,200}\belse\b[^.]{0,200}\bend\b`, 'i')).toBe(false);
+  });
+
+  it('refuses patterns that take more than 1,000 steps to try every way to match from one position', () => {
+    const cases: Case[] = [
+      // Within 1,000 ways to match and 300 characters, but each way reads far:
+      // 9 + 10 x 99 + 1,000 x 180 + 1,000 steps, and the like.
+      ['[^x]{0,9}[^x]{0,99}[^x]{180}z'],
+      ['[^x]{0,32}[^x]{0,1}[^x]{200}[^x]{60}z'],
+      ['a{0,9}a{0,9}a{0,9}a{100}!'],
+      [String.raw`\p{Script=Cyrillic}{1,30}\p{Ll}{1,30}\p{L}{80}!`, 'u'],
+      // Few characters, but every one of 961 ways to match tries the x.
+      ['[^x]{0,30}[^x]{0,30}x'],
+      [String.raw`\p{L}{1,30}\p{L}{1,15}!`, 'u'],
+      // Alternatives add up their steps: 11 x 100.
+      [`(?:${Array.from({ length: 11 }, (_, k) => `${String.fromCharCode(97 + k)}${'x'.repeat(99)}`).join('|')})`],
+    ];
+    for (const c of cases) expect(patternProblem(c[0], c[1]), show(c)).toBe('more than 1000 steps to try every way to match from one position');
   });
 
   it('refuses patterns that look at more than 300 characters, which a window may not hold', () => {
