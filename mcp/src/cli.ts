@@ -31,9 +31,19 @@ const MCP_PATH = '/mcp';
 // 1.2 MB for 100,000. Bodies are capped at that plus 300 KB, 1.5 MB in all
 // (the SDK's default is 4 MiB).
 const MAX_BODY_BYTES = PROMPT_MAX_CHARS * 12 + 300_000;
-// Each open connection can hold one partial body in memory, so this caps that
-// memory at about 128 x 1.5 MB. Connections past it are closed at once.
-const MAX_CONNECTIONS = 128;
+// The SDK reads each request's body, up to MAX_BODY_BYTES, into memory before
+// it answers, so at most this many requests are passed to it at once. Past
+// that, a request gets 503 before its body is read. A connection that hasn't
+// sent a request, or whose request was refused, takes no slot. Stalled uploads
+// still hold their slots until the 30 s request timeout, so a client that
+// keeps 128 of them open can shut out every other client.
+const MAX_REQUESTS = 128;
+// A backstop on open sockets: connections past it are closed at once.
+// Connections that send nothing count until the header timeout closes them,
+// 10 to 15 s later, so a client that keeps this many open shuts out every
+// other client. A network deployment needs a proxy that limits connections
+// per client.
+const MAX_CONNECTIONS = 1024;
 // The methods the SDK answers itself: POST, and 405 for GET, DELETE and
 // OPTIONS. Any other gets 405 here, since the SDK's fetch Request throws for
 // some of them, such as TRACE.
@@ -139,6 +149,7 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
       hostHeaderValidationResponse(request, allowedHosts) ?? originValidationResponse(request, allowedHosts) ?? mcp.fetch(request),
   };
   const nodeHandler = toNodeHandler(guarded, { onerror, maxRequestBodySize: MAX_BODY_BYTES });
+  let inFlight = 0;
 
   // Slow or stalled uploads are cut off: the headers must arrive within 10 s
   // and the whole request within 30 s (Node's defaults are 60 s and 300 s),
@@ -153,12 +164,16 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
     }
     // Answered in the SDK guard's format, without a log line, and the
     // connection is closed rather than the rest of the body read.
-    const refused = refusal(req, allowedHosts);
+    const refused = refusal(req, allowedHosts) ?? (inFlight >= MAX_REQUESTS ? { status: 503, message: 'Server busy. Try again shortly.' } : undefined);
     if (refused) {
-      res.writeHead(refused.status, { 'content-type': 'application/json', connection: 'close', ...(refused.status === 405 ? { allow: 'POST' } : {}) });
+      const extra = refused.status === 405 ? { allow: 'POST' } : refused.status === 503 ? { 'retry-after': '1' } : {};
+      res.writeHead(refused.status, { 'content-type': 'application/json', connection: 'close', ...extra });
       res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: refused.message }, id: null }));
       return;
     }
+    // 'close' follows both a finished response and a dropped connection.
+    inFlight++;
+    res.once('close', () => inFlight--);
     void nodeHandler(req, res);
   });
   httpServer.maxConnections = MAX_CONNECTIONS;

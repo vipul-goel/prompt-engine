@@ -55,7 +55,7 @@ describe('worker entry', () => {
     const res = await worker.fetch(post('localhost:8787'), { ALLOWED_HOSTS: ':8787, a b' });
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: 'ALLOWED_HOSTS names no usable hostname. Set it to the hostnames clients use, such as your workers.dev name.' });
-    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual(['prompt-engine-mcp: warning: ALLOWED_HOSTS takes hostnames, so these entries were ignored: :8787, a b']);
+    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual(['prompt-engine-mcp: warning: ALLOWED_HOSTS takes exact hostnames, so these entries were ignored: :8787, a b']);
   });
 
   it('serves the largest valid request and refuses a larger body with 413', async () => {

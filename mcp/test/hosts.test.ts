@@ -2,7 +2,7 @@
 // PROMPT_ENGINE_ALLOWED_HOSTS) and the Worker (ALLOWED_HOSTS), checked against
 // the SDK's own Host validation.
 
-import { validateHostHeader } from '@modelcontextprotocol/server';
+import { validateHostHeader, validateOriginHeader } from '@modelcontextprotocol/server';
 import { describe, expect, it } from 'vitest';
 import { canonicalHostname, parseAllowedHosts, portsIgnoredWarning, unusableWarning } from '../src/hosts.js';
 
@@ -88,11 +88,23 @@ describe('parseAllowedHosts', () => {
     expect(parseAllowedHosts('MOZ-Extension://*,localhost')).toEqual({ hosts: ['moz-extension://*', 'localhost'], portsIgnored: [], unusable: [] });
   });
 
+  it('reports wildcards the SDK never matches: http://*, https://* and hostnames with *', () => {
+    const parsed = parseAllowedHosts('https://*, HTTP://*, *.example.com, *, https://*.example.com:8080/, %2A.example.com, chrome-extension://*');
+    expect(parsed).toEqual({
+      hosts: ['chrome-extension://*'],
+      portsIgnored: [],
+      unusable: ['https://*', 'HTTP://*', '*.example.com', '*', 'https://*.example.com:8080/', '%2A.example.com'],
+    });
+    // What the SDK does with them, were they kept: an Origin check that ignores http(s)://*, and exact Host matching.
+    expect(validateOriginHeader('https://app.example.com', ['https://*']).ok).toBe(false);
+    expect(accepted(['*.example.com'], 'app.example.com')).toBe(false);
+  });
+
   it('words the warnings plainly', () => {
     expect(portsIgnoredWarning('ALLOWED_HOSTS', ['a.example:1', 'b.example:2'])).toBe(
       'warning: ALLOWED_HOSTS takes hostnames without ports, so the port was ignored in: a.example:1, b.example:2',
     );
-    expect(unusableWarning('--allowed-hosts', [':8080', 'a b'])).toBe('warning: --allowed-hosts takes hostnames, so these entries were ignored: :8080, a b');
+    expect(unusableWarning('--allowed-hosts', [':8080', 'a b'])).toBe('warning: --allowed-hosts takes exact hostnames, so these entries were ignored: :8080, a b');
   });
 });
 

@@ -5,16 +5,20 @@
 // the same form. Pure and SDK-free.
 
 export interface AllowedHosts {
-  /** Hostnames as the URL parser writes them (lower case, IPv6 compressed and in brackets, punycode), and any "<scheme>://*" entries, deduplicated. */
+  /** Hostnames as the URL parser writes them (lower case, IPv6 compressed and in brackets, punycode), and any "<scheme>://*" entries other than http and https, deduplicated. */
   hosts: string[];
   /** Entries that carried a port, as given; the port was dropped. */
   portsIgnored: string[];
-  /** Entries that name no hostname (such as ":8080", "a b" or "user@host"), as given; they were dropped. */
+  /** Entries that name no hostname (such as ":8080", "a b", "user@host" or a wildcard such as "*.example.com" or "https://*"), as given; they were dropped. */
   unusable: string[];
 }
 
-/** The SDK's Origin check reads "<scheme>://*" (such as moz-extension://*) as every origin of that scheme. */
+/**
+ * The SDK's Origin check reads "<scheme>://*" (such as moz-extension://*) as
+ * every origin of that scheme, except for http and https.
+ */
 const SCHEME_WILDCARD = /^[a-z][a-z0-9+.-]*:\/\/\*$/i;
+const WEB_WILDCARDS = ['http://*', 'https://*'];
 
 /**
  * A hostname in the form the SDK's Host check compares: what the URL parser
@@ -42,7 +46,8 @@ export function parseAllowedHosts(value: string | undefined): AllowedHosts {
     const entry = raw.trim();
     if (!entry) continue;
     if (SCHEME_WILDCARD.test(entry)) {
-      hosts.add(entry.toLowerCase());
+      if (WEB_WILDCARDS.includes(entry.toLowerCase())) unusable.push(entry);
+      else hosts.add(entry.toLowerCase());
       continue;
     }
     // A pasted URL: drop the scheme, and anything from the path on.
@@ -51,7 +56,8 @@ export function parseAllowedHosts(value: string | undefined): AllowedHosts {
     const withPort = /^(\[[^\]]*\]|[^:]*):([^:]*)$/.exec(rest);
     const validPort = !withPort || /^\d*$/.test(withPort[2]!.trim());
     const hostname = validPort ? canonicalHostname((withPort ? withPort[1]! : rest).trim()) : undefined;
-    if (hostname === undefined) {
+    // The SDK compares hostnames exactly, so *.example.com would match only a Host header spelled that way.
+    if (hostname === undefined || hostname.includes('*')) {
       unusable.push(entry);
       continue;
     }
@@ -68,5 +74,5 @@ export function portsIgnoredWarning(setting: string, portsIgnored: readonly stri
 
 /** The one-line warning for entries that name no hostname. */
 export function unusableWarning(setting: string, unusable: readonly string[]): string {
-  return `warning: ${setting} takes hostnames, so these entries were ignored: ${unusable.join(', ')}`;
+  return `warning: ${setting} takes exact hostnames, so these entries were ignored: ${unusable.join(', ')}`;
 }

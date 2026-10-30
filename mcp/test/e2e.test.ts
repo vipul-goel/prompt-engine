@@ -2,34 +2,17 @@
 // real Streamable HTTP with Host/Origin checks. `npm test` builds first.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
-import { connect, type Socket } from 'node:net';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import type { IncomingHttpHeaders } from 'node:http';
 import { Client, StreamableHTTPClientTransport, type ElicitResult } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PROMPT_MAX_CHARS } from '../src/check.js';
 import { VERSION } from '../src/generated/content.js';
-import { PKG, SAMPLE_QUESTIONS, textOf } from './helpers.js';
-
-const CLI = join(PKG, 'dist', 'cli.js');
-if (!existsSync(CLI)) throw new Error('dist/cli.js is missing; run npm run build (npm test does it for you)');
+import { CLI, ENV, send, sleep, startHttp, startUpload, waitFor } from './cli-helpers.js';
+import { SAMPLE_QUESTIONS, textOf } from './helpers.js';
 
 const TOOLS = ['ask_user', 'check_prompt', 'enhance_prompt', 'get_checklist'];
-const TOOLS_LIST = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
-
-// The servers run without PROMPT_ENGINE_ALLOWED_HOSTS unless a test sets it,
-// so a developer's shell setting can't change what they accept.
-const ENV: NodeJS.ProcessEnv = { ...process.env };
-delete ENV.PROMPT_ENGINE_ALLOWED_HOSTS;
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** Polls until done() is true, or throws after `ms` with what() as the detail. */
-async function waitFor(done: () => boolean, what: () => string, ms = 15_000): Promise<void> {
-  for (const end = Date.now() + ms; !done(); await sleep(25)) if (Date.now() > end) throw new Error(`timed out:\n${what()}`);
-}
 
 function stdioClient(era: 'legacy' | 'modern', elicit?: () => ElicitResult, stderr: 'pipe' | 'ignore' = 'ignore') {
   const client = new Client(
@@ -39,85 +22,6 @@ function stdioClient(era: 'legacy' | 'modern', elicit?: () => ElicitResult, stde
   if (elicit) client.setRequestHandler('elicitation/create', async () => elicit());
   const transport = new StdioClientTransport({ command: process.execPath, args: [CLI], stderr });
   return { client, transport };
-}
-
-/** Starts `cli.js --http --port 0 ...args`; resolves once the start-up line names the port. */
-async function startHttp(args: string[] = [], env: NodeJS.ProcessEnv = ENV) {
-  const proc = spawn(process.execPath, [CLI, '--http', '--port', '0', ...args], { stdio: ['ignore', 'pipe', 'pipe'], env });
-  let stderr = '';
-  proc.stderr!.on('data', (d) => (stderr += d));
-  const port = await new Promise<number>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`server did not start:\n${stderr}`)), 20_000);
-    proc.stderr!.on('data', () => {
-      const m = stderr.match(/listening on http:\/\/(?:\[[^\]]+\]|[^:/]+):(\d+)\/mcp/);
-      if (m) {
-        clearTimeout(timer);
-        resolve(Number(m[1]));
-      }
-    });
-    proc.on('exit', (code) => reject(new Error(`server exited with ${code}:\n${stderr}`)));
-  });
-  return { proc, port, stderr: () => stderr };
-}
-
-/** Sends one request to 127.0.0.1:port (by default a 2025-era tools/list POST to /mcp), on its own connection. */
-function send(
-  port: number,
-  headers: Record<string, string>,
-  { body = TOOLS_LIST, path = '/mcp', method = 'POST' } = {},
-): Promise<{ status: number; headers: IncomingHttpHeaders; body: string }> {
-  return new Promise((resolve, reject) => {
-    const req = httpRequest(
-      {
-        host: '127.0.0.1',
-        port,
-        path,
-        method,
-        agent: false,
-        headers: {
-          'content-type': 'application/json',
-          accept: 'application/json, text/event-stream',
-          'mcp-protocol-version': '2025-11-25',
-          'content-length': String(Buffer.byteLength(body)),
-          ...headers,
-        },
-      },
-      (res) => {
-        let text = '';
-        res.on('data', (c) => (text += c));
-        res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: text }));
-      },
-    );
-    req.on('error', reject);
-    req.end(body);
-  });
-}
-
-/**
- * Sends a POST head that announces a body of `contentLength` bytes, then only
- * its first kilobyte; resolves with the response head, or 'no response' if the
- * server is still waiting for the body after 5 s.
- */
-function startUpload(port: number, host: string, contentLength: number): Promise<string> {
-  return new Promise((resolve) => {
-    const sock = connect(port, '127.0.0.1');
-    let text = '';
-    const done = (result: string) => {
-      clearTimeout(timer);
-      sock.destroy();
-      resolve(result);
-    };
-    const timer = setTimeout(() => done('no response'), 5_000);
-    sock.on('data', (d) => {
-      text += d;
-      if (text.includes('\r\n\r\n')) done(text.slice(0, text.indexOf('\r\n\r\n')));
-    });
-    sock.on('error', () => done(text || 'socket error'));
-    sock.write(
-      `POST /mcp HTTP/1.1\r\nHost: ${host}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
-        `MCP-Protocol-Version: 2025-11-25\r\nContent-Length: ${contentLength}\r\n\r\n${'a'.repeat(1024)}`,
-    );
-  });
 }
 
 describe('the built CLI', () => {
@@ -348,12 +252,15 @@ describe('Streamable HTTP (--http)', () => {
     expect(server.stderr().slice(before)).toBe('');
   });
 
-  it('refuses a foreign Host before reading the body, and caps the body size', async () => {
+  it('refuses a foreign Host or Origin before reading the body, and caps the body size', async () => {
     // Without these the server waits for the whole body (up to 4 MiB) first.
     const foreign = await startUpload(server.port, 'evil.example.com', 4_000_000);
     expect(foreign).toMatch(/^HTTP\/1\.1 403 /);
     // It closes the connection rather than read the rest of the body.
     expect(foreign).toMatch(/^connection: close$/im);
+    const foreignOrigin = await startUpload(server.port, `127.0.0.1:${server.port}`, 1_400_000, { Origin: 'https://evil.example' });
+    expect(foreignOrigin).toMatch(/^HTTP\/1\.1 403 /);
+    expect(foreignOrigin).toMatch(/^connection: close$/im);
     expect(await startUpload(server.port, `127.0.0.1:${server.port}`, 1_600_000)).toMatch(/^HTTP\/1\.1 413 /);
   });
 
@@ -411,47 +318,13 @@ describe('Streamable HTTP (--http)', () => {
   });
 });
 
-describe('--http limits', () => {
-  it('closes connections past 128 at once', async () => {
-    const server = await startHttp();
-    const sockets: Socket[] = [];
-    try {
-      const open = () =>
-        new Promise<Socket>((resolve, reject) => {
-          const sock = connect(server.port, '127.0.0.1', () => resolve(sock));
-          sock.on('error', reject);
-          sockets.push(sock);
-        });
-      for (let i = 0; i < 128; i++) await open();
-      await sleep(200);
-      const extra = await open().catch(() => undefined);
-      const closed = await new Promise<boolean>((resolve) => {
-        if (!extra || extra.destroyed) return resolve(true);
-        const timer = setTimeout(() => resolve(false), 3_000);
-        extra.on('close', () => {
-          clearTimeout(timer);
-          resolve(true);
-        });
-        extra.on('error', () => {});
-      });
-      expect(closed).toBe(true);
-      for (const sock of sockets) sock.destroy();
-      await sleep(200);
-      expect((await send(server.port, { host: `127.0.0.1:${server.port}` })).status).toBe(200);
-    } finally {
-      for (const sock of sockets) sock.destroy();
-      server.proc.kill('SIGTERM');
-    }
-  });
-});
-
 describe('--allowed-hosts', () => {
   it('ignores a port in an entry, with a warning, and still matches the hostname', async () => {
     const server = await startHttp(['--allowed-hosts', 'MCP.Example.com:8080,::1,a b']);
     try {
       expect(server.stderr()).toMatch(/listening on http:\/\/127\.0\.0\.1:\d+\/mcp \(allowed hosts: mcp\.example\.com, \[::1\]\)/);
       expect(server.stderr()).toContain('warning: --allowed-hosts takes hostnames without ports, so the port was ignored in: MCP.Example.com:8080');
-      expect(server.stderr()).toContain('warning: --allowed-hosts takes hostnames, so these entries were ignored: a b');
+      expect(server.stderr()).toContain('warning: --allowed-hosts takes exact hostnames, so these entries were ignored: a b');
       const status = async (host: string) => (await send(server.port, { host })).status;
       expect(await status('mcp.example.com:8080')).toBe(200);
       expect(await status(`[::1]:${server.port}`)).toBe(200);
