@@ -386,6 +386,33 @@ describe('tool result size', () => {
     }
   });
 
+  it('stays under the budget for the longest list of ask_user errors', async () => {
+    // Every question breaks every rule it can: a repeated id, text the user can't see, and four
+    // identical labels with a ★, made of U+1D160, which Unicode normalization turns into three
+    // characters. Without the cut on quoted labels, this gives about 29,000 characters.
+    const label = `${'\u{1D160}'.repeat(39)}★${'\u{1D160}'.repeat(MAX.label - 40)}`;
+    const conn = await connectHttp('modern');
+    try {
+      const result = await conn.client.callTool({
+        name: 'ask_user',
+        arguments: {
+          questions: Array.from({ length: MAX_QUESTIONS }, () => ({
+            id: 'q'.repeat(MAX.id),
+            question: '​',
+            options: Array.from({ length: MAX_OPTIONS }, () => ({ label })),
+            recommended: 0,
+            why: '​',
+          })),
+        },
+      });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toMatch(/appears twice/);
+      expect(size(result)).toBeLessThan(TOKEN_SAFE_CHARS);
+    } finally {
+      await conn.close();
+    }
+  });
+
   it('stays under the budget for every form outcome, including long notes', async () => {
     // The client answers with the first option the form shows.
     const accept =

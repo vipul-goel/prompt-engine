@@ -86,7 +86,15 @@ const UNSEEN = String.raw`\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u{2800}`;
 // and the like), which go on another character: a why of just U+0301 would
 // put an accent on the "(" after the ★. Labels keep their marks (labelKey).
 const VISIBLE = new RegExp(String.raw`[^\p{White_Space}\p{Mn}\p{Me}${UNSEEN}]`, 'u');
-const UNSEEN_RUNS = new RegExp(`[${UNSEEN}]+`, 'gu');
+// Unseen characters that change how the characters around them are drawn: the
+// zero-width joiner and non-joiner (emoji sequences, joining in Persian and
+// Indic scripts), variation selectors and tag characters (flags such as
+// England's and Scotland's differ only in them). labelKey keeps these.
+const SHAPING = String.raw`‌‍︀-️\u{E0020}-\u{E007F}\u{E0100}-\u{E01EF}`;
+const UNSEEN_RUNS = new RegExp(`(?:(?![${SHAPING}])[${UNSEEN}])+`, 'gu');
+// Error messages quote a label cut to this many characters, so the errors for
+// the largest invalid ask stay inside the result budget.
+const QUOTED_LABEL_CHARS = 40;
 
 /** Whether text has a character the user can see; trim() only removes whitespace. */
 export function hasVisibleText(text: unknown): text is string {
@@ -95,8 +103,9 @@ export function hasVisibleText(text: unknown): text is string {
 
 /**
  * A label as the user sees it, which is how labels are compared: every run of
- * whitespace as one space, without the characters the user can't see, and in
- * Unicode normalization form C, so "é" matches "e" plus a combining accent.
+ * whitespace as one space, without the characters the user can't see (except
+ * SHAPING), and in Unicode normalization form C, so "é" matches "e" plus a
+ * combining accent.
  */
 function labelKey(label: string): string {
   return label.replace(/\p{White_Space}/gu, ' ').replace(UNSEEN_RUNS, '').replace(/ +/g, ' ').trim().normalize('NFC');
@@ -118,7 +127,9 @@ export function cleanText(text: string, keepNewlines = false): string {
 // ask_user adds that ★ itself. Any other ★ in a label can be content, such as
 // a star rating, so validateQuestions rejects it instead of changing the label,
 // and a label with such a ★ keeps its marker too, so the error quotes it whole.
-const STAR_MARKER = /^★[\u{FE0E}\u{FE0F}]?(?=\p{White_Space}|$)|(?<=\p{White_Space})★[\u{FE0E}\u{FE0F}]?$/gu;
+// A ★ with a number for its neighbouring word ("4.5 ★", "★ 5") is a rating.
+const STAR_MARKER =
+  /^★[\u{FE0E}\u{FE0F}]?(?=\p{White_Space}|$)(?!\p{White_Space}*\p{N})|(?<!\p{N}\p{White_Space}*)(?<=\p{White_Space})★[\u{FE0E}\u{FE0F}]?$/gu;
 
 /**
  * The questions as they are shown and answered: every text field cleaned,
@@ -165,10 +176,10 @@ export function validateQuestions(questions: readonly Question[]): string[] {
         return;
       }
       if (o.label.includes('★')) {
-        errors.push(`${at}: option ${j + 1} ("${o.label}") contains ★; ask_user puts the only ★ on the option that recommended points to, so leave it out (write a rating in words, such as "4 stars")`);
+        errors.push(`${at}: option ${j + 1} ("${truncate(o.label, QUOTED_LABEL_CHARS)}") contains ★; ask_user puts the only ★ on the option that recommended points to, so leave it out (write a rating in words, such as "4 stars")`);
       }
       const key = labelKey(o.label);
-      if (labels.has(key)) errors.push(`${at}: option "${key}" appears twice; labels must differ in text the user can see`);
+      if (labels.has(key)) errors.push(`${at}: option "${truncate(key, QUOTED_LABEL_CHARS)}" appears twice; labels must differ in text the user can see`);
       labels.add(key);
     });
   });
