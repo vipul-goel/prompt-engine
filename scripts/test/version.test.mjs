@@ -3,9 +3,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
@@ -13,9 +13,10 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Build output and tool state the checks don't read: copying them only slows the tests down.
 const SKIP = new Set(['.git', 'node_modules', 'results', 'dist', 'dist-mcpb', 'mcpb', '.wrangler']);
 
-function copyRepo() {
+function copyRepo(from = repo) {
   const dir = mkdtempSync(join(tmpdir(), 'pe-version-'));
-  cpSync(repo, dir, { recursive: true, filter: (src) => !SKIP.has(src.split('/').pop()) });
+  // The checkout itself is copied whatever its folder is called; SKIP applies to what's inside it.
+  cpSync(from, dir, { recursive: true, filter: (src) => src === from || !SKIP.has(basename(src)) });
   return dir;
 }
 
@@ -26,6 +27,21 @@ const run = (dir, script, ...args) => {
   return { code: r.status, out: r.stdout + r.stderr };
 };
 const read = (dir, file) => readFileSync(join(dir, file), 'utf8');
+
+test('copies a checkout in a folder named like a skipped entry, still without its build output', () => {
+  const parent = mkdtempSync(join(tmpdir(), 'pe-rootname-'));
+  const from = join(parent, 'mcpb');
+  mkdirSync(join(from, 'mcp', 'dist'), { recursive: true });
+  writeFileSync(join(from, 'LICENSE'), '');
+  writeFileSync(join(from, 'mcp', 'dist', 'cli.js'), '');
+  const dir = copyRepo(from);
+  try {
+    assert.deepEqual(readdirSync(dir, { recursive: true }).sort(), ['LICENSE', 'mcp']);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('sets the version everywhere and the repository still validates', () => {
   const dir = copyRepo();

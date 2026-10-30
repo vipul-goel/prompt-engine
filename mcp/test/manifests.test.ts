@@ -84,7 +84,8 @@ describe('manifest.json (MCPB)', () => {
     expect(schemaErrors(readJson(schemaPath), manifest)).toBeUndefined();
   });
 
-  it('ships a 512x512 PNG icon', () => {
+  // This reads the source file; pack-mcpb.mjs (npm run pack:mcpb) checks the copy the bundle ships.
+  it('mcp/icon.png is a 512x512 PNG', () => {
     const png = readFileSync(join(PKG, 'icon.png'));
     expect(png.subarray(1, 4).toString('latin1')).toBe('PNG');
     expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([512, 512]);
