@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DOMAINS,
   MODES,
+  REFERENCE_ADAPTATIONS,
   REFERENCE_RESOURCES,
   adaptMethod,
   adaptReference,
@@ -105,14 +106,15 @@ describe('checklists and references', () => {
 
   it('adapts the questions and output-format references to ask_user', () => {
     const questions = buildReference('questions');
-    expect(questions).not.toMatch(/AskUserQuestion|Claude Code/);
+    expect(questions).not.toMatch(/AskUserQuestion|Claude Code|\(Recommended\)|multiSelect/);
     expect(questions).toMatch(/^## Format A — the ask_user tool \(this server\)$/m);
     expect(questions).toMatch(/closes the form without answering, ask_user returns the questions in Format B/);
     expect(questions).toMatch(/Never guess the answers/);
+    expect(questions).toMatch(/If the user's language isn't English, also pass intro, notes_label and notes_hint in it\./);
     expect(questions).toMatch(/^## Format B — one text message$/m);
     expect(questions).toContain('## Reading the reply');
     const format = buildReference('output-format');
-    expect(format).not.toMatch(/AskUserQuestion/);
+    expect(format).not.toMatch(/AskUserQuestion|Claude Code|\(Recommended\)|multiSelect/);
     expect(format).toMatch(/End the same message with the menu as a numbered list/);
     // The skill's own files still describe AskUserQuestion; only the served copies change.
     expect(REFERENCES.questions!.text).toMatch(/AskUserQuestion/);
@@ -121,10 +123,42 @@ describe('checklists and references', () => {
     expect(buildBrief()).not.toMatch(/AskUserQuestion/);
   });
 
-  it('falls back to a note when a passage it adapts has changed', () => {
-    const changed = adaptReference('questions', '# Asking\n\n## Dialogs\nUse AskUserQuestion when you can.\n');
-    expect(changed.startsWith('> Over MCP, ask clarifying questions with the ask_user tool')).toBe(true);
+  it('finds each passage it adapts exactly once in the generated references', () => {
+    // If this fails, the skill's references changed: update REFERENCE_ADAPTATIONS in src/brief.ts.
+    for (const [name, adaptations] of Object.entries(REFERENCE_ADAPTATIONS)) {
+      for (const [pattern] of adaptations ?? []) {
+        const all = new RegExp(pattern.source, `${pattern.flags}g`);
+        expect(REFERENCES[name]!.text.match(all)?.length ?? 0, `${name}: ${pattern}`).toBe(1);
+      }
+    }
+  });
+
+  it('replaces Format A up to the Format B heading, subheadings included', () => {
+    const source = REFERENCES.questions!.text;
+    const split = source.replace(/^## Format A\b[^\n]*\n/m, '$&\n## Dialog fields\n');
+    expect(split).not.toBe(source);
+    expect(adaptReference('questions', split)).toBe(adaptReference('questions', source));
+  });
+
+  it('falls back to a note when a passage it adapts has changed or dialog wording is left', () => {
+    const note = '> Over MCP, ask clarifying questions with the ask_user tool';
+    expect(adaptReference('questions', '# Asking\n\n## Dialogs\nUse AskUserQuestion when you can.\n').startsWith(note)).toBe(true);
+    // Reworded so that it no longer names the tool: neither output-format passage matches.
+    const reworded = '# Output format\n\nIn Claude Code, show the question dialog with the header "Next step".\n';
+    expect(adaptReference('output-format', reworded).startsWith(note)).toBe(true);
+    // Both passages match, but dialog wording is left elsewhere.
+    const leftover = 'Mark it ★ (or "(Recommended)" in AskUserQuestion).\nIn Claude Code, use AskUserQuestion for the menu.\n';
+    expect(adaptReference('output-format', leftover).startsWith(note)).toBe(false);
+    for (const extra of ['End its label with " (Recommended)".', 'Set multiSelect when several answers apply.']) {
+      expect(adaptReference('output-format', `${leftover}${extra}\n`).startsWith(note), extra).toBe(true);
+    }
     expect(adaptReference('blueprint', '# Blueprint\n')).toBe('# Blueprint\n');
+  });
+
+  it("leaves out the generated-file note, which names repo files the host can't see", () => {
+    expect(REFERENCES['media-targets']!.text).toMatch(/^_Generated from /m);
+    for (const name of REFERENCE_RESOURCES) expect(buildReference(name), name).not.toMatch(/Generated from/);
+    for (const domain of DOMAINS) expect(buildChecklist(domain), domain).not.toMatch(/Generated from/);
   });
 
   it('points reference paths at this server instead of files', () => {

@@ -140,10 +140,13 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
       const text = String((res.contents[0] as { text?: string }).text);
       expect(text, uri).not.toMatch(/AskUserQuestion/);
     }
+    // The two adapted references keep none of the dialog's wording.
     const questions = await conn.client.readResource({ uri: 'prompt-engine://questions' });
     expect((questions.contents[0] as { text: string }).text).toMatch(/## Format A — the ask_user tool/);
+    expect((questions.contents[0] as { text: string }).text).not.toMatch(/AskUserQuestion|Claude Code|\(Recommended\)|multiSelect/);
     const format = await conn.client.readResource({ uri: 'prompt-engine://output-format' });
     expect((format.contents[0] as { text: string }).text).toMatch(/menu as a numbered list/);
+    expect((format.contents[0] as { text: string }).text).not.toMatch(/AskUserQuestion|Claude Code|\(Recommended\)|multiSelect/);
   });
 
   it('returns the method brief from enhance_prompt without the user prompt', async () => {

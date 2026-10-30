@@ -67,13 +67,15 @@ export function adaptMethod(method: string = UNIVERSAL_METHOD): string {
 // plain text at the end of the reply, as in the brief.
 const FORMAT_A = `## Format A — the ask_user tool (this server)
 
-Call ask_user for every round: 1–8 questions per call, each with 2–4 options, the 0-based index of the recommended option, why (its reason, 12 words or fewer) and an optional header of up to 12 characters. Where the app supports forms, the user answers one form with the recommended answers preselected and a notes field, and ask_user returns the answers. If the app can't show forms, or the user closes the form without answering, ask_user returns the questions in Format B: send them as your whole reply and wait. If the user declines the form, it returns the recommended answers; list them under Assumptions. If the call fails, fall back to Format B in your next message. Never guess the answers.
+Call ask_user for every round: 1–8 questions per call, each with 2–4 options, the 0-based index of the recommended option, why (its reason, 12 words or fewer) and an optional header of up to 12 characters. If the user's language isn't English, also pass intro, notes_label and notes_hint in it. Where the app supports forms, the user answers one form with the recommended answers preselected and a notes field, and ask_user returns the answers. If the app can't show forms, or the user closes the form without answering, ask_user returns the questions in Format B: send them as your whole reply and wait. If the user declines the form, it returns the recommended answers; list them under Assumptions. If the call fails, fall back to Format B in your next message. Never guess the answers.
 
 `;
 const MENU_SENTENCE = 'End the same message with the menu as a numbered list, because some apps show only your final message. Use ask_user for clarifying questions only.';
-const REFERENCE_ADAPTATIONS: Partial<Record<ReferenceResource, Array<[RegExp, string]>>> = {
+/** The passages that describe the dialog, with their replacements; brief.test.ts checks that each matches exactly once. */
+export const REFERENCE_ADAPTATIONS: Partial<Record<ReferenceResource, Array<[RegExp, string]>>> = {
   questions: [
-    [/^## Format A\b[^\n]*\n[\s\S]*?(?=^## )/m, FORMAT_A],
+    // Up to the Format B heading, so a subheading inside Format A is replaced too.
+    [/^## Format A\b[^\n]*\n[\s\S]*?(?=^## Format B\b)/m, FORMAT_A],
     [/^(## Format B — one text message) \(all other apps\)$/m, '$1'],
   ],
   'output-format': [
@@ -82,13 +84,20 @@ const REFERENCE_ADAPTATIONS: Partial<Record<ReferenceResource, Array<[RegExp, st
   ],
 };
 const ASK_USER_NOTE = '> Over MCP, ask clarifying questions with the ask_user tool and show the "What next?" menu as text; ignore any mention of AskUserQuestion below.\n\n';
+// Wording that belongs to the dialog and should never reach an MCP host.
+const DIALOG_WORDING = /AskUserQuestion|\(Recommended\)|multiSelect/;
 
 /** A reference file adapted for MCP clients: questions go through ask_user, never AskUserQuestion. */
 export function adaptReference(name: ReferenceResource, text: string): string {
   let out = text;
-  for (const [pattern, replacement] of REFERENCE_ADAPTATIONS[name] ?? []) out = out.replace(pattern, replacement);
-  // If the source changed so that a passage above no longer matches, say which tool to use instead.
-  return /AskUserQuestion/.test(out) ? `${ASK_USER_NOTE}${out}` : out;
+  let missed = false;
+  for (const [pattern, replacement] of REFERENCE_ADAPTATIONS[name] ?? []) {
+    if (pattern.test(out)) out = out.replace(pattern, replacement);
+    else missed = true;
+  }
+  // If a passage above no longer matches because the source changed, or dialog wording is
+  // left over, say which tool to use instead.
+  return missed || DIALOG_WORDING.test(out) ? `${ASK_USER_NOTE}${out}` : out;
 }
 
 const SERVER_SECTION = `## How to use this server
@@ -138,8 +147,11 @@ export function referenceTitle(name: Domain | ReferenceResource): string {
   return REFERENCES[name]?.title ?? name;
 }
 
+// A generated reference (media-targets.md) ends with a maintainer note naming repo files the host can't see.
+const GENERATED_NOTE = /^_Generated from [^\n]*_$\n?/gm;
+
 function referenceText(name: string): string {
   const ref = REFERENCES[name];
   if (!ref) throw new Error(`generated content has no reference named "${name}"; run node scripts/build.mjs`);
-  return ref.text;
+  return ref.text.replace(GENERATED_NOTE, '');
 }
