@@ -45,6 +45,8 @@ import {
   buildElicitationSchema,
   buildFormMessage,
   buildTextBatch,
+  cleanQuestions,
+  cleanText,
   mapFormAnswers,
   recommendedAnswers,
   supportsFormElicitation,
@@ -82,6 +84,29 @@ const STATIC_CACHE: CacheHint = { ttlMs: 3_600_000, cacheScope: 'public' };
 /** The inputRequests key ask_user uses for its form. */
 export const FORM_KEY = 'answers';
 
+/**
+ * How long a 2025-era stateful connection (stdio) waits for the user to answer
+ * a form. The SDK's default is 10 minutes, after which answers the user gives
+ * are lost; an hour leaves room for a user who steps away. On 2026-07-28 the
+ * client holds the form, so nothing waits here.
+ */
+export const FORM_WAIT_MS = 60 * 60_000;
+
+/** The first protocol revision that sends the client's capabilities with each request. */
+const PER_REQUEST_CAPABILITIES_REVISION = '2026-07-28';
+
+/** ask_user's text limits, in characters; the result-size test builds the largest ask from them. */
+export const ASK_USER_MAX_CHARS = {
+  id: 40,
+  question: 200,
+  label: 80,
+  description: 160,
+  why: 120,
+  intro: 200,
+  notes_label: 80,
+  notes_hint: 200,
+} as const;
+
 const TEXT_MIME = 'text/markdown';
 
 // ---------- tool schemas ----------
@@ -103,28 +128,30 @@ const ChecklistInput = z.object({
     .describe('coding: code, agents, tool instructions. writing: copy, marketing, emails, posts, stories. research: research, analysis, comparisons, data. image-video: image or video generation. general: anything else, including system prompts.'),
 });
 
+const MAX = ASK_USER_MAX_CHARS;
+
 const OptionSchema = z.object({
-  label: z.string().min(1).max(80).describe('The option, in the user\'s language.'),
-  description: z.string().max(160).optional().describe('What choosing it means (optional; shown in forms).'),
+  label: z.string().min(1).max(MAX.label).describe('The option, in the user\'s language, without a ★: ask_user adds the ★ to the recommended option.'),
+  description: z.string().max(MAX.description).optional().describe('What choosing it means (optional; shown in forms).'),
 });
 
 const QuestionSchema = z.object({
   id: z
     .string()
-    .regex(/^[A-Za-z][A-Za-z0-9_-]{0,39}$/)
+    .regex(new RegExp(`^[A-Za-z][A-Za-z0-9_-]{0,${MAX.id - 1}}$`))
     .describe('Short unique identifier such as "audience" or "length" (letters, digits, - and _; "notes" is reserved).'),
   header: z.string().min(1).max(HEADER_MAX_CHARS).optional().describe(`A tag of up to ${HEADER_MAX_CHARS} characters, such as "Audience".`),
-  question: z.string().min(1).max(200).describe('One decision in plain words, in the user\'s language.'),
+  question: z.string().min(1).max(MAX.question).describe('One decision in plain words, in the user\'s language.'),
   options: z.array(OptionSchema).min(MIN_OPTIONS).max(MAX_OPTIONS).describe(`${MIN_OPTIONS}-${MAX_OPTIONS} concrete, mutually exclusive options.`),
   recommended: z.number().int().min(0).max(MAX_OPTIONS - 1).describe('0-based index of the recommended option.'),
-  why: z.string().min(1).max(120).describe('The reason for the recommended option, 12 words or fewer, in the user\'s language.'),
+  why: z.string().min(1).max(MAX.why).describe('The reason for the recommended option, 12 words or fewer, in the user\'s language.'),
 });
 
 const AskUserInput = z.object({
   questions: z.array(QuestionSchema).min(1).max(MAX_QUESTIONS).describe('Most important first.'),
-  intro: z.string().max(200).optional().describe('One opening line in the user\'s language; it is the form\'s message. Defaults to an English line.'),
-  notes_label: z.string().max(80).optional().describe(`The form's free-text field label, in the user's language. Defaults to "${NOTES_TITLE}"`),
-  notes_hint: z.string().max(200).optional().describe(`The hint under that field, in the user's language. Defaults to "${NOTES_HINT}"`),
+  intro: z.string().max(MAX.intro).optional().describe('One opening line in the user\'s language; it is the form\'s message. Defaults to an English line.'),
+  notes_label: z.string().max(MAX.notes_label).optional().describe(`The form's free-text field label, in the user's language. Defaults to "${NOTES_TITLE}"`),
+  notes_hint: z.string().max(MAX.notes_hint).optional().describe(`The hint under that field, in the user's language. Defaults to "${NOTES_HINT}"`),
 });
 
 const AnswerSchema = z.object({
@@ -183,7 +210,7 @@ const DESCRIPTIONS = {
   get_checklist:
     'Use after enhance_prompt, once you know what the prompt is about. Returns the full checklist for that domain: must-haves, each item with an example question and its recommended (★) default, and a worked example. Domains: coding (code, agents, tool instructions), writing (copy, marketing, emails, posts, stories), research (research, analysis, comparisons, data), image-video (image or video generation; includes each tool\'s syntax), general (anything else, including system prompts and custom-assistant instructions).',
   ask_user:
-    'Use in standard and deep modes to ask the user your clarifying questions, instead of writing them in your reply. Pass 1-8 questions in the user\'s language, most important first, each with 2-4 options, the 0-based index of the recommended option and why, its reason in 12 words or fewer; header is an optional tag of up to 12 characters. Where the app supports forms, the user answers one form (recommended answers preselected, plus a notes field; pass intro, notes_label and notes_hint in the user\'s language) and this returns the answers: source "chosen" means the user picked it; "recommended" means they didn\'t confirm it, so list it under Assumptions. If the user declines the form, you get the recommended answers to list under Assumptions. If forms aren\'t supported, or the user closes the form without answering, it returns the questions as numbered text: show that to the user in their language, then stop and wait for their reply. If the call fails, ask the same questions in your reply in the brief\'s numbered format.',
+    'Use in standard and deep modes to ask the user your clarifying questions, instead of writing them in your reply. Pass 1-8 questions in the user\'s language, most important first, each with 2-4 options, the 0-based index of the recommended option and why, its reason in 12 words or fewer; header is an optional tag of up to 12 characters. Where the app supports forms, the user answers one form (recommended answers preselected, plus a notes field; pass intro, notes_label and notes_hint in the user\'s language) and this returns the answers: source "chosen" means the user picked it; "recommended" means they didn\'t confirm it, so list it under Assumptions. If the user declines, you get the recommended answers to list under Assumptions. If forms aren\'t supported, or the user closes the form without answering, it returns the questions as numbered text: show that to the user in their language, then stop and wait for their reply. If the call fails, ask the same questions in your reply in the brief\'s numbered format.',
   check_prompt:
     'Use on your draft enhanced prompt before presenting it (optional). Returns a deterministic, heuristic report: for each scored area (Clear goal, Context, Constraints, Output format, Edge cases) whether the draft explicitly mentions it, with short evidence, plus lint findings such as capitalized pressure words, requests to expose reasoning, prefill instructions, leftover template variables and open [[placeholders]]. The checks match English keywords and headings: in a draft that is mostly in another language, an area without a match is reported as unknown rather than not found. It gives no score; score with the brief\'s anchors. Pass target (for example "Midjourney") so image and video conventions apply.',
 } as const;
@@ -200,12 +227,20 @@ function toolError(message: string): CallToolResult {
 
 /**
  * The client capabilities that apply to this request: the per-request envelope
- * on the 2026-07-28 era; on a 2025-era connection, what the client declared at
- * initialize (stateless HTTP serving never sees an initialize, so it has none).
+ * when this instance serves the 2026-07-28 era; on a 2025-era connection, what
+ * the client declared at initialize (stateless HTTP serving never sees an
+ * initialize, so it has none). The served era decides, as in the SDK's own
+ * check before it sends a form, because a 2025-era request can still carry
+ * the 2026 capabilities key.
  */
 function clientCapabilities(server: McpServer, ctx: ServerContext): unknown {
-  const envelope = ctx.mcpReq.envelope as Record<string, unknown> | undefined;
-  if (envelope && CLIENT_CAPABILITIES_META_KEY in envelope) return envelope[CLIENT_CAPABILITIES_META_KEY];
+  // Revisions are ISO dates, so string order is date order. The SDK marks this
+  // accessor deprecated in favour of the envelope, but the envelope is what a
+  // 2025-era request can carry too; instances serving 2026-07-28 report it here.
+  const revision = server.server.getNegotiatedProtocolVersion();
+  if (revision !== undefined && revision >= PER_REQUEST_CAPABILITIES_REVISION) {
+    return (ctx.mcpReq.envelope as Record<string, unknown> | undefined)?.[CLIENT_CAPABILITIES_META_KEY];
+  }
   return server.server.getClientCapabilities();
 }
 
@@ -291,6 +326,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         'resources/read': STATIC_CACHE,
         'server/discover': STATIC_CACHE,
       },
+      inputRequired: { roundTimeoutMs: FORM_WAIT_MS },
       ...(options.jsonSchemaValidator ? { jsonSchemaValidator: options.jsonSchemaValidator } : {}),
     },
   );
@@ -316,7 +352,10 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       outputSchema: AskUserOutput,
       annotations: ANNOTATIONS,
     },
-    async ({ questions, intro, notes_label, notes_hint }, ctx) => {
+    async (input, ctx) => {
+      // Clean the caller's text once, before validation (see cleanText and cleanQuestions).
+      const questions = cleanQuestions(input.questions);
+      const [intro, notes_label, notes_hint] = [input.intro, input.notes_label, input.notes_hint].map((s) => (s === undefined ? undefined : cleanText(s)));
       const errors = validateQuestions(questions);
       if (errors.length) return toolError(`Fix the questions and call ask_user again:\n- ${errors.join('\n- ')}`);
 
@@ -326,7 +365,9 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         if (response.action === 'accept') return answeredResult(mapFormAnswers(questions, response.content));
         if (response.action === 'decline') return declinedResult(questions);
         // "cancel": closed without a choice. The method says to ask in text then, never to guess.
-        return textModeResult(questions, intro, 'form-closed');
+        // The intro was the form's message (it may say the answers are preselected), so the
+        // chat gets the default opening line, which next asks the model to translate.
+        return textModeResult(questions, undefined, 'form-closed');
       }
 
       if (supportsFormElicitation(clientCapabilities(server, ctx))) {

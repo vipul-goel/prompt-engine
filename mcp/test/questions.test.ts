@@ -9,6 +9,9 @@ import {
   buildElicitationSchema,
   buildFormMessage,
   buildTextBatch,
+  cleanQuestions,
+  cleanText,
+  hasVisibleText,
   mapFormAnswers,
   recommendedAnswers,
   supportsFormElicitation,
@@ -56,15 +59,85 @@ describe('validateQuestions', () => {
     expect(validateQuestions([q({ options: [{ label: 'A' }], recommended: 0 })]).join('\n')).toMatch(/give 2-4 options/);
   });
 
-  it('rejects a recommendation without a reason', () => {
+  it('compares labels as the user sees them, after trimming', () => {
+    expect(validateQuestions([q({ options: [{ label: 'Yes' }, { label: 'Yes ' }] })]).join('\n')).toMatch(/option "Yes" appears twice/);
+    expect(validateQuestions([q({ options: [{ label: ' No' }, { label: 'No\t' }] })]).join('\n')).toMatch(/option "No" appears twice/);
+  });
+
+  it('rejects a recommendation without a reason, including one the user can\'t see', () => {
     expect(validateQuestions([q({ why: '   ' })]).join('\n')).toMatch(/give why/);
     expect(validateQuestions([{ ...q(), why: undefined } as unknown as Question]).join('\n')).toMatch(/give why/);
+    // Zero-width space, word joiner, Hangul filler, blank braille pattern, soft hyphen, NUL and NEL.
+    for (const why of ['\u200B', '\u2060', '\u3164', '\u2800', '\u00AD', '\u0000', '\u0085', ' \u200B\u200C ']) {
+      expect(validateQuestions([q({ why })]).join('\n'), JSON.stringify(why)).toMatch(/give why/);
+    }
+  });
+
+  it('rejects a question or an option label the user can\'t see', () => {
+    for (const blank of ['   ', '\u200B', '\u3164\u2800']) {
+      expect(validateQuestions([q({ question: blank })]).join('\n'), JSON.stringify(blank)).toMatch(/give the question text/);
+      expect(validateQuestions([q({ options: [{ label: 'Inform' }, { label: blank }] })]).join('\n'), JSON.stringify(blank)).toMatch(/option 2 has no label text/);
+    }
+  });
+
+  it('accepts visible text in any script', () => {
+    // Devanagari, an emoji ZWJ sequence, Persian with a ZWNJ, Hangul, Thai, CJK and combining accents.
+    const texts = ['कौन पढ़ेगा?', '👩\u200D💻', 'می\u200Cخواهم', '누가 읽나요?', 'ใครจะอ่าน', '谁会读？', 'e\u0301'];
+    for (const text of texts) {
+      expect(validateQuestions([q({ question: text, why: text, options: [{ label: text }, { label: `${text} 2` }] })]), text).toEqual([]);
+    }
   });
 
   it('rejects an empty list and more than 8 questions', () => {
     expect(validateQuestions([])).toHaveLength(1);
     const nine = Array.from({ length: 9 }, (_, i) => q({ id: `q${i}` }));
     expect(validateQuestions(nine).join('\n')).toMatch(/between 1 and 8/);
+  });
+});
+
+describe('cleaning the caller\'s text', () => {
+  it('tells visible text from whitespace, control and invisible characters', () => {
+    for (const text of ['a', '.', '★', '\uFFFD', '👩\u200D💻', 'می\u200Cخواهم']) expect(hasVisibleText(text), text).toBe(true);
+    for (const text of ['', ' \t\n', '\u200B\u200D\uFEFF', '\u0001\u007F\u0085', '\u2800', undefined, 42]) expect(hasVisibleText(text), JSON.stringify(text)).toBe(false);
+  });
+
+  it('turns control characters into spaces and lone surrogates into U+FFFD, keeping the length', () => {
+    const raw = 'a\u0000b\u0001c\u001B[31md\u007Fe\u0085f\nnew\tline\r\u2028';
+    const clean = cleanText(raw);
+    expect(clean).toBe('a b c [31md e f new line \u2028');
+    expect(clean).toHaveLength(raw.length);
+    expect(cleanText('x\uD800y\uDC00z\uD83D')).toBe('x\uFFFDy\uFFFDz\uFFFD');
+    // Pairs are characters, not lone surrogates.
+    expect(cleanText('😀 \uD83D\uDE00')).toBe('😀 😀');
+    // Notes keep their newlines.
+    expect(cleanText('one\ntwo\u0001\r\n', true)).toBe('one\ntwo  \n');
+  });
+
+  it('cleans every text field and takes ★ marks off the labels', () => {
+    const [cleaned] = cleanQuestions([
+      {
+        id: 'audience',
+        header: 'Who\u0001',
+        question: 'Who will\nread it?\uD800',
+        options: [{ label: 'Team leads', description: 'They\u0007 decide' }, { label: 'Individual remote workers ★' }, { label: '★ Premium' }, { label: 'Most ★ popular' }],
+        recommended: 1,
+        why: 'most\u001Fcommon readers',
+      },
+    ]);
+    expect(cleaned).toEqual({
+      id: 'audience',
+      header: 'Who ',
+      question: 'Who will read it?\uFFFD',
+      options: [{ label: 'Team leads', description: 'They  decide' }, { label: 'Individual remote workers' }, { label: 'Premium' }, { label: 'Most popular' }],
+      recommended: 1,
+      why: 'most common readers',
+    });
+  });
+
+  it('rejects a label that is only ★ marks, saying the server adds the ★', () => {
+    const errors = validateQuestions(cleanQuestions([q({ options: [{ label: '★★★★★' }, { label: '★★★★ ★' }] })]));
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toMatch(/option 1 has no label text \(★ marks don't count; ask_user adds the ★ itself\)/);
   });
 });
 
@@ -96,6 +169,10 @@ describe('buildTextBatch', () => {
     const batch = buildTextBatch([q({ recommended: 1, why: ' los gerentes deciden ' })], 'Unas preguntas rápidas (★ = recomendado):');
     expect(batch.split('\n')[0]).toBe('Unas preguntas rápidas (★ = recomendado):');
     expect(batch).toContain('   a) Inform  b) Persuade ★ (los gerentes deciden)\n');
+  });
+
+  it('uses the default intro when the given one has nothing to see', () => {
+    for (const intro of ['', '  ', '\u200B', '\u3164 \u2800']) expect(buildTextBatch(questions, intro).split('\n')[0], JSON.stringify(intro)).toBe(DEFAULT_INTRO);
   });
 });
 
@@ -136,13 +213,21 @@ describe('buildElicitationSchema', () => {
     expect(es.properties.audience!.description).toBe('Público · Gerentes ★ (deciden la política)');
     expect(es.properties[NOTES_FIELD]).toMatchObject({ title: '¿Algo que añadir?', description: 'Opcional. Lo que escribas aquí manda.' });
     expect(JSON.stringify(es)).not.toMatch(/Recommended|Optional|Anything/);
-    // Blank strings fall back to the defaults.
+    // Blank strings, and strings of invisible characters, fall back to the defaults.
     expect(buildElicitationSchema(questions, { label: ' ', hint: '' }).properties[NOTES_FIELD]).toMatchObject({ title: NOTES_TITLE, description: NOTES_HINT });
+    expect(buildElicitationSchema(questions, { label: '\u200B', hint: '\u3164\u2800' }).properties[NOTES_FIELD]).toMatchObject({ title: NOTES_TITLE, description: NOTES_HINT });
+  });
+
+  it('leaves out a header or an option description the user can\'t see', () => {
+    const options = [{ label: 'Employees', description: '\u200B' }, { label: 'Team managers', description: ' \u2060 ' }];
+    const schema = buildElicitationSchema([{ ...questions[0]!, header: '\u200B', options }]);
+    expect(schema.properties.audience!.description).toBe('Team managers ★ (they decide remote-work policy)');
   });
 
   it('uses the intro as the form message, or a default', () => {
     expect(buildFormMessage('Hola')).toBe('Hola');
     expect(buildFormMessage()).toMatch(/recommended answer/);
+    expect(buildFormMessage('\u200B ')).toMatch(/recommended answer/);
   });
 });
 
@@ -164,6 +249,12 @@ describe('answers', () => {
         { id: 'length', answer: 'About 1,200 words', source: 'recommended' },
       ],
     });
+  });
+
+  it('cleans the notes like the caller\'s text but keeps their newlines, and drops notes with nothing to see', () => {
+    const { notes } = mapFormAnswers(questions, { notes: '\u001B[1mBold\u001B[0m\nline two\uD800\u0000' });
+    expect(notes).toBe('[1mBold [0m\nline two\uFFFD');
+    expect(mapFormAnswers(questions, { notes: '\u200B\u0001\n' })).not.toHaveProperty('notes');
   });
 
   it('cuts notes to the field limit and says so', () => {

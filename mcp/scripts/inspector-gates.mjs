@@ -61,7 +61,8 @@ try {
     const tools = list.result?.tools ?? [];
     check(tools.map((t) => t.name).sort().join(',') === TOOLS, 'tools/list returns the four tools', tools.map((t) => t.name).join(','));
     check(tools.every((t) => JSON.stringify(t.annotations) === ANNOTATIONS), 'every tool is annotated read-only, non-destructive, idempotent, closed-world');
-    check(tools.every((t) => t.description.length < 1500), 'every tool description is under 1,500 characters');
+    // Some clients and model APIs are reported to reject or cut tool descriptions over 1,024 characters.
+    check(tools.every((t) => t.description.length <= 1024), 'every tool description is 1,024 characters or fewer', tools.map((t) => `${t.name}: ${t.description.length}`).join(', '));
 
     const prompts = inspect(era, ['--method', 'prompts/list']);
     const enhance = prompts.result?.prompts?.find((p) => p.name === 'enhance');

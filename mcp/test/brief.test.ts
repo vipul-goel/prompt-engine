@@ -210,9 +210,10 @@ describe('budgets and self-lint', () => {
     expect(INSTRUCTIONS.length).toBeLessThan(3_500);
   });
 
-  it('keeps every tool description under 1,500 characters, leading with when to use it', () => {
+  // Some clients and model APIs are reported to reject or cut tool descriptions over 1,024 characters.
+  it('keeps every tool description to 1,024 characters at most, leading with when to use it', () => {
     for (const [name, description] of Object.entries(TOOL_DESCRIPTIONS)) {
-      expect(description.length, name).toBeLessThan(1_500);
+      expect(description.length, name).toBeLessThanOrEqual(1_024);
       expect(description.startsWith('Use '), name).toBe(true);
     }
   });

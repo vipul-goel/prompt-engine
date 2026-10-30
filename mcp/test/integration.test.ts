@@ -2,12 +2,14 @@
 // stateless HTTP entry) in both protocol eras, plus serveStdio over an in-memory
 // pipe for the stateful-connection paths.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { ElicitResult } from '@modelcontextprotocol/client';
+import { CLIENT_CAPABILITIES_META_KEY, createMcpHandler } from '@modelcontextprotocol/server';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DOMAINS, REFERENCE_RESOURCES, buildBrief, buildChecklist, buildReference } from '../src/brief.js';
 import { PROMPT_MAX_CHARS } from '../src/check.js';
 import { VERSION } from '../src/generated/content.js';
-import { NOTES_MAX_CHARS } from '../src/questions.js';
-import { INSTRUCTIONS, TOOL_NAMES } from '../src/server.js';
+import { DEFAULT_INTRO, HEADER_MAX_CHARS, MAX_OPTIONS, MAX_QUESTIONS, NOTES_MAX_CHARS } from '../src/questions.js';
+import { ASK_USER_MAX_CHARS, FORM_WAIT_MS, INSTRUCTIONS, TOOL_NAMES, createServer } from '../src/server.js';
 import {
   ERAS,
   SAMPLE_QUESTIONS,
@@ -17,6 +19,7 @@ import {
   textOf,
   type ConnectOptions,
   type Connected,
+  type ElicitCall,
   type Era,
 } from './helpers.js';
 
@@ -51,7 +54,8 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
     for (const tool of tools) {
       expect(tool.annotations, tool.name).toEqual(ANNOTATIONS);
       expect(tool.title, tool.name).toBeTruthy();
-      expect(tool.description!.length, tool.name).toBeLessThan(1_500);
+      // Some clients and model APIs are reported to reject or cut descriptions over 1,024 characters.
+      expect(tool.description!.length, tool.name).toBeLessThanOrEqual(1_024);
       expect(tool.inputSchema.type).toBe('object');
     }
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
@@ -212,6 +216,22 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
     const blankWhy = await conn.client.callTool({ name: 'ask_user', arguments: { questions: [{ ...SAMPLE_QUESTIONS[0], why: '  ' }] } });
     expect(blankWhy.isError).toBe(true);
     expect(textOf(blankWhy)).toMatch(/give why/);
+    // Text the user can't see counts as blank, control characters included.
+    const invisibleWhy = await conn.client.callTool({ name: 'ask_user', arguments: { questions: [{ ...SAMPLE_QUESTIONS[0], why: '\u200B\u0001' }] } });
+    expect(invisibleWhy.isError).toBe(true);
+    expect(textOf(invisibleWhy)).toMatch(/give why/);
+    const blankQuestion = await conn.client.callTool({ name: 'ask_user', arguments: { questions: [{ ...SAMPLE_QUESTIONS[0], question: '\u0007 ' }] } });
+    expect(blankQuestion.isError).toBe(true);
+    expect(textOf(blankQuestion)).toMatch(/give the question text/);
+    const starsOnly = await conn.client.callTool({
+      name: 'ask_user',
+      arguments: { questions: [{ ...SAMPLE_QUESTIONS[0], options: [{ label: '★★★★★' }, { label: '★★★★' }], recommended: 1 }] },
+    });
+    expect(starsOnly.isError).toBe(true);
+    expect(textOf(starsOnly)).toMatch(/option 1 has no label text \(★ marks don't count/);
+    const sameLabel = await conn.client.callTool({ name: 'ask_user', arguments: { questions: [{ ...SAMPLE_QUESTIONS[0], options: [{ label: 'Yes' }, { label: 'Yes ' }], recommended: 1 }] } });
+    expect(sameLabel.isError).toBe(true);
+    expect(textOf(sameLabel)).toMatch(/option "Yes" appears twice/);
   });
 
   it('asks in text mode when the client declares no form elicitation', async () => {
@@ -236,21 +256,55 @@ describe('tool result size', () => {
   const TOKEN_SAFE_CHARS = 24_000;
   const size = (result: { content?: unknown; structuredContent?: unknown }) =>
     JSON.stringify(result.content ?? []).length + JSON.stringify(result.structuredContent ?? {}).length;
+  // How JSON writes a control character or a lone surrogate: 6 characters for 1.
+  const SIX_CHARACTER_ESCAPE = /\\u(?:00[01][0-9a-f]|d[89a-f][0-9a-f]{2})/i;
 
-  // The largest ask_user input the schema allows, made of quotes and newlines,
-  // which double in size when a result is serialized.
-  const LARGEST_ASK = {
-    intro: '"\n'.repeat(100),
-    notes_label: '"'.repeat(80),
-    notes_hint: '"'.repeat(200),
-    questions: Array.from({ length: 8 }, (_, i) => ({
-      id: `q${i}`.padEnd(40, 'x'),
-      header: '"'.repeat(12),
-      question: '"\n'.repeat(100),
-      options: Array.from({ length: 4 }, (_, j) => ({ label: `${j}"`.repeat(40), description: '"'.repeat(160) })),
-      recommended: 3,
-      why: '"\n'.repeat(60),
-    })),
+  // The largest ask_user input the schema allows, built from its limits. Each
+  // field starts with a character the user can see (a quote, or a digit that
+  // keeps the labels unique) and is filled to its limit with quotes, which
+  // double when a result is serialized, or with control characters or lone
+  // surrogates, which ask_user cleans first because JSON writes each as 6.
+  const FILLS = { quotes: '"', 'U+0001': '\u0001', 'lone surrogates': '\uD800' };
+  const MAX = ASK_USER_MAX_CHARS;
+  const largestAsk = (fill: string) => {
+    const field = (max: number, lead = '"') => lead + fill.repeat(max - 1);
+    return {
+      intro: field(MAX.intro),
+      notes_label: field(MAX.notes_label),
+      notes_hint: field(MAX.notes_hint),
+      questions: Array.from({ length: MAX_QUESTIONS }, (_, i) => ({
+        id: `q${i}`.padEnd(MAX.id, 'x'),
+        header: field(HEADER_MAX_CHARS),
+        question: field(MAX.question),
+        options: Array.from({ length: MAX_OPTIONS }, (_, j) => ({ label: field(MAX.label, String(j)), description: field(MAX.description) })),
+        recommended: MAX_OPTIONS - 1,
+        why: field(MAX.why),
+      })),
+    };
+  };
+
+  // A check_prompt draft past every cap: 4 heading lines per area (3 evidence
+  // items are kept) and 5 distinct matches for each of the 7 lint rules (35
+  // findings; 20 are kept), each with about 300 fill characters around it.
+  const pastEveryCap = (fill: string) => {
+    const pad = (n: number) => fill.repeat(n);
+    let n = 0;
+    const tag = () => `${'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[n % 26]}${Math.floor(n++ / 26)}`;
+    const lines: string[] = [];
+    for (const heading of ['Goal', 'Background', 'Constraints', 'Output', 'Edge cases']) {
+      for (let i = 0; i < 4; i++) lines.push(`${heading}: ${tag()}${pad(300)}`);
+    }
+    const matches = [
+      ['MUST', 'NEVER', 'ALWAYS', 'CRITICAL', 'IMPORTANT'],
+      ['scratchpad', 'Scratchpad', 'SCRATCHPAD', 'ScratchPad', 'scratchPAD'],
+      ['prefill the response', 'prefill your answer', 'prefill an reply', 'prefill the assistant', 'Prefill The Response'],
+      ['take a deep breath', 'Take a deep breath', 'think hard', 'Think hard', 'think really hard'],
+      ['masterpiece', 'Masterpiece', '8k', 'best quality', 'award-winning'],
+    ];
+    for (const words of matches) for (const word of words) lines.push(`${pad(40)}${tag()} ${word} ${tag()}${pad(300)}`);
+    for (let i = 0; i < 5; i++) lines.push(`${pad(10)}${tag()}{{${tag()}${pad(76)}}}${pad(300)}`);
+    for (let i = 0; i < 5; i++) lines.push(`${pad(10)}${tag()}[[${tag()}${pad(116)}]]${pad(300)}`);
+    return lines.join('\n');
   };
   const longestLine = (n: number, unit: string) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
 
@@ -262,17 +316,38 @@ describe('tool result size', () => {
         'distinct findings, one per line': Array.from({ length: 4000 }, (_, i) => `NEVER ALWAYS [[field ${i} "with quotes" ${'q'.repeat(80)}]] {{v${i} ${'"'.repeat(60)}}} think step by step, take a deep breath, prefill the response, masterpiece`).join('\n').slice(0, PROMPT_MAX_CHARS),
         'long single-line matches': longestLine(PROMPT_MAX_CHARS, `[[${'"long placeholder" '.repeat(6)}]] {{ ${'"'.repeat(78)} }} `),
         'one huge line': longestLine(PROMPT_MAX_CHARS, 'You MUST "quote" audience: managers, if missing ask; format as a table. '),
+        'past every cap, with quotes': pastEveryCap('"'),
       };
       const calls: Array<{ label: string; name: string; arguments: Record<string, unknown> }> = [
         { label: 'enhance_prompt', name: 'enhance_prompt', arguments: { mode: 'standard', target: 'x'.repeat(100) } },
         ...DOMAINS.map((domain) => ({ label: `get_checklist ${domain}`, name: 'get_checklist', arguments: { domain } })),
         ...Object.entries(prompts).map(([label, prompt]) => ({ label: `check_prompt: ${label}`, name: 'check_prompt', arguments: { prompt, target: 'x'.repeat(100) } })),
-        { label: 'ask_user in text mode', name: 'ask_user', arguments: LARGEST_ASK },
+        ...Object.entries(FILLS).map(([label, fill]) => ({ label: `ask_user in text mode, ${label}`, name: 'ask_user', arguments: largestAsk(fill) })),
       ];
       for (const call of calls) {
         const result = await conn.client.callTool(call);
         expect(result.isError, call.label).toBeFalsy();
         expect(size(result), call.label).toBeLessThan(TOKEN_SAFE_CHARS);
+        expect(JSON.stringify(result), call.label).not.toMatch(SIX_CHARACTER_ESCAPE);
+      }
+    } finally {
+      await conn.close();
+    }
+  });
+
+  it('keeps check_prompt to 20 findings, 3 evidence items per area and short excerpts', async () => {
+    const conn = await connectHttp('modern');
+    try {
+      // The caps hold whatever check_prompt does with control characters.
+      for (const [label, fill] of [['quotes', '"'], ['U+0001', '\u0001']] as const) {
+        const result = await conn.client.callTool({ name: 'check_prompt', arguments: { prompt: pastEveryCap(fill), target: 'x'.repeat(100) } });
+        const report = result.structuredContent as { issues: Array<{ excerpt: string }>; dimensions: Array<{ name: string; evidence: string[] }> };
+        expect(report.issues, label).toHaveLength(20);
+        for (const area of report.dimensions) expect(area.evidence, `${label}: ${area.name}`).toHaveLength(3);
+        // 100 characters of the line, with a … at either cut.
+        for (const excerpt of [...report.issues.map((i) => i.excerpt), ...report.dimensions.flatMap((d) => d.evidence)]) {
+          expect(excerpt.length, `${label}: ${excerpt}`).toBeLessThanOrEqual(102);
+        }
       }
     } finally {
       await conn.close();
@@ -280,23 +355,35 @@ describe('tool result size', () => {
   });
 
   it('stays under the budget for every form outcome, including long notes', async () => {
-    const answers = Object.fromEntries(LARGEST_ASK.questions.map((q) => [q.id, q.options[0]!.label]));
-    const outcomes: Array<[string, ConnectOptions['elicit']]> = [
-      ['accept with notes far over the limit', () => ({ action: 'accept', content: { ...answers, notes: '"pasted brief"\n'.repeat(4000) } })],
-      ['accept with notes at the limit', () => ({ action: 'accept', content: { ...answers, notes: '"\n'.repeat(NOTES_MAX_CHARS / 2) } })],
-      ['decline', () => ({ action: 'decline' })],
-      ['cancel', () => ({ action: 'cancel' })],
-    ];
-    for (const [label, elicit] of outcomes) {
-      const conn = await connectHttp('modern', { elicit });
-      try {
-        const result = await conn.client.callTool({ name: 'ask_user', arguments: LARGEST_ASK });
-        expect(result.isError, label).toBeFalsy();
-        expect(size(result), label).toBeLessThan(TOKEN_SAFE_CHARS);
-        const notes = (result.structuredContent as { notes?: string }).notes;
-        if (notes !== undefined) expect([...notes].length, label).toBeLessThanOrEqual(NOTES_MAX_CHARS);
-      } finally {
-        await conn.close();
+    // The client answers with the first option the form shows.
+    const accept =
+      (notes: string) =>
+      (form: ElicitCall): ElicitResult => {
+        const choices = Object.entries(form.requestedSchema.properties).flatMap(([id, field]) => (Array.isArray(field.enum) ? [[id, String(field.enum[0])]] : []));
+        return { action: 'accept', content: { ...Object.fromEntries(choices), notes } };
+      };
+    for (const [fillLabel, fill] of Object.entries(FILLS)) {
+      const outcomes: Array<[string, ConnectOptions['elicit']]> = [
+        ['accept with notes far over the limit', accept(`${'"pasted brief"\n'.repeat(100)}${fill.repeat(4 * NOTES_MAX_CHARS)}`)],
+        ['accept with notes at the limit', accept(`"${fill.repeat(NOTES_MAX_CHARS - 1)}`)],
+        ['decline', () => ({ action: 'decline' })],
+        ['cancel', () => ({ action: 'cancel' })],
+      ];
+      for (const [outcome, elicit] of outcomes) {
+        const label = `${outcome}, ${fillLabel}`;
+        const conn = await connectHttp('modern', { elicit });
+        try {
+          const result = await conn.client.callTool({ name: 'ask_user', arguments: largestAsk(fill) });
+          expect(result.isError, label).toBeFalsy();
+          expect(size(result), label).toBeLessThan(TOKEN_SAFE_CHARS);
+          // Neither the form nor the result carries a character JSON writes as 6.
+          expect(JSON.stringify(conn.elicitCalls), label).not.toMatch(SIX_CHARACTER_ESCAPE);
+          expect(JSON.stringify(result), label).not.toMatch(SIX_CHARACTER_ESCAPE);
+          const notes = (result.structuredContent as { notes?: string }).notes;
+          if (notes !== undefined) expect([...notes].length, label).toBeLessThanOrEqual(NOTES_MAX_CHARS);
+        } finally {
+          await conn.close();
+        }
       }
     }
   });
@@ -424,13 +511,17 @@ describe('ask_user with a client that supports form elicitation', () => {
       const conn = await connect({ elicit: () => ({ action: 'cancel' }) });
       try {
         const schema = await outputSchemaOf(conn, 'ask_user');
-        const result = await conn.client.callTool(ask);
+        // A form's intro can say the answers are preselected, which isn't true in the chat.
+        const intro = 'Unas preguntas rápidas. Las respuestas recomendadas ya están marcadas.';
+        const result = await conn.client.callTool({ name: 'ask_user', arguments: { questions: SAMPLE_QUESTIONS, intro } });
         expect(conn.elicitCalls).toHaveLength(1);
+        expect(conn.elicitCalls[0]!.message).toBe(intro);
         expect(result.isError).toBeFalsy();
         expect(schemaErrors(schema, result.structuredContent)).toBeUndefined();
         const structured = result.structuredContent as Record<string, unknown>;
         expect(structured.status).toBe('ask_in_chat');
         expect(structured.answers).toBeUndefined();
+        expect(String(structured.questionsText).split('\n')[0]).toBe(DEFAULT_INTRO);
         expect(structured.questionsText).toContain('b) Team managers ★ (they decide remote-work policy)');
         expect(structured.next).toMatch(/closed the form without answering/);
         expect(structured.next).toMatch(/Don't guess the answers/);
@@ -454,6 +545,105 @@ describe('ask_user with a client that supports form elicitation', () => {
       }
     });
   }
+
+  it('takes a ★ the model put in a label off it, so the form, the text and the answers use the plain label', async () => {
+    const starred = [{ ...SAMPLE_QUESTIONS[0]!, options: [{ label: 'Employees' }, { label: 'Team managers ★', description: 'They set policy' }, { label: '★ Job seekers' }] }];
+    const conn = await connectHttp('modern', { elicit: (form) => ({ action: 'accept', content: { audience: String((form.requestedSchema.properties.audience!.enum as string[])[2]) } }) });
+    try {
+      const result = await conn.client.callTool({ name: 'ask_user', arguments: { questions: starred } });
+      const field = conn.elicitCalls[0]!.requestedSchema.properties.audience!;
+      expect(field).toMatchObject({ enum: ['Employees', 'Team managers', 'Job seekers'], default: 'Team managers' });
+      expect(String(field.description).match(/★/g)).toHaveLength(1);
+      expect(result.structuredContent).toMatchObject({ status: 'answered', answers: [{ id: 'audience', answer: 'Job seekers', source: 'chosen' }] });
+    } finally {
+      await conn.close();
+    }
+    const text = await connectHttp('modern');
+    try {
+      const result = await text.client.callTool({ name: 'ask_user', arguments: { questions: starred } });
+      expect((result.structuredContent as { questionsText: string }).questionsText).toContain('   a) Employees  b) Team managers ★ (they decide remote-work policy)  c) Job seekers\n');
+    } finally {
+      await text.close();
+    }
+  });
+
+  it('2025-era stdio: the capabilities declared at initialize decide, not the 2026 _meta key', async () => {
+    // A form client whose key claims nothing still gets the form...
+    const form = await connectStdioInProcess('legacy', { elicit: () => ({ action: 'decline' }) });
+    try {
+      const result = await form.client.callTool({ ...ask, _meta: { [CLIENT_CAPABILITIES_META_KEY]: {} } });
+      expect(form.elicitCalls).toHaveLength(1);
+      expect(result.structuredContent).toMatchObject({ status: 'declined' });
+    } finally {
+      await form.close();
+    }
+    // ...and a client without forms whose key claims one gets the text, not an error.
+    const noForm = await connectStdioInProcess('legacy');
+    try {
+      const result = await noForm.client.callTool({ ...ask, _meta: { [CLIENT_CAPABILITIES_META_KEY]: { elicitation: { form: {} } } } });
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({ status: 'ask_in_chat' });
+    } finally {
+      await noForm.close();
+    }
+  });
+
+  it('2025-era request over stateless HTTP: the 2026 _meta key still gets the text, not an error', async () => {
+    const handler = createMcpHandler(() => createServer());
+    try {
+      const response = await handler.fetch(
+        new Request('http://test.local/mcp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-11-25' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { ...ask, _meta: { [CLIENT_CAPABILITIES_META_KEY]: { elicitation: { form: {} } } } } }),
+        }),
+      );
+      const body = await response.text();
+      // The reply is plain JSON or a server-sent event.
+      const json = response.headers.get('content-type')?.startsWith('text/event-stream') ? body.split('\n').filter((l) => l.startsWith('data: ')).at(-1)!.slice(6) : body;
+      const { result } = JSON.parse(json) as { result: { isError?: boolean; structuredContent?: Record<string, unknown> } };
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({ status: 'ask_in_chat' });
+    } finally {
+      await handler.close();
+    }
+  });
+
+  // On a 2025-era stateful connection the server waits for the form's answer;
+  // fake timers stand in for a user who takes their time.
+  it('legacy shim on stdio: answers to a form left open past the SDK\'s 10-minute default still count', async () => {
+    let answer: (result: ElicitResult) => void = () => {};
+    const conn = await connectStdioInProcess('legacy', { elicit: () => new Promise<ElicitResult>((resolve) => (answer = resolve)) });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const call = conn.client.callTool(ask, { timeout: 24 * 3_600_000 });
+      while (conn.elicitCalls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(30 * 60_000);
+      answer({ action: 'accept', content: { audience: 'Job seekers', length: 'About 600 words' } });
+      const result = await call;
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({ status: 'answered', answers: [{ answer: 'Job seekers', source: 'chosen' }, { answer: 'About 600 words', source: 'chosen' }] });
+    } finally {
+      vi.useRealTimers();
+      await conn.close();
+    }
+  });
+
+  it('legacy shim on stdio: a form left open past FORM_WAIT_MS fails the call, so the model asks in its reply', async () => {
+    const conn = await connectStdioInProcess('legacy', { elicit: () => new Promise<ElicitResult>(() => {}) });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const call = conn.client.callTool(ask, { timeout: 24 * 3_600_000 });
+      while (conn.elicitCalls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(FORM_WAIT_MS + 1_000);
+      const result = await call;
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toMatch(/timed out/);
+    } finally {
+      vi.useRealTimers();
+      await conn.close();
+    }
+  });
 
   it('a client that sends invalid form values gets the recommended answers for those questions', async () => {
     const conn = await connectHttp('modern', { elicit: () => ({ action: 'accept', content: { audience: 'Employees' } }) });
