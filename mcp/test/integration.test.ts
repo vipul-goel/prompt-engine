@@ -369,12 +369,10 @@ describe('tool result size', () => {
     }
   });
 
-  // A merge tripwire. check_prompt doesn't clean control characters or lone
-  // surrogates yet, so these drafts give results of about 44,000 characters.
-  // The check_prompt fixes from the same review turn them into spaces and
-  // U+FFFD; once those are merged this passes and it.fails reports a failure:
-  // then change it.fails to it.
-  it.fails('stays under the budget for check_prompt drafts past every cap made of control characters or lone surrogates', async () => {
+  // check_prompt turns control characters into spaces and lone surrogates into
+  // U+FFFD, so JSON escaping at most doubles what it echoes; without that, these
+  // drafts give results of about 44,000 characters.
+  it('stays under the budget for check_prompt drafts past every cap made of control characters or lone surrogates', async () => {
     const conn = await connectHttp('modern');
     try {
       for (const fill of ['\u{1}', '\u{D800}']) {
