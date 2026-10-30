@@ -131,7 +131,7 @@ const ChecklistInput = z.object({
 const MAX = ASK_USER_MAX_CHARS;
 
 const OptionSchema = z.object({
-  label: z.string().min(1).max(MAX.label).describe('The option, in the user\'s language, without a ★: ask_user adds the ★ to the recommended option.'),
+  label: z.string().min(1).max(MAX.label).describe('The option, in the user\'s language, without a ★: ask_user adds the ★ to the recommended option (write a rating in words, such as "4 stars").'),
   description: z.string().max(MAX.description).optional().describe('What choosing it means (optional; shown in forms).'),
 });
 
@@ -149,7 +149,11 @@ const QuestionSchema = z.object({
 
 const AskUserInput = z.object({
   questions: z.array(QuestionSchema).min(1).max(MAX_QUESTIONS).describe('Most important first.'),
-  intro: z.string().max(MAX.intro).optional().describe('One opening line in the user\'s language; it is the form\'s message. Defaults to an English line.'),
+  intro: z
+    .string()
+    .max(MAX.intro)
+    .optional()
+    .describe('The form\'s message: one line in the user\'s language. The form has its own controls, so don\'t say how to reply. Questions asked in the chat open with their own line instead. Defaults to an English line.'),
   notes_label: z.string().max(MAX.notes_label).optional().describe(`The form's free-text field label, in the user's language. Defaults to "${NOTES_TITLE}"`),
   notes_hint: z.string().max(MAX.notes_hint).optional().describe(`The hint under that field, in the user's language. Defaults to "${NOTES_HINT}"`),
 });
@@ -279,9 +283,13 @@ function declinedResult(questions: Question[]): CallToolResult {
   return askResult({ status: 'declined', answers: recommendedAnswers(questions), next }, next);
 }
 
-/** No form here, or the user closed it without answering: ask in the chat, never guess. */
-function textModeResult(questions: Question[], intro: string | undefined, reason: 'no-form' | 'form-closed'): CallToolResult {
-  const questionsText = buildTextBatch(questions, intro);
+/**
+ * No form here, or the user closed it without answering: ask in the chat, never
+ * guess. The intro is the form's message, so the chat text opens with the
+ * default line (see buildTextBatch), which next asks the model to translate.
+ */
+function textModeResult(questions: Question[], reason: 'no-form' | 'form-closed'): CallToolResult {
+  const questionsText = buildTextBatch(questions);
   const why = reason === 'form-closed' ? 'The user closed the form without answering' : "This app can't show a form";
   const next = `${why}, so ask in the chat: send questionsText to the user as your whole reply, in their language (translate the opening and closing lines if needed; keep the numbers, letters and ★ marks), then stop and wait. Don't guess the answers. Read their reply as the brief says: ok accepts every ★, partial answers keep ★ for the rest, and free text wins. Answers they accept, ★ ones included, are [your answer], not assumptions.`;
   // The text block already carries everything, so no JSON mirror here.
@@ -365,9 +373,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
         if (response.action === 'accept') return answeredResult(mapFormAnswers(questions, response.content));
         if (response.action === 'decline') return declinedResult(questions);
         // "cancel": closed without a choice. The method says to ask in text then, never to guess.
-        // The intro was the form's message (it may say the answers are preselected), so the
-        // chat gets the default opening line, which next asks the model to translate.
-        return textModeResult(questions, undefined, 'form-closed');
+        return textModeResult(questions, 'form-closed');
       }
 
       if (supportsFormElicitation(clientCapabilities(server, ctx))) {
@@ -380,7 +386,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
           },
         });
       }
-      return textModeResult(questions, intro, 'no-form');
+      return textModeResult(questions, 'no-form');
     },
   );
 

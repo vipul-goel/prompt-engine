@@ -76,14 +76,30 @@ export interface NotesText {
   hint?: string | undefined;
 }
 
-// A character the user can see: not whitespace, a control character, a
-// default-ignorable one (zero-width and other format characters, fillers) or
-// the blank braille pattern.
-const VISIBLE = /[^\p{White_Space}\p{Cc}\p{Default_Ignorable_Code_Point}\u2800]/u;
+// What the user can't see, besides whitespace: control characters, format
+// characters (zero-width, bidirectional and the like), the other
+// default-ignorable characters (fillers such as U+3164) and the blank braille
+// pattern. A few format characters do show, such as U+0600 ARABIC NUMBER SIGN;
+// counting them as unseen matters only for text made of nothing else.
+const UNSEEN = String.raw`\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u{2800}`;
+// Visible text also needs more than nonspacing and enclosing marks (accents
+// and the like), which go on another character: a why of just U+0301 would
+// put an accent on the "(" after the ★. Labels keep their marks (labelKey).
+const VISIBLE = new RegExp(String.raw`[^\p{White_Space}\p{Mn}\p{Me}${UNSEEN}]`, 'u');
+const UNSEEN_RUNS = new RegExp(`[${UNSEEN}]+`, 'gu');
 
 /** Whether text has a character the user can see; trim() only removes whitespace. */
 export function hasVisibleText(text: unknown): text is string {
   return typeof text === 'string' && VISIBLE.test(text);
+}
+
+/**
+ * A label as the user sees it, which is how labels are compared: every run of
+ * whitespace as one space, without the characters the user can't see, and in
+ * Unicode normalization form C, so "é" matches "e" plus a combining accent.
+ */
+function labelKey(label: string): string {
+  return label.replace(/\p{White_Space}/gu, ' ').replace(UNSEEN_RUNS, '').replace(/ +/g, ' ').trim().normalize('NFC');
 }
 
 /**
@@ -97,11 +113,17 @@ export function cleanText(text: string, keepNewlines = false): string {
   return text.replace(keepNewlines ? /(?!\n)\p{Cc}/gu : /\p{Cc}/gu, ' ').replace(/\p{Cs}/gu, '\uFFFD');
 }
 
+// The ★ some models put on the recommended label: one ★ (a variation selector
+// may follow it) as a word of its own at the start or end of that label.
+// ask_user adds that ★ itself. Any other ★ in a label can be content, such as
+// a star rating, so validateQuestions rejects it instead of changing the label,
+// and a label with such a ★ keeps its marker too, so the error quotes it whole.
+const STAR_MARKER = /^★[\u{FE0E}\u{FE0F}]?(?=\p{White_Space}|$)|(?<=\p{White_Space})★[\u{FE0E}\u{FE0F}]?$/gu;
+
 /**
- * The questions as they are shown and answered: every text field cleaned, and
- * labels without ★ marks or surrounding spaces, because ask_user adds the ★
- * itself and some models add one to the recommended label too. Runs before
- * validation, so a label with nothing else in it fails.
+ * The questions as they are shown and answered: every text field cleaned,
+ * labels trimmed, and the ★ marker taken off the recommended label (see
+ * STAR_MARKER). Runs before validation, so a label with nothing else fails.
  */
 export function cleanQuestions(questions: readonly Question[]): Question[] {
   const optional = (text: string | undefined) => (text === undefined ? undefined : cleanText(text));
@@ -110,7 +132,11 @@ export function cleanQuestions(questions: readonly Question[]): Question[] {
     header: optional(q.header),
     question: cleanText(q.question),
     why: cleanText(q.why),
-    options: q.options.map((o) => ({ label: cleanText(o.label).replace(/\s*★+\s*/g, ' ').trim(), description: optional(o.description) })),
+    options: q.options.map((o, j) => {
+      const label = cleanText(o.label).trim();
+      const unmarked = label.replace(STAR_MARKER, '').trim();
+      return { label: j === q.recommended && !unmarked.includes('★') ? unmarked : label, description: optional(o.description) };
+    }),
   }));
 }
 
@@ -131,13 +157,19 @@ export function validateQuestions(questions: readonly Question[]): string[] {
       errors.push(`${at}: recommended must be a 0-based option index from 0 to ${q.options.length - 1} (got ${q.recommended})`);
     }
     if (!hasVisibleText(q.why)) errors.push(`${at}: give why, the reason for the recommended option`);
-    // Labels are compared trimmed, as the text batch shows them.
+    // Labels are compared as the user sees them (labelKey).
     const labels = new Set<string>();
     q.options.forEach((o, j) => {
-      const label = o.label.trim();
-      if (!hasVisibleText(label)) errors.push(`${at}: option ${j + 1} has no label text (★ marks don't count; ask_user adds the ★ itself)`);
-      else if (labels.has(label)) errors.push(`${at}: option "${label}" appears twice; labels must be unique`);
-      labels.add(label);
+      if (!hasVisibleText(o.label)) {
+        errors.push(`${at}: option ${j + 1} has no label text`);
+        return;
+      }
+      if (o.label.includes('★')) {
+        errors.push(`${at}: option ${j + 1} ("${o.label}") contains ★; ask_user puts the only ★ on the option that recommended points to, so leave it out (write a rating in words, such as "4 stars")`);
+      }
+      const key = labelKey(o.label);
+      if (labels.has(key)) errors.push(`${at}: option "${key}" appears twice; labels must differ in text the user can see`);
+      labels.add(key);
     });
   });
   return errors;
@@ -149,9 +181,14 @@ export function recommendedLabel(q: Question): string {
 
 const letter = (i: number) => String.fromCharCode(97 + i);
 
-/** The numbered text batch, exactly in the method's format (★ on the recommended option with its reason). */
-export function buildTextBatch(questions: readonly Question[], intro?: string): string {
-  const lines = [hasVisibleText(intro) ? intro.trim() : DEFAULT_INTRO, ''];
+/**
+ * The numbered text batch, exactly in the method's format (★ on the recommended
+ * option with its reason). It opens with DEFAULT_INTRO, never the caller's
+ * intro: that is the form's message and can say what only a form does, such as
+ * that the answers are preselected. The model translates the opening line.
+ */
+export function buildTextBatch(questions: readonly Question[]): string {
+  const lines = [DEFAULT_INTRO, ''];
   questions.forEach((q, i) => {
     lines.push(`${i + 1}. ${q.question.trim()}`);
     const options = q.options.map((o, j) => `${letter(j)}) ${o.label.trim()}${j === q.recommended ? ` ★ (${q.why.trim()})` : ''}`);

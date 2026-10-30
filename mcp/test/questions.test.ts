@@ -59,9 +59,26 @@ describe('validateQuestions', () => {
     expect(validateQuestions([q({ options: [{ label: 'A' }], recommended: 0 })]).join('\n')).toMatch(/give 2-4 options/);
   });
 
-  it('compares labels as the user sees them, after trimming', () => {
+  it('compares labels as the user sees them: spacing, invisible characters and normalization don\'t count', () => {
     expect(validateQuestions([q({ options: [{ label: 'Yes' }, { label: 'Yes ' }] })]).join('\n')).toMatch(/option "Yes" appears twice/);
     expect(validateQuestions([q({ options: [{ label: ' No' }, { label: 'No\t' }] })]).join('\n')).toMatch(/option "No" appears twice/);
+    // A zero-width space, a soft hyphen, a word joiner, doubled or other spaces, and NFC against NFD.
+    const lookAlikes: Array<[string, string, string]> = [
+      ['Yes', 'Yes\u{200B}', 'Yes'],
+      ['Remote', 'Re\u{AD}mote', 'Remote'],
+      ['Remote', '\u{2060}Remote', 'Remote'],
+      ['Two words', 'Two  words', 'Two words'],
+      ['Two words', 'Two\u{A0}words', 'Two words'],
+      ['Caf\u{E9}', 'Cafe\u{301}', 'Caf\u{E9}'],
+    ];
+    for (const [first, second, shown] of lookAlikes) {
+      expect(validateQuestions([q({ options: [{ label: first }, { label: second }] })]), JSON.stringify(second)).toEqual([
+        `question 1 ("goal"): option "${shown}" appears twice; labels must differ in text the user can see`,
+      ]);
+    }
+    // Differences the user can see still count.
+    expect(validateQuestions([q({ options: [{ label: 'Yes' }, { label: 'yes' }] })])).toEqual([]);
+    expect(validateQuestions([q({ options: [{ label: 'Twowords' }, { label: 'Two words' }] })])).toEqual([]);
   });
 
   it('rejects a recommendation without a reason, including one the user can\'t see', () => {
@@ -69,6 +86,14 @@ describe('validateQuestions', () => {
     expect(validateQuestions([{ ...q(), why: undefined } as unknown as Question]).join('\n')).toMatch(/give why/);
     // Zero-width space, word joiner, Hangul filler, blank braille pattern, soft hyphen, NUL and NEL.
     for (const why of ['\u200B', '\u2060', '\u3164', '\u2800', '\u00AD', '\u0000', '\u0085', ' \u200B\u200C ']) {
+      expect(validateQuestions([q({ why })]).join('\n'), JSON.stringify(why)).toMatch(/give why/);
+    }
+    // Format characters that aren't default-ignorable: interlinear annotation and Egyptian hieroglyph format controls.
+    for (const why of ['\u{FFF9}', '\u{FFFB}', '\u{13430}', '\u{1343F}']) {
+      expect(validateQuestions([q({ why })]).join('\n'), JSON.stringify(why)).toMatch(/give why/);
+    }
+    // Marks with no letter to go on: a combining acute, a combining enclosing circle.
+    for (const why of ['\u{301}', ' \u{301}\u{308} ', '\u{20DD}']) {
       expect(validateQuestions([q({ why })]).join('\n'), JSON.stringify(why)).toMatch(/give why/);
     }
   });
@@ -97,6 +122,12 @@ describe('validateQuestions', () => {
 
 describe('cleaning the caller\'s text', () => {
   it('tells visible text from whitespace, control and invisible characters', () => {
+    // Format characters count as unseen, even the few that show, such as U+0600; text with anything else in it is visible.
+    for (const text of ['\u{FFF9}', '\u{13430}', '\u{0600}', '\u{200E}\u{202E}']) expect(hasVisibleText(text), JSON.stringify(text)).toBe(false);
+    expect(hasVisibleText('\u{0600}\u{0661}\u{0662}')).toBe(true);
+    // Marks alone aren't visible text; on a letter they are, in any script (spacing marks such as Devanagari's U+093E show on their own).
+    for (const text of ['\u{301}', '\u{20DD}', '\u{E31}\u{E48}']) expect(hasVisibleText(text), JSON.stringify(text)).toBe(false);
+    for (const text of ['e\u{301}', '\u{915}\u{93F}', '\u{93E}', '\u{E01}\u{E31}\u{E48}', 'Cafe\u{301}']) expect(hasVisibleText(text), text).toBe(true);
     for (const text of ['a', '.', '★', '\uFFFD', '👩\u200D💻', 'می\u200Cخواهم']) expect(hasVisibleText(text), text).toBe(true);
     for (const text of ['', ' \t\n', '\u200B\u200D\uFEFF', '\u0001\u007F\u0085', '\u2800', undefined, 42]) expect(hasVisibleText(text), JSON.stringify(text)).toBe(false);
   });
@@ -113,13 +144,13 @@ describe('cleaning the caller\'s text', () => {
     expect(cleanText('one\ntwo\u0001\r\n', true)).toBe('one\ntwo  \n');
   });
 
-  it('cleans every text field and takes ★ marks off the labels', () => {
+  it('cleans every text field and takes the ★ a model adds off the recommended label', () => {
     const [cleaned] = cleanQuestions([
       {
         id: 'audience',
         header: 'Who\u0001',
         question: 'Who will\nread it?\uD800',
-        options: [{ label: 'Team leads', description: 'They\u0007 decide' }, { label: 'Individual remote workers ★' }, { label: '★ Premium' }, { label: 'Most ★ popular' }],
+        options: [{ label: 'Team leads', description: 'They\u0007 decide' }, { label: 'Individual remote workers ★' }, { label: ' ★ Premium' }, { label: '5★ hotels ' }],
         recommended: 1,
         why: 'most\u001Fcommon readers',
       },
@@ -128,16 +159,40 @@ describe('cleaning the caller\'s text', () => {
       id: 'audience',
       header: 'Who ',
       question: 'Who will read it?\uFFFD',
-      options: [{ label: 'Team leads', description: 'They  decide' }, { label: 'Individual remote workers' }, { label: 'Premium' }, { label: 'Most popular' }],
+      // Only the recommended label loses its ★; the others are trimmed, and validation rejects their ★.
+      options: [{ label: 'Team leads', description: 'They  decide' }, { label: 'Individual remote workers' }, { label: '★ Premium' }, { label: '5★ hotels' }],
       recommended: 1,
       why: 'most common readers',
     });
   });
 
-  it('rejects a label that is only ★ marks, saying the server adds the ★', () => {
-    const errors = validateQuestions(cleanQuestions([q({ options: [{ label: '★★★★★' }, { label: '★★★★ ★' }] })]));
-    expect(errors).toHaveLength(2);
-    expect(errors[0]).toMatch(/option 1 has no label text \(★ marks don't count; ask_user adds the ★ itself\)/);
+  it('takes off only a ★ that stands alone at the start or end of the recommended label', () => {
+    const recommendedLabel = (label: string) => cleanQuestions([q({ options: [{ label: 'Inform' }, { label }], recommended: 1 })])[0]!.options[1]!.label;
+    // The marker as models write it, with a variation selector or other spaces around it.
+    for (const label of ['Team managers ★', '★ Team managers', '★ Team managers ★', 'Team managers ★\u{FE0F}', 'Team managers ★\u{FE0E}', ' Team managers\u{A0}★ ']) {
+      expect(recommendedLabel(label), JSON.stringify(label)).toBe('Team managers');
+    }
+    // A ★ inside the label, next to other text or more than one: possibly content, so it stays (and validation rejects it).
+    for (const label of ['Most ★ popular', 'Team managers ★★', 'Team managers ★ ★', '★★★★☆', '5★ hotels', 'Luxury (5★)', 'Team managers★']) {
+      expect(recommendedLabel(label), JSON.stringify(label)).toBe(label);
+    }
+    // The same marker on another option stays.
+    expect(cleanQuestions([q({ options: [{ label: 'Inform ★' }, { label: 'Persuade' }], recommended: 1 })])[0]!.options[0]!.label).toBe('Inform ★');
+  });
+
+  it('rejects a ★ left in a label, so a star rating is never changed', () => {
+    const errorsFor = (labels: string[], recommended: number) => validateQuestions(cleanQuestions([q({ options: labels.map((label) => ({ label })), recommended })]));
+    const starError = (n: number, label: string) =>
+      `question 1 ("goal"): option ${n} ("${label}") contains ★; ask_user puts the only ★ on the option that recommended points to, so leave it out (write a rating in words, such as "4 stars")`;
+    const ratings = ['★★★★★', '★★★★☆', '★★★☆☆'];
+    expect(errorsFor(ratings, 1)).toEqual(ratings.map((label, i) => starError(i + 1, label)));
+    expect(errorsFor(['5★ hotels', '4★ hotels'], 1)).toEqual([starError(1, '5★ hotels'), starError(2, '4★ hotels')]);
+    expect(errorsFor(['Luxury (5★)', 'Mid-range (3★)'], 1)).toEqual([starError(1, 'Luxury (5★)'), starError(2, 'Mid-range (3★)')]);
+    expect(errorsFor(['Inform', 'Most ★ popular'], 1)).toEqual([starError(2, 'Most ★ popular')]);
+    // A ★ on an option that isn't the recommended one: maybe the recommended index is wrong.
+    expect(errorsFor(['Inform ★', 'Persuade'], 1)).toEqual([starError(1, 'Inform ★')]);
+    // A recommended label that is only the marker has no text left.
+    expect(errorsFor(['Inform', '★'], 1)).toEqual(['question 1 ("goal"): option 2 has no label text']);
   });
 });
 
@@ -165,14 +220,10 @@ describe('buildTextBatch', () => {
     for (const line of optionLines) expect(line.match(/★/g)).toHaveLength(1);
   });
 
-  it('uses a custom intro and always gives the reason next to the ★', () => {
-    const batch = buildTextBatch([q({ recommended: 1, why: ' los gerentes deciden ' })], 'Unas preguntas rápidas (★ = recomendado):');
-    expect(batch.split('\n')[0]).toBe('Unas preguntas rápidas (★ = recomendado):');
+  it('always gives the reason next to the ★ and opens with the default line for the model to translate', () => {
+    const batch = buildTextBatch([q({ question: '¿Cuál es el objetivo?', recommended: 1, why: ' los gerentes deciden ' })]);
+    expect(batch.split('\n')[0]).toBe(DEFAULT_INTRO);
     expect(batch).toContain('   a) Inform  b) Persuade ★ (los gerentes deciden)\n');
-  });
-
-  it('uses the default intro when the given one has nothing to see', () => {
-    for (const intro of ['', '  ', '\u200B', '\u3164 \u2800']) expect(buildTextBatch(questions, intro).split('\n')[0], JSON.stringify(intro)).toBe(DEFAULT_INTRO);
   });
 });
 

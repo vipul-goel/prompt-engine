@@ -81,6 +81,7 @@ How `ask_user` asks:
 | No form support | `status: "ask_in_chat"` with `questionsText` for the model to show |
 | The user declines the form | `status: "declined"`, with the recommended answers marked `source: "recommended"` so they are listed as assumptions |
 | The user closes the form without answering | `status: "ask_in_chat"` with `questionsText`, so the model asks in the chat instead of guessing |
+| The user leaves the form open for over an hour, on a 2025-era stdio connection | The call fails (`isError`, "Request timed out"), and the tool description tells the model to ask the questions in its reply instead; an answer given after that doesn't reach the model |
 
 The form has a single-choice field per question, preselected on the recommended answer, and an optional notes field of up to 1,000 characters; longer notes are cut. The only text the server adds to a form is the ★ marker and, unless the model passes `intro`, `notes_label` and `notes_hint` in your language, an English opening line and notes label and hint.
 
@@ -163,7 +164,7 @@ npm run test:worker      # Cloudflare Worker dry-run and wrangler dev smoke test
 - the `check_prompt` heuristics, language detection and lint rules, with timing tests on hostile 100,000-character drafts, and the question validation, text format and form schema;
 - every tool, the prompt and the resources through a real SDK client, in both the 2025-era and the 2026-07-28 protocol, including form answers, declines, closed forms and the text fallback;
 - the built `dist/cli.js` over stdio, and over real HTTP with `Host` and `Origin` checks, ports in `--allowed-hosts`, and what gets logged for rejected and unreadable requests;
-- budgets: instructions under 3,500 characters, tool descriptions under 1,500, and every tool result under 24,000 characters for the largest inputs the schemas allow;
+- budgets: instructions under 3,500 characters, tool descriptions of at most 1,024 characters (some clients and model APIs are reported to reject or cut longer ones), and every tool result under 24,000 characters for the largest inputs the schemas allow;
 - version and schema checks for `package.json`, `manifest.json` (MCPB) and `server.json` (MCP Registry).
 
 The lint patterns in `data/lint-rules.json` are also timed on adversarial input by `node --test scripts/test/*.test.mjs` at the repository root.

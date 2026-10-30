@@ -64,6 +64,10 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
     expect(byName.enhance_prompt!.outputSchema).toBeUndefined();
     expect(Object.keys(byName.enhance_prompt!.inputSchema.properties ?? {}).sort()).toEqual(['mode', 'target']);
     expect(byName.enhance_prompt!.inputSchema.required ?? []).toEqual([]);
+    // The intro is only the form's message, and labels carry no ★.
+    const askInput = JSON.stringify(byName.ask_user!.inputSchema);
+    expect(askInput).toMatch(/The form's message: one line in the user's language\. The form has its own controls, so don't say how to reply\./);
+    expect(askInput).toMatch(/without a ★: ask_user adds the ★ to the recommended option \(write a rating in words/);
   });
 
   it('lists the enhance prompt with one optional mode argument', async () => {
@@ -223,12 +227,12 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
     const blankQuestion = await conn.client.callTool({ name: 'ask_user', arguments: { questions: [{ ...SAMPLE_QUESTIONS[0], question: '\u0007 ' }] } });
     expect(blankQuestion.isError).toBe(true);
     expect(textOf(blankQuestion)).toMatch(/give the question text/);
-    const starsOnly = await conn.client.callTool({
-      name: 'ask_user',
-      arguments: { questions: [{ ...SAMPLE_QUESTIONS[0], options: [{ label: '★★★★★' }, { label: '★★★★' }], recommended: 1 }] },
-    });
-    expect(starsOnly.isError).toBe(true);
-    expect(textOf(starsOnly)).toMatch(/option 1 has no label text \(★ marks don't count/);
+    // A ★ in a label can be content, such as a star rating, so it is rejected rather than removed.
+    for (const labels of [['★★★★★', '★★★★☆', '★★★☆☆'], ['5★ hotels', '4★ hotels'], ['Luxury (5★)', 'Mid-range (3★)']]) {
+      const stars = await conn.client.callTool({ name: 'ask_user', arguments: { questions: [{ ...SAMPLE_QUESTIONS[0], options: labels.map((label) => ({ label })), recommended: 1 }] } });
+      expect(stars.isError, labels[1]).toBe(true);
+      expect(textOf(stars), labels[1]).toContain(`option 2 ("${labels[1]}") contains ★; ask_user puts the only ★ on the option that recommended points to`);
+    }
     const sameLabel = await conn.client.callTool({ name: 'ask_user', arguments: { questions: [{ ...SAMPLE_QUESTIONS[0], options: [{ label: 'Yes' }, { label: 'Yes ' }], recommended: 1 }] } });
     expect(sameLabel.isError).toBe(true);
     expect(textOf(sameLabel)).toMatch(/option "Yes" appears twice/);
@@ -246,6 +250,17 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
     expect(String(structured.questionsText).endsWith('Anything you skip gets the ★.')).toBe(true);
     expect(textOf(result)).toMatch(/stop and wait/);
     expect(textOf(result)).toMatch(/their language/);
+  });
+
+  it('opens the chat text with its own line, not the intro, which is the form\'s message', async () => {
+    // Intros models wrote for the form in real runs: in a chat nothing is preselected.
+    for (const intro of ['A few quick choices to shape your remote-work blog post prompt. The recommended answers are preselected.', 'Unas preguntas rápidas. Ya están marcadas las respuestas recomendadas.']) {
+      const result = await conn.client.callTool({ name: 'ask_user', arguments: { questions: SAMPLE_QUESTIONS, intro } });
+      const structured = result.structuredContent as { status: string; questionsText: string };
+      expect(structured.status).toBe('ask_in_chat');
+      expect(structured.questionsText.split('\n')[0]).toBe(DEFAULT_INTRO);
+      expect(textOf(result)).not.toContain(intro);
+    }
   });
 });
 
@@ -348,6 +363,25 @@ describe('tool result size', () => {
         for (const excerpt of [...report.issues.map((i) => i.excerpt), ...report.dimensions.flatMap((d) => d.evidence)]) {
           expect(excerpt.length, `${label}: ${excerpt}`).toBeLessThanOrEqual(102);
         }
+      }
+    } finally {
+      await conn.close();
+    }
+  });
+
+  // A merge tripwire. check_prompt doesn't clean control characters or lone
+  // surrogates yet, so these drafts give results of about 44,000 characters.
+  // The check_prompt fixes from the same review turn them into spaces and
+  // U+FFFD; once those are merged this passes and it.fails reports a failure:
+  // then change it.fails to it.
+  it.fails('stays under the budget for check_prompt drafts past every cap made of control characters or lone surrogates', async () => {
+    const conn = await connectHttp('modern');
+    try {
+      for (const fill of ['\u{1}', '\u{D800}']) {
+        const result = await conn.client.callTool({ name: 'check_prompt', arguments: { prompt: pastEveryCap(fill), target: 'x'.repeat(100) } });
+        expect(result.isError).toBeFalsy();
+        expect(size(result)).toBeLessThan(TOKEN_SAFE_CHARS);
+        expect(JSON.stringify(result)).not.toMatch(SIX_CHARACTER_ESCAPE);
       }
     } finally {
       await conn.close();
@@ -546,22 +580,36 @@ describe('ask_user with a client that supports form elicitation', () => {
     });
   }
 
-  it('takes a ★ the model put in a label off it, so the form, the text and the answers use the plain label', async () => {
-    const starred = [{ ...SAMPLE_QUESTIONS[0]!, options: [{ label: 'Employees' }, { label: 'Team managers ★', description: 'They set policy' }, { label: '★ Job seekers' }] }];
-    const conn = await connectHttp('modern', { elicit: (form) => ({ action: 'accept', content: { audience: String((form.requestedSchema.properties.audience!.enum as string[])[2]) } }) });
+  it('takes the ★ a model puts on the recommended label off it, so the form, the text and the answers use the plain label', async () => {
+    // Haiku 5.5 did this in a real run, with "Individual remote workers ★" at the recommended index.
+    const starred = [
+      { ...SAMPLE_QUESTIONS[0]!, options: [{ label: 'Employees' }, { label: 'Team managers ★', description: 'They set policy' }, { label: 'Job seekers' }] },
+      { ...SAMPLE_QUESTIONS[1]!, options: [{ label: 'About 600 words' }, { label: '★ About 1,200 words' }, { label: '2,000+ words' }] },
+    ];
+    const pick = (form: ElicitCall, id: string, i: number) => String((form.requestedSchema.properties[id]!.enum as string[])[i]);
+    const conn = await connectHttp('modern', { elicit: (form) => ({ action: 'accept', content: { audience: pick(form, 'audience', 2), length: pick(form, 'length', 1) } }) });
     try {
       const result = await conn.client.callTool({ name: 'ask_user', arguments: { questions: starred } });
-      const field = conn.elicitCalls[0]!.requestedSchema.properties.audience!;
-      expect(field).toMatchObject({ enum: ['Employees', 'Team managers', 'Job seekers'], default: 'Team managers' });
-      expect(String(field.description).match(/★/g)).toHaveLength(1);
-      expect(result.structuredContent).toMatchObject({ status: 'answered', answers: [{ id: 'audience', answer: 'Job seekers', source: 'chosen' }] });
+      const { audience, length } = conn.elicitCalls[0]!.requestedSchema.properties;
+      expect(audience).toMatchObject({ enum: ['Employees', 'Team managers', 'Job seekers'], default: 'Team managers' });
+      expect(length).toMatchObject({ enum: ['About 600 words', 'About 1,200 words', '2,000+ words'], default: 'About 1,200 words' });
+      for (const field of [audience, length]) expect(String(field!.description).match(/★/g)).toHaveLength(1);
+      expect(result.structuredContent).toMatchObject({
+        status: 'answered',
+        answers: [
+          { id: 'audience', answer: 'Job seekers', source: 'chosen' },
+          { id: 'length', answer: 'About 1,200 words', source: 'chosen' },
+        ],
+      });
     } finally {
       await conn.close();
     }
     const text = await connectHttp('modern');
     try {
       const result = await text.client.callTool({ name: 'ask_user', arguments: { questions: starred } });
-      expect((result.structuredContent as { questionsText: string }).questionsText).toContain('   a) Employees  b) Team managers ★ (they decide remote-work policy)  c) Job seekers\n');
+      const { questionsText } = result.structuredContent as { questionsText: string };
+      expect(questionsText).toContain('   a) Employees  b) Team managers ★ (they decide remote-work policy)  c) Job seekers\n');
+      expect(questionsText).toContain('   a) About 600 words  b) About 1,200 words ★ (room for examples)  c) 2,000+ words\n');
     } finally {
       await text.close();
     }
