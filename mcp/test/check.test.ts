@@ -102,8 +102,28 @@ describe('structure heuristics', () => {
       'Respond with nothing but JSON.',
       'Wrap the result in a ```json code block.',
       'Return HTML.',
+      'The output must be CSV with a header row.',
+      'Your reply is JSON and nothing else.',
+      '- YAML only',
     ]) {
       expect(found(checkPrompt(prompt), 'Output format'), prompt).toBe(true);
+    }
+  });
+
+  it("doesn't count the same format phrases when they describe the task's subject", () => {
+    for (const prompt of [
+      'Write a GitHub Actions workflow that lints the repo; the config file must be YAML and live in .github.',
+      'Add a test that checks the API response is valid JSON before we parse it.',
+      'Debug why the build output is HTML with broken links in production.',
+      'Our public API accepts JSON only; add a clear 415 error for other content types.',
+      'Edit config.json only and leave the other files alone.',
+      'The legacy feed sends nothing but XML, so write an adapter for the new service.',
+      'The linter run in CI has output: json set, so fix the parser that reads its report.',
+      'The mobile app breaks because the server started using JSON for the response body instead of protobuf.',
+      'Generate C# classes from this XML schema and add validation.',
+      'The payment gateway responds using XML; write a typed Go client for it.',
+    ]) {
+      expect(found(checkPrompt(prompt), 'Output format'), prompt).toBe(false);
     }
   });
 
@@ -153,6 +173,19 @@ describe('language', () => {
       'Summarize per section, plus key takeaways, max 200 words, bullet points, plain language',
       // English function words outweigh the "os" and "du" of pasted code.
       'Make this work on Windows: for name in os.listdir(home): if os.path.isdir(path) and not name.startswith("."): subprocess.run(["du", "-sh", path])',
+      // Accented loanwords, and names after a comma or a number, are no sign of another language.
+      'Scandinavian living room, minimalist décor, rosé accents, café table, linen sofa, oak floor, soft daylight, architectural photography, 24mm',
+      'Bistro menu design: crème brûlée, café crème, pâté, soufflé, rosé, consommé, flat lay, linen texture, elegant serif, warm light',
+      'Wine pairing chart: Château Margaux, Côtes du Rhône, Pouilly-Fumé, Sancerre rosé, Beaujolais nouveau, Crémant, table format, notes per wine',
+      'Spain road trip itinerary: day 1 Madrid, day 2 Córdoba, day 3 Málaga, day 4 Cádiz, day 5 Sevilla, budget hotels, kid friendly',
+      // Text to render in another script, and Greek letters as symbols.
+      'Photorealistic izakaya entrance at dusk, noren curtain printed "居酒屋 鳥よし", paper lanterns, wet cobblestones, 50mm, shallow depth of field',
+      'Indian wedding invitation, marigold border, Devanagari heading "शुभ विवाह", gold foil on maroon, elegant, portrait',
+      'Museum banner, marble texture, carved Greek inscription "ΓΝΩΘΙ ΣΑΥΤΟΝ", classical columns, dramatic side light, 2:3',
+      'Night street in Cairo, glowing shop sign "مخبز السعادة", neon, reflections on wet asphalt, cinematic, anamorphic',
+      "Poster with the words '夢を見る' and '東京'",
+      'Summarize recent papers on γδ T cells vs αβ T cells in tumor immunity, 300 words, bullet points, cite sources',
+      'Compute σ, μ, ρ, τ, ω, λ, φ, θ for the given data',
     ]) {
       expect(looksMostlyEnglish(english), english).toBe(true);
     }
@@ -171,9 +204,20 @@ describe('language', () => {
       '一只橘猫在窗台上睡觉，水彩风格，柔和光线',
       '창가에서 자는 고양이, 수채화 스타일',
       '夕暮れの海辺を歩く少女、シネマティック',
-      // Tool names don't make Japanese or Hindi English.
+      // Tool names don't make Japanese, Chinese, Hindi or Russian English, even in a short draft.
       'Next.jsとTypeScriptでブログを作りたいです。Tailwind CSSとPrismaを使い、PostgreSQLに保存し、Vercelにデプロイします。認証はNextAuthでGitHubログイン。テストはVitestとPlaywright。',
       'ChatGPT और Python के लिए प्रॉम्प्ट लिखें',
+      'Next.jsとTailwind CSSでLPを作って',
+      '用 Python 和 FastAPI 写一个 REST API',
+      'Excel में VLOOKUP formula समझाओ',
+      'Напиши Dockerfile для Django и PostgreSQL',
+      // Devanagari vowel signs count as letters, so this one is more Hindi than Latin.
+      'Python में कोड लिखो',
+      // Decided by exactly two different function words (10% of the words), by exactly three
+      // accented words, and by function words despite one English "The" (under 5% of the words).
+      'Retrato de una anciana sonriendo con luz natural suave, fondo desenfocado, colores cálidos, estilo fotografía documental, lente 85mm, alta nitidez',
+      'Muotokuva hymyilevästä vanhasta naisesta, pehmeä ja lämmin luonnonvalo, sumea tausta, dokumentaarinen tyyli, objektiivi 85mm',
+      'Retrato de una anciana sonriendo con luz natural suave, fondo desenfocado, colores cálidos, estilo fotografía documental, lente 85mm, tipo "The Americans"',
       // A quoted English title or slogan doesn't either.
       "Fasse das Buch 'The Power of Habit' von Charles Duhigg in fünf Stichpunkten zusammen, für Leser ohne Vorwissen.",
       "Escribe tres variantes de un anuncio para Instagram de nuestra marca de café. El eslogan en inglés debe aparecer tal cual: 'Wake up and smell the future'. Tono: cercano. Máximo 40 palabras por variante.",
@@ -204,6 +248,42 @@ describe('language', () => {
     expect(looksMostlyEnglish('```python\nimport os\nfor name in os.listdir("."):\n    print(name)\n```'), 'only code').toBe(true);
   });
 
+  it('judges the prose outside fences first, and fenced drafts only when that prose is too short', () => {
+    const log = [
+      'Traceback (most recent call last):',
+      '  File "/app/worker.py", line 88, in run',
+      '    result = self.handle(job)',
+      'httpx.ReadTimeout: The read operation timed out while waiting for the response from the upstream service',
+      'ERROR worker: job 4411 failed after 3 retries, giving up; the queue will not retry it again',
+    ].join('\n');
+    const spanish = 'Refactoriza esta función para que sea más fácil de leer y de probar. No cambies su comportamiento y no añadas dependencias nuevas. Si algo no está claro, pregunta antes de cambiar el código.';
+    const chinese = '重构下面的代码，使其更易读、更易测试，行为必须保持不变。不要引入新的依赖，不要修改公共接口。如果有不清楚的地方，先提问，不要自行假设。';
+    const python = 'def parse_rows(path):\n    rows = []\n    with open(path) as f:\n        for line in f:\n            if not line.strip() or line.startswith("#"):\n                continue\n            rows.append(line.split(","))\n    return rows';
+    const cases: [string, boolean, string][] = [
+      // An English log in a text fence, or a ~~~ code block, doesn't make the draft English.
+      ['Spanish draft and a log in a text fence', false, `${spanish}\n\nEste es el error:\n\`\`\`text\n${log}\n\`\`\``],
+      ['Chinese draft and a log in a txt fence', false, `${chinese}\n\n错误日志：\n\`\`\`txt\n${log}\n\`\`\``],
+      ['Chinese draft and code in a ~~~ fence', false, `${chinese}\n\n~~~python\n${python}\n${python}\n${python}\n${python}\n~~~`],
+      ['Chinese draft and unfenced code', false, `${chinese}\n\n${python}\n${python}`],
+      // A short instruction before a bare-fenced draft: the draft decides.
+      ['short German instruction and a German draft in a bare fence', false, `Fasse diesen Text in drei Sätzen zusammen:\n\`\`\`\n${GERMAN}\n${GERMAN}\n\`\`\``],
+      ['German draft with a code block in a bare fence', false, `Mein Entwurf:\n\`\`\`\n${GERMAN}\n\`\`\`python\n${python}\n${python}\n\`\`\`\n${GERMAN}\n\`\`\``],
+      ['short English instruction and a German draft in a bare fence', false, `Here is my draft:\n\`\`\`\n${GERMAN}\n\`\`\``],
+      // ```npm install``` is inline code, not a fence that hides the rest.
+      ['German draft with ```code``` at a line start', false, `# Aufgabe\nRichte das Projekt ein.\n\`\`\`npm install\`\`\` ausführen, dann die Tests starten und alle Fehler beheben.\n\n# Kontext\n${GERMAN}`],
+      // Inline code doesn't count, and a URL in inline code doesn't swallow the closing backtick and the prose after it.
+      ['Spanish one-liner with English words in inline code', false, 'Simplifica la condición `if user and user.is_active and not user.is_banned or the_override` sin cambiar el comportamiento y añade una prueba para cada caso.'],
+      ['Spanish one-liner with a URL in inline code', false, 'Revisa por qué `https://staging.ejemplo.com/api/pedidos` devuelve un error 500 cuando el carrito está vacío y propone una solución en `pedidos.ts` sin cambiar la interfaz pública.'],
+      // An English instruction long enough to judge decides; a shorter ``` line doesn't close a ```` fence.
+      [
+        'English instruction and a German README with a code block',
+        true,
+        `Translate this README into English and keep the code blocks exactly as they are:\n\`\`\`\`markdown\n# Installation\n\`\`\`bash\nnpm install\n\`\`\`\n${GERMAN} ${GERMAN} ${GERMAN}\n\`\`\`\``,
+      ],
+    ];
+    for (const [name, english, draft] of cases) expect(looksMostlyEnglish(draft), name).toBe(english);
+  });
+
   it('recognizes each Latin-script language the check_prompt description names', () => {
     const drafts: Record<string, string> = {
       German: GERMAN,
@@ -227,7 +307,7 @@ describe('language', () => {
     }
     expect(description).toMatch(/non-Latin scripts/);
     expect(description).toMatch(/accented letters/);
-    expect(description).toMatch(/Other languages.{0,60} may be reported as not found/);
+    expect(description).toMatch(/Other languages, and short or terse drafts in any script, may be reported as not found/);
   });
 
   it('reports areas without a match as unknown in a mostly non-English draft, and still lints it', () => {

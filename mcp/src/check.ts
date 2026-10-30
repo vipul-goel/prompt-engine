@@ -111,15 +111,18 @@ const SIGNALS: Record<Dimension, Signal[]> = {
   'Output format': [
     { pattern: heading('output|format|response format|structure|deliverables?|length|style|settings|parameters') },
     { pattern: /<\s?(output_format|output|format)\b/i },
-    // A format word only counts in an output phrase: "build a JSON parser" names the
-    // subject, not the format. A phrase about what code returns still counts, as in
-    // "an endpoint that returns JSON".
+    // A format word only counts in an output phrase about the reply: "build a JSON
+    // parser", "the config file must be YAML" and "the API accepts JSON only" name the
+    // subject, not the format. A phrase about what code returns or responds with still
+    // counts, as in "an endpoint that returns JSON".
     {
       pattern: new RegExp(
-        `\\b(format(ted)?( as)?|as (a|an) (table|list|bullet|paragraph|code block|report|email|summary)|in (a table|bullet points|plain text)|(as|in|into) (an? )?(valid |plain )?(${FORMATS})|(must|should) be (valid )?(${FORMATS})|(answer|response|reply|output|result) is (valid )?(${FORMATS})|(${FORMATS}) only|nothing but (an? )?(valid )?(${FORMATS})|output ?: ?(${FORMATS})|(use|using) (${FORMATS}) for the (response|output|answer|reply)|(this|the following) (${FORMATS}) (shape|structure|format|template|schema)|bullet(ed)? (points|list)|numbered list|headings?|sections?|json (object|array|output|response|schema)|(return|respond|reply|answer|output)(s|ing)? (only )?(with |using )?(an? )?(valid )?(${FORMATS})|(output|response) schema|word count|tone)\\b`,
+        `\\b(format(ted)?( as)?|as (a|an) (table|list|bullet|paragraph|code block|report|email|summary)|in (a table|bullet points|plain text)|(as|in|into) (an? )?(valid |plain )?(${FORMATS})|(answer|response|reply|output|result)s? (must|should) be (valid )?(${FORMATS})|your (answer|response|reply|output|result) is (valid )?(${FORMATS})|(with|return|output|respond|reply|answer) nothing but (an? )?(valid )?(${FORMATS})|use (${FORMATS}) for (the|your) (response|output|answer|reply)|(in|use|using|follow|following|match|matching) (this|the following) (${FORMATS}) (shape|structure|format|template|schema)|bullet(ed)? (points|list)|numbered list|headings?|sections?|json (object|array|output|response|schema)|(return|respond|reply|answer|output)(s|ing)? (only )?(with )?(an? )?(valid )?(${FORMATS})|(respond|reply|answer) using (an? )?(valid )?(${FORMATS})|(output|response) schema|word count|tone)\\b`,
         'i',
       ),
     },
+    // "JSON only" and "Output: JSON" count where a line, list item or sentence starts.
+    { pattern: new RegExp(`(?:^ ?(?:[-*•] ?)?|[.:;!?] )(?:(?:${FORMATS}) only|output ?: ?(?:${FORMATS}))\\b`, 'i') },
     { pattern: new RegExp(`\`\`\`(${FORMATS}) (code )?(block|fence)`, 'i') },
     { pattern: /\b\d[\d,]{0,15}\s{0,3}(?:(?:-|–|to)\s{0,3}\d[\d,]{0,15}\s{0,3})?(words?|characters?|sentences?|paragraphs?|bullets?|lines?|pages?|items?|slides?)\b/i },
     { pattern: /(?:^|\s)--(ar|v|stylize|chaos|raw|motion|loop)\b|\baspect ratio\b|\b\d{1,2}:\d{1,2}\b|\bresolution\b|\b\d{1,4}\s{0,3}(s|sec|seconds)\b|\b(16:9|9:16|1:1|4:3|3:2)\b/i, kind: 'media' },
@@ -586,21 +589,30 @@ const OTHER_WORDS = new Set(
     .split(' ')
     .filter((w) => !ENGLISH_WORDS.has(w)),
 );
+// Accented words that English prompts use as they are (dishes, decor, résumé); they
+// are no sign of another language.
+const LOANWORDS = new Set(
+  'café cafés crème brûlée fraîche décor rosé purée soufflé pâté entrée entrées résumé résumés naïve naïveté cliché clichés fiancé fiancée sauté sautéed flambé jalapeño jalapeños piñata piña façade déjà protégé éclair éclairs frappé consommé touché exposé passé risqué appliqué crêpe crêpes château açaí poké mâché gruyère señor señora mañana pokémon'.split(
+    ' ',
+  ),
+);
 const LANGUAGE_SAMPLE_CHARS = 20_000;
 /** Fence info strings that mark prose (a prompt or a document), not code. */
 const PROSE_FENCE = /^(?:text|txt|plain|plaintext|markdown|md|prompt)$/i;
 
 /**
- * Text without its code: fenced code blocks and inline code spans. A fence marked
- * text or markdown holds prose and is kept, except for code blocks inside it.
+ * Text without its fenced code blocks and inline code spans. With keepDrafts, the
+ * contents of bare fences and of fences marked text or markdown are kept, since they
+ * may hold a draft, except for code blocks inside them.
  */
-function withoutCode(prompt: string): string {
+function withoutCode(prompt: string, keepDrafts: boolean): string {
   const kept: string[] = [];
   let open: { marker: string; code: boolean } | undefined;
-  let inner: string | undefined; // the marker of a code block inside a prose fence
+  let inner: string | undefined; // the marker of a code block inside a kept fence
   for (const line of prompt.split('\n')) {
     const fence = /^ {0,3}(`{3,40}|~{3,40})[ \t]{0,9}([^\s`]{0,40})/.exec(line);
-    if (fence) {
+    // A line with another backtick after a backtick marker is inline code, not a fence (as in CommonMark).
+    if (fence && !(fence[1]!.startsWith('`') && line.includes('`', fence[0].length))) {
       const marker = fence[1] ?? '';
       const info = fence[2] ?? '';
       const closes = (opener: string) => !info && marker[0] === opener[0] && marker.length >= opener.length;
@@ -610,7 +622,7 @@ function withoutCode(prompt: string): string {
         if (closes(open.marker)) open = undefined;
         else if (!open.code) inner = marker;
       } else {
-        open = { marker, code: !PROSE_FENCE.test(info) };
+        open = { marker, code: !(keepDrafts && (!info || PROSE_FENCE.test(info))) };
       }
       continue;
     }
@@ -620,48 +632,70 @@ function withoutCode(prompt: string): string {
 }
 
 /**
- * Whether a draft looks mostly English, judged without its code and URLs. Mostly
- * non-Latin letters means no. So does a draft of 12 words or more without enough
- * English function words and with clear signs of another language: two different
- * function words of a listed language or words in another script, or three words
- * with accented letters.
+ * Whether a draft looks mostly English, judged without its code and URLs: first the
+ * prose outside every fence, then, when that is too short to tell, with the contents
+ * of bare, text and markdown fences too, which may hold a draft or a document. Prose
+ * that is still too short to tell counts as English. When only code is left, the code
+ * is judged.
  */
 export function looksMostlyEnglish(prompt: string): boolean {
-  const text = prompt.replace(/(?:https?:\/\/|www\.)\S{1,500}/gi, ' ');
-  const prose = withoutCode(text);
-  // When only code is left (a prompt that is all code, or a whole draft in one bare fence), the code counts too.
-  const sample = (/\p{L}/u.test(prose) ? prose : text).slice(0, LANGUAGE_SAMPLE_CHARS);
+  // A URL ends before a backtick, so one in inline code doesn't swallow the closing backtick.
+  const text = prompt.replace(/(?:https?:\/\/|www\.)[^\s`]{1,500}/gi, ' ');
+  let prose = false;
+  for (const keepDrafts of [false, true]) {
+    const sample = withoutCode(text, keepDrafts).slice(0, LANGUAGE_SAMPLE_CHARS);
+    if (!/\p{L}/u.test(sample)) continue;
+    prose = true;
+    const verdict = judgeLanguage(sample);
+    if (verdict !== 'short') return verdict;
+  }
+  return prose || judgeLanguage(text.slice(0, LANGUAGE_SAMPLE_CHARS)) !== false;
+}
+
+/**
+ * Whether a sample looks mostly English, or 'short' when it is too short to tell.
+ * Letters of other scripts making up most of the letters, or a fifth of them (unless
+ * a short sample has two English function words), mean no. So does a sample of 12
+ * words or more without enough English function words and with clear signs of
+ * another language: two different function words of a listed language, or three
+ * words with accented letters.
+ */
+function judgeLanguage(sample: string): boolean | 'short' {
   const latin = sample.replace(/\P{Script=Latin}/gu, '').length;
   // Letters and marks of other scripts (Devanagari vowel signs are marks, not letters); accents any script can carry don't count.
   const nonLatin = sample.replace(/[^\p{L}\p{M}]|[\p{Script=Latin}\p{Script=Inherited}]/gu, '').length;
   if (nonLatin > latin) return false;
-  if (latin + nonLatin < 20) return true;
+  if (latin + nonLatin < 20) return 'short';
   // Words, split where the script changes: "Next.jsとTypeScriptで" is five words.
   const words = [...sample.matchAll(/\p{Script=Latin}[\p{Script=Latin}\p{M}]*|[^\P{L}\p{Script=Latin}](?:[^\P{L}\p{Script=Latin}]|\p{M})*/gu)];
-  if (words.length < 12) return true;
   let english = 0;
   let other = 0;
   const otherWords = new Set<string>();
   let accented = 0;
   for (const { 0: word, index } of words) {
+    // Words in other scripts are weighed by their share of the letters below.
+    if (!/\p{Script=Latin}/u.test(word)) continue;
     // A capitalized word after a letter, digit or comma is likely a name ("to Las Vegas", "Sigur Rós"): no evidence.
     if (/^\p{Lu}\p{Ll}/u.test(word) && /[\p{L}\p{M}\p{N},][ \t]{0,9}$/u.test(sample.slice(Math.max(0, index - 10), index))) continue;
     const lower = word.toLowerCase();
-    if (!/\p{Script=Latin}/u.test(word)) {
-      // A word in another script counts against English; a lone π or θ is more likely a symbol.
-      if ([...word].length > 1) {
-        other++;
-        otherWords.add(lower);
-      }
-      continue;
-    }
     if (ENGLISH_WORDS.has(lower)) english++;
     else if (OTHER_WORDS.has(lower)) {
       other++;
       otherWords.add(lower);
     }
-    if (/[^a-z]/.test(lower)) accented++;
+    if (/[^a-z]/.test(lower) && !LOANWORDS.has(lower)) accented++;
   }
+  // Letters of other scripts: runs of two or more, and any Chinese, Japanese or Korean
+  // character (a lone π or θ is more likely a symbol). A fifth of the letters is enough,
+  // so a few tool names don't make a Chinese draft English. A quoted sign or title in
+  // an English image prompt is usually less, and a short sample with two English
+  // function words ("Poster with the words '夢を見る' and '東京'") stays English.
+  let otherScript = 0;
+  for (const m of sample.matchAll(/[^\P{L}\p{Script=Latin}](?:[^\P{L}\p{Script=Latin}]|\p{M})+|[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)) {
+    otherScript += m[0].length;
+  }
+  if (otherScript * 5 >= latin + nonLatin && (words.length >= 12 || english < 2)) return false;
+  if (words.length < 12) return 'short';
   const share = (n: number) => n / words.length;
   // English function words outweigh the other signs when they are 5% of the words and
   // at least half as many as the other-language words, so the "the" of a quoted title
