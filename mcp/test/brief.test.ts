@@ -133,11 +133,39 @@ describe('checklists and references', () => {
     }
   });
 
+  it('drops no other section: no passage it adapts holds an H1 or H2 heading after its first line', () => {
+    // Each match is replaced whole. If this fails, a section heading now sits inside an adapted
+    // passage (such as a new H2 between Format A and Format B), and that section would be left out
+    // of the served text: move it out, make it an H3 of Format A if it describes the dialog, or
+    // update REFERENCE_ADAPTATIONS in src/brief.ts.
+    for (const [name, adaptations] of Object.entries(REFERENCE_ADAPTATIONS)) {
+      for (const [pattern] of adaptations ?? []) {
+        const lines = (REFERENCES[name]!.text.match(pattern)?.[0] ?? '').split('\n').slice(1);
+        expect(lines.filter((line) => /^#{1,2} /.test(line)), `${name}: ${pattern}`).toEqual([]);
+      }
+    }
+  });
+
   it('replaces Format A up to the Format B heading, subheadings included', () => {
+    // The test above fails on such a source; this one pins what would be served from it.
     const source = REFERENCES.questions!.text;
     const split = source.replace(/^## Format A\b[^\n]*\n/m, '$&\n## Dialog fields\n');
     expect(split).not.toBe(source);
     expect(adaptReference('questions', split)).toBe(adaptReference('questions', source));
+  });
+
+  it('replaces the whole Claude Code menu paragraph, so a hard-wrapped one leaves no fragment', () => {
+    const source = REFERENCES['output-format']!.text;
+    const wrapped = source.replace(/^(In Claude Code, use AskUserQuestion(?: [^ \n]+){5}) /m, '$1\n');
+    expect(wrapped).not.toBe(source);
+    expect(adaptReference('output-format', wrapped)).toBe(adaptReference('output-format', source));
+    // The paragraph ends at a blank line, a heading or the end of the text; what follows is kept.
+    const line = 'In Claude Code, use AskUserQuestion for the menu.';
+    const menu = adaptReference('output-format', line);
+    expect(adaptReference('output-format', 'In Claude Code, use AskUserQuestion\nfor the\nmenu.')).toBe(menu);
+    for (const after of ['\n', '\n\nKeep this.\n', '\n \t\nKeep this.\n', '\n## Next\nKeep this.\n']) {
+      expect(adaptReference('output-format', `${line}${after}`), JSON.stringify(after)).toBe(`${menu}${after}`);
+    }
   });
 
   it('falls back to a note when a passage it adapts has changed or dialog wording is left', () => {
@@ -146,11 +174,16 @@ describe('checklists and references', () => {
     // Reworded so that it no longer names the tool: neither output-format passage matches.
     const reworded = '# Output format\n\nIn Claude Code, show the question dialog with the header "Next step".\n';
     expect(adaptReference('output-format', reworded).startsWith(note)).toBe(true);
-    // Both passages match, but dialog wording is left elsewhere.
-    const leftover = 'Mark it ★ (or "(Recommended)" in AskUserQuestion).\nIn Claude Code, use AskUserQuestion for the menu.\n';
+    // Only one of the two passages matches and no dialog wording is left: the miss alone adds the note.
+    const menuReworded = 'Mark it ★ (or "(Recommended)" in AskUserQuestion).\n\nIn Claude Code, show the question dialog with the header "Next step".\n';
+    expect(adaptReference('output-format', menuReworded).startsWith(note)).toBe(true);
+    const asideReworded = 'Mark it ★ (or the recommended label in the dialog).\n\nIn Claude Code, use AskUserQuestion for the menu.\n';
+    expect(adaptReference('output-format', asideReworded).startsWith(note)).toBe(true);
+    // Both passages match, but dialog wording is left in another paragraph.
+    const leftover = 'Mark it ★ (or "(Recommended)" in AskUserQuestion).\n\nIn Claude Code, use AskUserQuestion for the menu.\n';
     expect(adaptReference('output-format', leftover).startsWith(note)).toBe(false);
     for (const extra of ['End its label with " (Recommended)".', 'Set multiSelect when several answers apply.']) {
-      expect(adaptReference('output-format', `${leftover}${extra}\n`).startsWith(note), extra).toBe(true);
+      expect(adaptReference('output-format', `${leftover}\n${extra}\n`).startsWith(note), extra).toBe(true);
     }
     expect(adaptReference('blueprint', '# Blueprint\n')).toBe('# Blueprint\n');
   });

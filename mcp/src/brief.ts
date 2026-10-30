@@ -71,16 +71,23 @@ Call ask_user for every round: 1–8 questions per call, each with 2–4 options
 
 `;
 const MENU_SENTENCE = 'End the same message with the menu as a numbered list, because some apps show only your final message. Use ask_user for clarifying questions only.';
-/** The passages that describe the dialog, with their replacements; brief.test.ts checks that each matches exactly once. */
+/**
+ * The passages that describe the dialog, with their replacements. brief.test.ts checks that each
+ * matches the generated references exactly once and that no H1 or H2 heading follows the first
+ * line of a match.
+ */
 export const REFERENCE_ADAPTATIONS: Partial<Record<ReferenceResource, Array<[RegExp, string]>>> = {
   questions: [
-    // Up to the Format B heading, so a subheading inside Format A is replaced too.
+    // Everything from the Format A heading to the Format B heading, so a heading added inside
+    // Format A can't leave dialog fields behind. A new section placed between the two would be
+    // dropped as well, which is why brief.test.ts fails if one is there.
     [/^## Format A\b[^\n]*\n[\s\S]*?(?=^## Format B\b)/m, FORMAT_A],
     [/^(## Format B — one text message) \(all other apps\)$/m, '$1'],
   ],
   'output-format': [
     [/ \(or "\(Recommended\)" in AskUserQuestion\)/, ''],
-    [/^In Claude Code, use AskUserQuestion[^\n]*$/m, MENU_SENTENCE],
+    // The whole paragraph, up to a blank line or a heading, so a hard-wrapped one leaves no fragment.
+    [/^In Claude Code, use AskUserQuestion[^\n]*(?:\n(?![ \t]*$|#+ )[^\n]*)*/m, MENU_SENTENCE],
   ],
 };
 const ASK_USER_NOTE = '> Over MCP, ask clarifying questions with the ask_user tool and show the "What next?" menu as text; ignore any mention of AskUserQuestion below.\n\n';
