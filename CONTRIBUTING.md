@@ -74,6 +74,10 @@ Edit the tool's entry in `data/media-targets.json`:
 
 Then run `node scripts/build.mjs`.
 
+### Edit the questions or output-format reference
+
+The MCP server serves `references/questions.md` and `references/output-format.md` with the passages about Claude Code's AskUserQuestion dialog rewritten for its `ask_user` tool. `REFERENCE_ADAPTATIONS` in `mcp/src/brief.ts` finds them by pattern: the `## Format A` section up to the `## Format B` heading, the ` (all other apps)` suffix of that heading, the `(or "(Recommended)" in AskUserQuestion)` aside, and the paragraph that starts `In Claude Code, use AskUserQuestion`. After `node scripts/build.mjs`, `mcp/test/brief.test.ts` fails if an edit stops a pattern from matching exactly once or puts an H1 or H2 heading inside one of these passages. Update the pattern, or move the heading out.
+
 ### Add a lint rule
 
 Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript regular expression `pattern`, `flags`, a `severity` and a `message` that says what to do instead. Set `selfCheck: true` only if Prompt Engine's own instructions must never match it, and add a test for it in `scripts/test/validate.test.mjs`.
@@ -81,6 +85,7 @@ Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript reg
 The MCP server's `check_prompt` tool uses the same rules on drafts of up to 100,000 characters from anyone who can reach the server. It matches one line at a time, after turning each control character into a space and each run of whitespace into one space, so a rule about tabs, double spaces or other whitespace never fires there. It matches a line over 2,300 characters in overlapping windows.
 
 `check_prompt` skips a rule, and names it in its summary, if the pattern:
+- is invalid, or uses something the check can't measure: a repeated lookaround, or under the `v` flag a `\q{…}` string or a property of strings such as `\p{RGI_Emoji}`;
 - repeats without a bound (`*`, `+`, `{n,}`), more than `{0,200}` times, or repeats a group (`?` after a group is fine);
 - uses a backreference;
 - can match the empty string, as `(TODO)?` and `\b` can;

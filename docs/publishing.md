@@ -78,13 +78,13 @@ A directory listing reaches people on claude.ai, in Cowork and in Claude Code (w
 - each version is reviewed before it's published;
 - the portal applies more rules than `claude plugin validate`, so a clean local run doesn't guarantee approval.
 
-The listing icon comes from `.claude-plugin/icon.png`. According to the validator, that icon is taken only the first time the plugin is saved or submitted in the portal, so changing the file later doesn't change the listing. The `.mcpb` bundle uses `mcp/icon.png`, the same image at 512×512 pixels; if you change the plugin icon, resize it into that file too.
+The listing icon comes from `.claude-plugin/icon.png`. According to the validator, that icon is taken only the first time the plugin is saved or submitted in the portal, so changing the file later doesn't change the listing. The `.mcpb` bundle uses `mcp/icon.png`, the same image at 512×512 pixels; if you change the plugin icon, resize it into that file too. `npm run pack:mcpb` fails if that file is missing or the packed icon isn't a 512×512 PNG.
 
 Submit only the plugin. Anthropic's directory no longer takes `.mcpb` submissions, so the bundle ships through GitHub releases.
 
 ## Optional: host the MCP server
 
-The server can also run over HTTP for people who want a remote URL instead of a local process. It makes no outbound calls and stores nothing, so hosting it means running one stateless process. [mcp/README.md](../mcp/README.md) covers the HTTP mode, the allowed-hosts setting and the Cloudflare Worker.
+The server can also run over HTTP for people who want a remote URL instead of a local process. It makes no outbound calls and stores nothing, so hosting it means running one stateless process. [mcp/README.md](../mcp/README.md) covers the HTTP mode, its limits and what a proxy in front of it should add, the allowed-hosts setting and the Cloudflare Worker.
 
 ## Secrets
 

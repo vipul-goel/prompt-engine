@@ -68,7 +68,7 @@ Every tool is annotated read-only, non-destructive, idempotent and closed-world.
 |---|---|---|
 | `enhance_prompt` | `mode?`: `quick`, `standard` or `deep`; `target?`: where the prompt will run, such as `Midjourney` | The method brief as text. It echoes the mode and target and never needs the prompt itself. |
 | `get_checklist` | `domain`: `coding`, `writing`, `research`, `image-video` or `general` | The domain's checklist with ★ defaults and an example. `image-video` also includes each tool's syntax. |
-| `ask_user` | `questions`: 1–8 of `{ id, header?, question, options: [{ label, description? }] (2–4), recommended, why }`; `intro?`, `notes_label?`, `notes_hint?` (the form's message and its notes field's label and hint, in the user's language) | Structured `{ status, answers?, notes?, questionsText?, next }`, plus a JSON text mirror |
+| `ask_user` | `questions`: 1–8 of `{ id, header?, question, options: [{ label, description? }] (2–4), recommended, why }`; `intro?`, `notes_label?`, `notes_hint?` (the form's message and its notes field's label and hint, in the user's language) | Structured `{ status, answers?, notes?, questionsText?, next }`. For `answered` and `declined`, also a JSON text mirror; for `ask_in_chat`, one text block with the instructions and the numbered questions |
 | `check_prompt` | `prompt` (up to 100,000 characters); `target?` | Structured `{ heuristic, targetKind, mostlyEnglish, dimensions, issues, summary }`, plus a readable text version |
 
 How `ask_user` asks:
@@ -76,18 +76,24 @@ How `ask_user` asks:
 | Client and connection | Result |
 |---|---|
 | Supports form elicitation, protocol 2026-07-28 (stdio or HTTP) | A form, through a multi-round-trip `input_required` result. `status: "answered"`, each answer with `source: "chosen"` |
-| Supports form elicitation, 2025-era protocol over stdio | A form, through an `elicitation/create` request |
+| Declared form elicitation at initialize, 2025-era protocol over stdio | A form, through an `elicitation/create` request |
 | 2025-era protocol over HTTP | `status: "ask_in_chat"` with `questionsText`, because stateless HTTP serving can't send the client a request |
 | No form support | `status: "ask_in_chat"` with `questionsText` for the model to show |
 | The user declines the form | `status: "declined"`, with the recommended answers marked `source: "recommended"` so they are listed as assumptions |
 | The user closes the form without answering | `status: "ask_in_chat"` with `questionsText`, so the model asks in the chat instead of guessing |
 | The user leaves the form open for over an hour, on a 2025-era stdio connection | The call fails (`isError`, "Request timed out"), and the tool description tells the model to ask the questions in its reply instead; an answer given after that doesn't reach the model |
 
-The form has a single-choice field per question, preselected on the recommended answer, and an optional notes field of up to 1,000 characters; longer notes are cut. The only text the server adds to a form is the ★ marker and, unless the model passes `intro`, `notes_label` and `notes_hint` in your language, an English opening line and notes label and hint.
+The form has a single-choice field per question, preselected on the recommended answer, and an optional notes field of up to 1,000 characters; longer notes are cut. The only text the server adds to a form is the ★ marker and, unless the model passes `intro`, `notes_label` and `notes_hint` in your language, an English opening line and notes label and hint. Questions asked in the chat open with that English line, never the form's `intro`, and `next` asks the model to translate it.
+
+`ask_user` adds the ★ itself: it takes a ★ that stands alone at the start or end of the recommended label off, and rejects a label with any other ★, such as a star rating. It also rejects a question, a `why` or a label with no visible character, and two labels in one question that look the same. Control characters in the model's text and the user's notes become spaces (notes keep their line breaks), and unpaired surrogates become U+FFFD.
 
 `check_prompt` is a heuristic. For each scored area (Clear goal, Context, Constraints, Output format, Edge cases) it reports whether the draft explicitly mentions it, with short evidence, plus lint findings from [`data/lint-rules.json`](../data/lint-rules.json): capitalized pressure words, requests to expose reasoning, prefill instructions, template leftovers, open `[[placeholders]]` and similar. It gives no score; the model scores with the shared rubric.
 
-The area checks match English keywords and headings only. When a draft looks mostly non-English, an area without a match is reported as `unknown` rather than `not found`, and the lint still runs. Patterns are matched one line at a time and each runs in time linear in the draft's length; the tests time hostile 100,000-character drafts.
+The area checks, and every lint rule except the `{{template}}` and `[[placeholder]]` checks, match English text only. When a draft looks mostly non-English, an area without a match is reported as `unknown` rather than `not found`. Language is judged on the prose, without code blocks, inline code and URLs; text in bare fences, and in fences marked as text, Markdown or a prompt, counts only when the prose outside them is too short to judge. It recognizes drafts in non-Latin scripts; in German, French, Spanish, Portuguese, Italian, Dutch, Polish, Swedish, Turkish, Indonesian, Tagalog, Swahili or Romanized Hindi; and with many accented letters. Drafts in other languages, and short or terse drafts in any script, may be reported as `not found`.
+
+Output format counts a format word (JSON, YAML, CSV, XML, Markdown, HTML) only in phrases such as "respond in JSON", "must be valid JSON", "JSON only" or "Output: JSON", so "build a JSON parser" doesn't count. Phrases about the task that use the same words, such as "an endpoint that returns JSON" or "stored in JSON", still count.
+
+Lines are matched one at a time, after each control character becomes a space and each run of whitespace one space, so a lint rule about tabs or double spaces never fires here. A rule whose pattern could run slowly or miss matches is skipped and named in the summary; [CONTRIBUTING.md](../CONTRIBUTING.md#add-a-lint-rule) lists the limits. The time grows linearly with the draft's length, and the tests time hostile 100,000-character drafts.
 
 ### Prompt
 
@@ -120,9 +126,16 @@ This serves Streamable HTTP at `http://127.0.0.1:8787/mcp`. Options:
 |---|---|---|
 | `--host <address>` | `127.0.0.1` | Address to bind |
 | `--port <number>` | `8787` | Port; `0` picks a free one |
-| `--allowed-hosts <a,b>` | `localhost,127.0.0.1,[::1]` | `Host` header names to accept, without ports; also read from `PROMPT_ENGINE_ALLOWED_HOSTS`. A port in an entry is ignored, with a warning |
+| `--allowed-hosts <a,b>` | `localhost,127.0.0.1,[::1]` | `Host` header names to accept; also read from `PROMPT_ENGINE_ALLOWED_HOSTS`, which the flag overrides |
 
-Requests with any other `Host` header get `403`, which protects a local server from DNS rebinding. A request with an `Origin` header gets `403` unless the origin's hostname is allowed too; requests without one, which is what non-browser clients send, are accepted. Browser clients aren't supported: the server sends no CORS headers, so a browser's preflight `OPTIONS` request gets `405`. To serve on a network, bind the interface and name the hostname clients use:
+Requests with any other `Host` header, or one that doesn't parse, get `403`, which protects a local server from DNS rebinding. A request with an `Origin` header gets `403` unless the origin's hostname is allowed too; requests without one, which is what non-browser clients send, are accepted. Browser clients aren't supported: the server sends no CORS headers, so a browser's preflight `OPTIONS` request fails, with `403` from an origin that isn't allowed and `405` otherwise.
+
+The allowlist, here and in the Worker's `ALLOWED_HOSTS`, is a comma-separated list of exact hostnames:
+- A pasted URL counts as its hostname. A port is ignored, with a warning.
+- Entries are compared in the URL parser's form, so `MCP.Example.com`, `0:0:0:0:0:0:0:1` and `bücher.example` match `mcp.example.com`, `[::1]` and `xn--bcher-kva.example`.
+- Entries that name no hostname, such as `:8080`, `a b` or `user@host`, are ignored, with a warning, and so are hostnames with `*`, `http://*` and `https://*`, which would never match. If no entry is left, the CLI falls back to the localhost defaults.
+
+To serve on a network, bind the interface and name the hostname clients use:
 
 ```bash
 npx -y prompt-engine-mcp --http --host 0.0.0.0 --port 8080 --allowed-hosts mcp.example.com
@@ -130,11 +143,22 @@ npx -y prompt-engine-mcp --http --host 0.0.0.0 --port 8080 --allowed-hosts mcp.e
 
 Connect a client with, for example, `claude mcp add --transport http prompt-engine http://127.0.0.1:8787/mcp`. The server has no authentication of its own, so put it behind your own proxy or access control before exposing it. Each request gets a fresh, stateless server. Clients on the 2026-07-28 protocol get question forms; 2025-era clients over HTTP get the questions as text.
 
+The HTTP server's own limits:
+- A body over 1,500,000 bytes gets `413`. The largest valid request, a `check_prompt` draft of 100,000 characters each written as an escaped surrogate pair, is about 1.2 MB.
+- The headers must arrive within 10 seconds and the whole request within 30, or the server answers `408` and closes the connection. It checks every 5 seconds, so a stalled request can run up to 5 seconds past its limit.
+- At most 128 requests are handled at once. Past that, a request gets `503` with `Retry-After: 1` before its body is read.
+- At most 1,024 connections are open at once; more are closed straight away.
+- A request refused for its `Host`, its `Origin` or its method is answered before its body is read, and its connection is closed.
+
+One client can still hold all 128 request slots with slow uploads, or all 1,024 connections, until the timeouts close them. On a network, a proxy in front of the server should still limit body size, connections per client, slow clients and request rate.
+
 ### Cloudflare Workers
 
 `src/worker.ts` serves the same server statelessly on Cloudflare Workers, with the SDK's Workers JSON Schema validator. From this folder:
 
-1. Set `ALLOWED_HOSTS` in `wrangler.jsonc` (or in the dashboard) to the hostname clients will use, such as `prompt-engine-mcp.<your-subdomain>.workers.dev`, without a port. Requests for any other host get `403`; if the variable is empty, every request gets `500`. A port in an entry is ignored, with a warning in the Worker's log.
+1. Set `ALLOWED_HOSTS` in `wrangler.jsonc` (or in the dashboard) to the hostname clients will use, such as `prompt-engine-mcp.<your-subdomain>.workers.dev`. It is read like `--allowed-hosts` above. Requests for any other host get `403`. If the variable is unset, empty or names no usable hostname, every request gets `500` with a message that says which. Request bodies are capped at 1,500,000 bytes, as in the CLI.
+
+   The Worker prints its warnings about entries when an isolate handles its first `/mcp` request. `wrangler dev` shows them in its terminal. `wrangler.jsonc` turns stored Workers Logs off (`"observability": { "enabled": false }`), so a deployed Worker shows them only in a live `npx wrangler tail` or the dashboard's real-time logs, open at that moment.
 2. Deploy with `npx wrangler@4.155.0 deploy` (Wrangler needs Node.js 22 or later).
 3. Connect clients to `https://<your hostname>/mcp`.
 
@@ -142,7 +166,7 @@ Connect a client with, for example, `claude mcp add --transport http prompt-engi
 
 ## Privacy
 
-- **No prompt logging.** Over stdio, stdout carries only protocol messages. On stderr the server writes its start-up line (`--http` only), warnings about its own settings, and one line per error, and it logs nothing for requests that succeed. A rejected or unreadable request is logged as a fixed phrase with the SDK's reason code, such as `rejected a request (method-header-missing)`, never with text from the request. Any other error, such as a socket failing, is logged as its type and message, with quoted text removed and cut to 200 characters. The Worker's own code logs nothing but the `ALLOWED_HOSTS` port warning.
+- **No prompt logging.** Over stdio, stdout carries only protocol messages. On stderr the server writes its start-up line (`--http` only), warnings about its own settings, and one line per error. It logs nothing for requests that succeed, and nothing for most refused ones: a foreign or unparseable `Host`, a foreign `Origin`, an unsupported method, a body that is too large or isn't JSON, a busy server, or headers that never arrive. Some refusals by the MCP SDK are logged as a fixed phrase with its reason code, such as `rejected a request (method-header-missing)`, and so are messages over stdio it can't read, such as `ignored a message that is not valid JSON-RPC (invalid-message)`. No line quotes a request. Any other error, such as a socket failing or an upload cut off (`Error: aborted`), is logged as its type and message, with quoted text removed, control characters replaced by spaces, and cut to 200 characters. The Worker's own code logs only its two warnings about `ALLOWED_HOSTS` entries.
 - **No API key and no network calls.** It never calls a model or any other service.
 - **Your prompt stays with your model.** `enhance_prompt` never receives it. Only `check_prompt` sees a draft, and only when the model calls it.
 - Self-hosted and Workers deployments keep nothing between requests.
@@ -156,15 +180,15 @@ npm ci
 npm run build            # tsc → dist/
 npm test                 # build, type-check, then unit, in-process integration (both protocol eras) and end-to-end tests
 npm run test:inspector   # MCP Inspector CLI gates: tools/list --strict, prompts, resources, tool calls, modern and legacy eras
-npm run pack:mcpb        # esbuild bundle → mcpb/server/index.js, then mcpb validate + pack → dist-mcpb/prompt-engine.mcpb
+npm run pack:mcpb        # esbuild bundle → mcpb/server/index.js, then mcpb validate + pack → dist-mcpb/prompt-engine.mcpb; then unpacks it, checks the 512×512 icon and lists the packed server's tools
 npm run test:worker      # Cloudflare Worker dry-run and wrangler dev smoke test (downloads Wrangler)
 ```
 
 `npm test` covers:
 - the `check_prompt` heuristics, language detection and lint rules, with timing tests on hostile 100,000-character drafts, and the question validation, text format and form schema;
 - every tool, the prompt and the resources through a real SDK client, in both the 2025-era and the 2026-07-28 protocol, including form answers, declines, closed forms and the text fallback;
-- the built `dist/cli.js` over stdio, and over real HTTP with `Host` and `Origin` checks, ports in `--allowed-hosts`, and what gets logged for rejected and unreadable requests;
-- budgets: instructions under 3,500 characters, tool descriptions of at most 1,024 characters (some clients and model APIs are reported to reject or cut longer ones), and every tool result under 24,000 characters for the largest inputs the schemas allow;
+- the built `dist/cli.js` over stdio, and over real HTTP with `Host` and `Origin` checks, `--allowed-hosts` and `PROMPT_ENGINE_ALLOWED_HOSTS`, the body cap, the request and connection caps, the header timeout, and what gets logged for refused and unreadable requests;
+- budgets: instructions under 3,500 characters; tool descriptions of at most 1,024 characters, since some clients and model APIs are reported to reject or cut longer ones; and every tool result under 24,000 characters, counting its text and structured content as JSON, for the largest inputs the schemas allow. Those inputs are filled with quotes, which double when escaped, or with control characters or unpaired surrogates, which `ask_user` and `check_prompt` return as spaces and U+FFFD rather than as 6-character escapes;
 - version and schema checks for `package.json`, `manifest.json` (MCPB) and `server.json` (MCP Registry).
 
 The lint patterns in `data/lint-rules.json` are also timed on adversarial input by `node --test scripts/test/*.test.mjs` at the repository root.
