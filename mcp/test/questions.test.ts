@@ -70,6 +70,15 @@ describe('validateQuestions', () => {
       ['Two words', 'Two  words', 'Two words'],
       ['Two words', 'Two\u{A0}words', 'Two words'],
       ['Caf\u{E9}', 'Cafe\u{301}', 'Caf\u{E9}'],
+      // Joiners, variation selectors and tag characters at the start or after an ASCII character
+      // change nothing that is drawn; tag characters there can hide text.
+      ['Yes', 'Ye\u{200D}s', 'Yes'],
+      ['Yes', '\u{200C}Yes', 'Yes'],
+      ['Yes', 'Yes\u{FE0F}', 'Yes'],
+      ['Yes', 'Y\u{FE00}es', 'Yes'],
+      ['Yes', 'Yes\u{E0100}', 'Yes'],
+      ['Yes', 'Yes\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}', 'Yes'],
+      ['Yes', 'Yes\u{200B}\u{200D}', 'Yes'],
     ];
     for (const [first, second, shown] of lookAlikes) {
       expect(validateQuestions([q({ options: [{ label: first }, { label: second }] })]), JSON.stringify(second)).toEqual([
@@ -79,15 +88,17 @@ describe('validateQuestions', () => {
     // Differences the user can see still count.
     expect(validateQuestions([q({ options: [{ label: 'Yes' }, { label: 'yes' }] })])).toEqual([]);
     expect(validateQuestions([q({ options: [{ label: 'Twowords' }, { label: 'Two words' }] })])).toEqual([]);
-    // So do joiners, variation selectors and tag characters, which change what is drawn: flags of
-    // England, Scotland and Wales, a ZWJ family against three people, Persian and Devanagari with
-    // and without a ZWNJ or ZWJ, and a heart in text and emoji style.
+    // So do joiners, variation selectors and tag characters elsewhere, which change what is drawn:
+    // flags of England, Scotland and Wales, a ZWJ family against three people, Persian and
+    // Devanagari with and without a ZWNJ or ZWJ, a heart in text and emoji style, and Mongolian
+    // with a free variation selector.
     const drawnDifferently = [
       ['🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}', '🏴\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}', '🏴\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}'],
-      ['👨‍👩‍👧', '👨👩👧'],
-      ['می‌خواهم', 'میخواهم'],
-      ['क्‍ष', 'क्ष'],
+      ['👨\u{200D}👩\u{200D}👧', '👨👩👧'],
+      ['می\u{200C}خواهم', 'میخواهم'],
+      ['क्\u{200D}ष', 'क्ष'],
       ['❤\u{FE0E}', '❤\u{FE0F}'],
+      ['\u{1820}\u{182E}', '\u{1820}\u{180B}\u{182E}'],
     ];
     for (const labels of drawnDifferently) {
       expect(validateQuestions([q({ options: labels.map((label) => ({ label })) })]), labels.join(' ')).toEqual([]);
@@ -194,9 +205,12 @@ describe('cleaning the caller\'s text', () => {
     for (const label of ['Team managers ★', '★ Team managers', '★ Team managers ★', 'Team managers ★\u{FE0F}', 'Team managers ★\u{FE0E}', ' Team managers\u{A0}★ ']) {
       expect(recommendedLabel(label), JSON.stringify(label)).toBe('Team managers');
     }
+    // Labels with numbers too, which a single ★ can't tell from a rating on the recommended option alone.
+    for (const [label, unmarked] of [['Python 3 ★', 'Python 3'], ['★ 5', '5'], ['Top 10 ★\u{FE0F}', 'Top 10'], ['4.5 ★', '4.5']] as const) {
+      expect(recommendedLabel(label), JSON.stringify(label)).toBe(unmarked);
+    }
     // A ★ inside the label, next to other text or more than one: possibly content, so it stays (and validation rejects it).
-    // A ★ next to a number is a rating.
-    for (const label of ['Most ★ popular', 'Team managers ★★', 'Team managers ★ ★', '★★★★☆', '5★ hotels', 'Luxury (5★)', 'Team managers★', '4.5 ★', '★ 5', 'Top 10 ★\u{FE0F}', '½ ★']) {
+    for (const label of ['Most ★ popular', 'Team managers ★★', 'Team managers ★ ★', '★★★★☆', '5★ hotels', 'Luxury (5★)', 'Team managers★']) {
       expect(recommendedLabel(label), JSON.stringify(label)).toBe(label);
     }
     // The same marker on another option stays.
@@ -212,9 +226,8 @@ describe('cleaning the caller\'s text', () => {
     expect(errorsFor(['5★ hotels', '4★ hotels'], 1)).toEqual([starError(1, '5★ hotels'), starError(2, '4★ hotels')]);
     expect(errorsFor(['Luxury (5★)', 'Mid-range (3★)'], 1)).toEqual([starError(1, 'Luxury (5★)'), starError(2, 'Mid-range (3★)')]);
     expect(errorsFor(['Inform', 'Most ★ popular'], 1)).toEqual([starError(2, 'Most ★ popular')]);
-    // A rating on the recommended option only.
-    expect(errorsFor(['5 stars', '4.5 ★', '3 stars'], 1)).toEqual([starError(2, '4.5 ★')]);
-    expect(errorsFor(['5 ★', '4 ★', '3 ★'], 1)).toEqual([starError(1, '5 ★'), starError(2, '4 ★'), starError(3, '3 ★')]);
+    // Ratings with one ★ each: the recommended one loses its ★ as a marker, and the others are rejected.
+    expect(errorsFor(['5 ★', '4 ★', '3 ★'], 1)).toEqual([starError(1, '5 ★'), starError(3, '3 ★')]);
     // A ★ on an option that isn't the recommended one: maybe the recommended index is wrong.
     expect(errorsFor(['Inform ★', 'Persuade'], 1)).toEqual([starError(1, 'Inform ★')]);
     // A recommended label that is only the marker has no text left.

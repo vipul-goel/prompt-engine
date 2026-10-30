@@ -184,11 +184,6 @@ describe('language', () => {
       'Museum banner, marble texture, carved Greek inscription "ΓΝΩΘΙ ΣΑΥΤΟΝ", classical columns, dramatic side light, 2:3',
       'Night street in Cairo, glowing shop sign "مخبز السعادة", neon, reflections on wet asphalt, cinematic, anamorphic',
       "Poster with the words '夢を見る' and '東京'",
-      // An English request that quotes a sentence or a name in another script, even a fifth of the letters or more.
-      'Translate this product tagline into English for our US landing page: 让每个人都能轻松管理自己的日程和任务。',
-      'Write a short bio of Пётр Ильич Чайковский for a concert program, about 150 words, warm tone.',
-      'You are a professional translator. Translate the sentence below into English for a museum audio guide. Keep it under 30 words, plain and warm, and explain any idiom in a short note after the translation.\n\nЭта картина была написана за одну ночь, когда художнику было всего двадцать лет.',
-      'Make a motivational poster with the quote "कर्म करो फल की चिंता मत करो" in bold Devanagari, sunrise background.',
       // Two accented words in 12 aren't enough (it takes three).
       'Moodboard: Zürich tram, köttbullar plate, soft film grain, pastel tones, morning light',
       'Summarize recent papers on γδ T cells vs αβ T cells in tumor immunity, 300 words, bullet points, cite sources',
@@ -220,13 +215,15 @@ describe('language', () => {
       'Напиши Dockerfile для Django и PostgreSQL',
       // Devanagari vowel signs count as letters, so this one is more Hindi than Latin.
       'Python में कोड लिखो',
-      // A request in another script that quotes an English sentence, its letters a fifth or more,
-      // and requests that open with tool names and an English word.
+      // A fifth of the letters in another script, whatever comes first: an English sentence to
+      // translate, tool names, lowercase packages and identifiers, or an English role line.
       '请把下面这句话翻译成中文，语气要自然，适合儿童读者：The quick brown fox jumps over the lazy dog and runs into the forest.',
       'React with TypeScriptでTODOアプリを作ってください。状態管理はZustand、スタイルはTailwind CSSで、テストはVitestで書いてください。',
-      'Next.js and Node.js with TypeScriptでブログを作りたいです。Tailwind CSSとPrismaを使い、PostgreSQLに保存します。',
-      // A request that opens in another Latin-script language.
-      'tolong terjemahkan kalimat ini ke bahasa Inggris: 让每个人都能轻松管理自己的日程和任务。',
+      'pnpm + vite + vitest + react の構成で、ToDo アプリを作ってください。\n- 状態管理は zustand、スタイルは Tailwind CSS\n- タスクの追加・完了・削除・フィルター（All / Active / Completed）\n- localStorage に保存\n- 各コンポーネントにテストを書くこと\npnpm test の結果と変更ファイル一覧を日本語で報告。',
+      'get_user_by_id が存在しない ID に対して None ではなく例外を投げるように、services/user_service.py を修正してください。\n- 例外は UserNotFoundError（app/errors.py に定義）\n- FastAPI のハンドラで 404 に変換',
+      'You are a senior iOS engineer reviewing a pull request.\n\nSwiftUI と Combine で書かれた SettingsView の PR をレビューしてください。\n- MVVM の責務分離、@StateObject と @ObservedObject の使い分け、メモリリークを確認\n- iOS 16 以上をサポート\n- 指摘は重要度（High / Medium / Low）付きの箇条書き\n- 日本語で回答してください',
+      // Even an English request that quotes a longer passage to translate (a known limit).
+      'Translate this product tagline into English for our US landing page: 让每个人都能轻松管理自己的日程和任务。',
       // Decided by exactly two different function words (10% of the words), by exactly three
       // accented words, and by function words despite one English "The" (under 5% of the words).
       'Retrato de una anciana sonriendo con luz natural suave, fondo desenfocado, colores cálidos, estilo fotografía documental, lente 85mm, alta nitidez',

@@ -89,9 +89,12 @@ const VISIBLE = new RegExp(String.raw`[^\p{White_Space}\p{Mn}\p{Me}${UNSEEN}]`, 
 // Unseen characters that change how the characters around them are drawn: the
 // zero-width joiner and non-joiner (emoji sequences, joining in Persian and
 // Indic scripts), variation selectors and tag characters (flags such as
-// England's and Scotland's differ only in them). labelKey keeps these.
-const SHAPING = String.raw`‌‍︀-️\u{E0020}-\u{E007F}\u{E0100}-\u{E01EF}`;
+// England's and Scotland's differ only in them). labelKey keeps these, except
+// at the start or after an ASCII character, where they change nothing that is
+// drawn (and tag characters can hide text).
+const SHAPING = String.raw`\u{200C}\u{200D}\p{Variation_Selector}\u{E0020}-\u{E007F}`;
 const UNSEEN_RUNS = new RegExp(`(?:(?![${SHAPING}])[${UNSEEN}])+`, 'gu');
+const IDLE_SHAPING = new RegExp(String.raw`(?<=^|[\u{0}-\u{7F}])[${SHAPING}]+`, 'gu');
 // Error messages quote a label cut to this many characters, so the errors for
 // the largest invalid ask stay inside the result budget.
 const QUOTED_LABEL_CHARS = 40;
@@ -103,12 +106,13 @@ export function hasVisibleText(text: unknown): text is string {
 
 /**
  * A label as the user sees it, which is how labels are compared: every run of
- * whitespace as one space, without the characters the user can't see (except
- * SHAPING), and in Unicode normalization form C, so "é" matches "e" plus a
- * combining accent.
+ * whitespace as one space, without the characters the user can't see (SHAPING
+ * ones only where they change nothing), and in Unicode normalization form C, so
+ * "é" matches "e" plus a combining accent.
  */
 function labelKey(label: string): string {
-  return label.replace(/\p{White_Space}/gu, ' ').replace(UNSEEN_RUNS, '').replace(/ +/g, ' ').trim().normalize('NFC');
+  const shown = label.replace(/\p{White_Space}/gu, ' ').replace(UNSEEN_RUNS, '').replace(IDLE_SHAPING, '');
+  return shown.replace(/ +/g, ' ').trim().normalize('NFC');
 }
 
 /**
@@ -127,9 +131,9 @@ export function cleanText(text: string, keepNewlines = false): string {
 // ask_user adds that ★ itself. Any other ★ in a label can be content, such as
 // a star rating, so validateQuestions rejects it instead of changing the label,
 // and a label with such a ★ keeps its marker too, so the error quotes it whole.
-// A ★ with a number for its neighbouring word ("4.5 ★", "★ 5") is a rating.
-const STAR_MARKER =
-  /^★[\u{FE0E}\u{FE0F}]?(?=\p{White_Space}|$)(?!\p{White_Space}*\p{N})|(?<!\p{N}\p{White_Space}*)(?<=\p{White_Space})★[\u{FE0E}\u{FE0F}]?$/gu;
+// A rating with one ★ on the recommended option alone ("4.5 ★") looks just like
+// the marker, so it loses its ★ too; the ★ ask_user adds stands next to it.
+const STAR_MARKER = /^★[\u{FE0E}\u{FE0F}]?(?=\p{White_Space}|$)|(?<=\p{White_Space})★[\u{FE0E}\u{FE0F}]?$/gu;
 
 /**
  * The questions as they are shown and answered: every text field cleaned,

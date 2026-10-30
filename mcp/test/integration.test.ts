@@ -398,10 +398,10 @@ describe('tool result size', () => {
         arguments: {
           questions: Array.from({ length: MAX_QUESTIONS }, () => ({
             id: 'q'.repeat(MAX.id),
-            question: '​',
+            question: '\u{200B}',
             options: Array.from({ length: MAX_OPTIONS }, () => ({ label })),
             recommended: 0,
-            why: '​',
+            why: '\u{200B}',
           })),
         },
       });
