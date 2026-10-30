@@ -741,7 +741,7 @@ const STATUS_TEXT: Record<AreaStatus, string> = {
 /** A readable mirror of the report for clients that show only text; each rule's message appears once. */
 export function formatReport(report: CheckReport): string {
   const out = [
-    'check_prompt: a heuristic structure-and-lint report. The area checks match English keywords and headings only. "Found" means the prompt explicitly mentions the area, not that it covers it well. It gives no score: score with the shared anchors.',
+    'check_prompt: a heuristic structure-and-lint report. The area checks, and the lint rules other than the {{template}} and [[placeholder]] checks, match English text only. "Found" means the prompt explicitly mentions the area, not that it covers it well. It gives no score: score with the shared anchors.',
     '',
     `Target: ${report.target ?? 'not given'} (${report.targetKind === 'media' ? 'image or video tool' : 'text model'})`,
     '',

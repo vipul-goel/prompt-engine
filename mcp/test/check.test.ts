@@ -330,8 +330,8 @@ describe('language', () => {
     expect(dim(report, 'Edge cases').status).toBe('unknown');
   });
 
-  it('says in the report that the area checks are English-only', () => {
-    expect(formatReport(checkPrompt(STRONG))).toMatch(/English keywords and headings only/);
+  it('says in the report that the area checks and most lint rules are English-only', () => {
+    expect(formatReport(checkPrompt(STRONG))).toMatch(/The area checks, and the lint rules other than the \{\{template\}\} and \[\[placeholder\]\] checks, match English text only\./);
     expect(checkPrompt(STRONG).mostlyEnglish).toBe(true);
   });
 });
