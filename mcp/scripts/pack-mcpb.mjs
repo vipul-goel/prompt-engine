@@ -5,7 +5,7 @@
 // and icon.png (mcp/icon.png: the plugin icon at 512x512, the size mcpb recommends).
 // After packing, the archive is unpacked: its manifest must name icon.png, that file
 // must be a 512x512 PNG, and its server is started the way Claude Desktop does and
-// must list the tools.
+// must list the tools. If a check fails, the bundle is deleted.
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -45,6 +45,7 @@ if (manifest.version !== version) {
 
 const stage = mkdtempSync(join(tmpdir(), 'prompt-engine-mcpb-'));
 const unpacked = mkdtempSync(join(tmpdir(), 'prompt-engine-mcpb-check-'));
+let checked = false;
 try {
   cpSync(join(pkg, 'mcpb', 'server'), join(stage, 'server'), { recursive: true });
   const license = join(repo, 'LICENSE');
@@ -80,8 +81,10 @@ try {
   } finally {
     await client.close();
   }
+  checked = true;
 } finally {
   rmSync(stage, { recursive: true, force: true });
   rmSync(unpacked, { recursive: true, force: true });
+  if (!checked) rmSync(out, { force: true });
 }
 console.log(`packed dist-mcpb/prompt-engine.mcpb (${(statSync(out).size / 1024).toFixed(0)} KiB)`);

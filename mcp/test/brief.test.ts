@@ -168,6 +168,15 @@ describe('checklists and references', () => {
     }
   });
 
+  it('finds the Claude Code menu paragraph on one line, so nothing written under it is dropped', () => {
+    // The passage runs to the next blank line or heading, so a line written right under it, such
+    // as a list item, would be replaced along with it. If this fails, the paragraph now spans more
+    // lines: check that each one is about the dialog, put a blank line before any that isn't, and
+    // update this test.
+    const [pattern] = REFERENCE_ADAPTATIONS['output-format']!.find(([p]) => p.source.startsWith('^In Claude Code'))!;
+    expect(REFERENCES['output-format']!.text.match(pattern)?.[0].split('\n')).toHaveLength(1);
+  });
+
   it('falls back to a note when a passage it adapts has changed or dialog wording is left', () => {
     const note = '> Over MCP, ask clarifying questions with the ask_user tool';
     expect(adaptReference('questions', '# Asking\n\n## Dialogs\nUse AskUserQuestion when you can.\n').startsWith(note)).toBe(true);
