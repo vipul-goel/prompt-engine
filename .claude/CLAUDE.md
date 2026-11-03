@@ -29,7 +29,7 @@ cd mcp && npm ci && npm run build && npm test && npm run test:inspector && npm r
 
 `npm run test:worker` downloads wrangler through npx and needs Node 22 or later.
 
-## Status at handoff (2026-10-30, branch `claude/gallant-thompson-eblqe0`)
+## Status at handoff (2026-11-03, branch `claude/gallant-thompson-eblqe0`)
 
 Done and pushed (up to 34d9caa):
 - The skill, references, plugin and marketplace manifests, universal prompt, build and validate scripts, the release and version scripts, and docs.
@@ -38,18 +38,21 @@ Done and pushed (up to 34d9caa):
 - An interactive end-to-end smoke test: install from GitHub, clickable dialogs, the "What next?" menu, saving to a file.
 - The MCP server, plus fixes for all its review findings (`.claude/handoff/mcp-fix-implementer.json`).
 
-Done locally, not pushed (the commits after 34d9caa):
+Done and pushed (34d9caa..3956d22):
 - **Adversarial verification of the MCP fixes (old step 1).** Attackers tried to break all 13 items, including the slow-regex probes over `--http` with a concurrent `tools/list`, ask_user's cancel and decline handling, allowlists with ports, AskUserQuestion in served resources, and the icon. About 70 claimed breaks were triaged. The real ones were fixed: a u/v empty-match infinite loop, gate bypasses, window and excerpt bugs, the result-size bound, a bad Host giving 500, slow-body memory exhaustion, log injection, allowlist parsing, ask_user validation and capability reading, adaptation drift, the icon check, language-detection regressions, and tests that couldn't fail. Every original repro was re-run against the merged build, the docs were rewritten and fact-checked, and two more attack rounds checked the follow-up fixes; two rules that a round broke were undone (4f23883).
 - Gates at 4f23883: 233 MCP tests (Node 24 only; Node 20 and 22 aren't installed on this machine), 31/32 root tests, 32/32 Inspector gates, the MCPB bundle, the npm tarball (11 files) and the Worker checks. The failing root test is `version.test.mjs`: on macOS, `build.mjs` silently does nothing when run through a symlinked path, a repo-review finding (step 1 below).
 - Known limits, left by design and documented in `mcp/README.md`: check_prompt's language detection is a heuristic (some unlisted languages read as English; English requests quoting a longer passage in another script read as non-English; subject phrases such as "returns JSON" count as an output format); check_prompt is about 20-30% slower than at 34d9caa, still linear; GET, DELETE and OPTIONS reach the SDK, which reads the body before its 405; `<scheme>://*` allowlist entries other than http and https are kept silently; a single-★ rating on the recommended option loses its ★; SDK-written errors aren't covered by the result budget; whether Claude Desktop keeps a 2025-era form open for the hour-long wait is unverified (optional check in `docs/manual-checks.md`).
 - **Owner decision needed:** `.claude/handoff/plan.md` line 100 says declined or cancelled answers fall back to ★. The server now asks in chat when the form is cancelled, which matches plan.md line 54 and the skill. Confirm, and update plan.md, or say otherwise.
 
-Not finished, in order:
+Not finished, in order. When you finish a step or sub-step, mark it done here with its commit.
 1. **Process the repo review.** `.claude/handoff/repo-review-partial.json` holds 45 findings from four of the six review dimensions: method, scripts, workflows and docs. The evals and packaging dimensions never ran.
-   - The findings are **unverified**. Reproduce each one before fixing; some may be wrong.
+   - 1a. **Verify the 45 findings.** They are **unverified**: reproduce each one and try to refute it; some may be wrong or already fixed. Record a verdict and the evidence for each in `.claude/handoff/repo-review-verified.json`. Fix nothing yet.
+   - 1b. **Run the two missing dimensions:** eval graders, and packaging (what a plugin install, the npm package, the MCPB bundle and the release files give users). Verify their findings the same way and add them to the same file.
+   - 1c. **Fix the confirmed code findings** in `scripts/` and the parked workflows in `.github/pending-workflows/`.
+   - 1d. **Fix the confirmed method and docs findings.** Re-run the affected eval cases with a cost cap.
+   - 1e. **Adversarially check the fixes** from 1c and 1d, as was done for the MCP fixes.
    - Likely high value: the universal core offers "Save to file" in chat apps; the "What next?" reply handling; the history sanitizer only redacts e-mail addresses; CRLF and `.DS_Store` breaking validate on Windows and macOS; `build.mjs` silently doing nothing when its path has spaces or is a symlink (the `import.meta.url` vs `argv[1]` check); `verify-data.yml` opening duplicate issues; the README overclaiming before npm publish.
-   - Then run the two missing dimensions: eval graders, and packaging (what a plugin install copies to users).
-2. **Move the parked workflows.** Move `.github/pending-workflows/*.yml` to `.github/workflows/`. The cloud session's GitHub token lacked the `workflow` scope, so they're parked there. Then update the docs that call them "the CI/Release workflow".
+2. **Move the parked workflows.** Move `.github/pending-workflows/*.yml` to `.github/workflows/`. A cloud session's GitHub token lacked the `workflow` scope, so they were parked there. This clone pushes over SSH, so the token's scopes shouldn't matter; if GitHub still refuses the push, the owner runs `gh auth refresh -h github.com -s workflow`. Then update the docs that call them "the CI/Release workflow", push, and get CI passing, including the MCP tests on Node 20 and 22.
 3. **Run the final full eval.** It makes billed calls; the last run cost about $2:
 
    ```bash
@@ -58,7 +61,7 @@ Not finished, in order:
 
    Update the table in `docs/compatibility.md`. If you change SKILL.md wording that affects triggering, re-run the trigger tests: the eval set and method are described in `docs/compatibility.md` under "Trigger tests".
 4. Optionally re-run the interactive smoke test: install the marketplace from the branch with `claude plugin marketplace add "https://github.com/vipul-goel/prompt-engine.git#<branch>"`, then run `/prompt-engine write a blog post about remote work`.
-5. Push the branch, squash the WIP commits if you like, open a PR to `main`, then follow `docs/publishing.md` for the first release. Ask the owner before pushing any tag or publishing to npm.
+5. Open a PR to `main`. To squash the WIP commits, use "Squash and merge" on GitHub instead of rewriting the pushed branch. Then follow `docs/publishing.md` for the first release. Ask the owner before pushing any tag or publishing to npm. As of 2026-11-03, npm isn't logged in on this Mac and the repo has no Actions secrets.
 
 ## Gotchas learned
 
@@ -67,6 +70,6 @@ Not finished, in order:
 - **Description tuning.** If you tune the description with skill-creator's `run_loop`, run each query in its own project folder. Parallel runs that share one `.claude/commands/` folder see each other's copies and give false negatives.
 - **Choosing eval cases.** `claude plugin eval --case` takes a single glob, with no braces and no repeats. Run several commands, or use `--tag`.
 - **macOS.** There is no `timeout` command: use `perl -e 'alarm shift; exec @ARGV' <seconds> <command>`. In a copy under `/tmp` (a symlink to `/private/tmp`), run the build as `node "$(realpath scripts/build.mjs)"`, or it does nothing.
-- **Commit identity.** On the owner's Mac git has no user set, so commits record the machine's hostname. Commit with `git -c user.name=Claude -c user.email=noreply@anthropic.com`.
+- **Git on the owner's Mac.** `origin` uses SSH (`git@github.com:vipul-goel/prompt-engine.git`) and signs in as vipul-goel. Keep it on SSH: the macOS Keychain holds a GitHub login for an account that can't push here. Git's name and e-mail are set, so commit normally, with the `Co-Authored-By` trailer.
 - **Invisible characters in source.** The Edit tool can write a `\uXXXX` escape as the literal character. Write `\u{XXXX}` instead, and check the bytes after editing tests about invisible characters.
 - **Cost.** Behavior evals and description tuning are billed model calls. Use `--runs 1` and `--max-cost-usd`.
