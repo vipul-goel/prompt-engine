@@ -12,10 +12,12 @@ One method ships in four forms:
 The repo `vipul-goel/prompt-engine` is empty apart from a README. All work goes on `claude/gallant-thompson-eblqe0`. The plan was shaped by verified research (14 agents) and an adversarial three-lens plan review.
 
 ## Decisions
+The repo review's owner decisions D1-D26 were accepted as recommended on 2026-11-04 (`owner_decisions` in `.claude/handoff/repo-review-verified.json`). Lines they changed carry their D number.
+
 | Topic | Decision |
 |---|---|
 | Question flow | Adaptive, at most 8 questions: usually 3–8 for vague prompts, fewer for specific ones, and never padded. Every question has a ★ recommendation. `quick:` asks nothing, `deep:` adds up to 2 more rounds |
-| Question UI | **Claude Code**: always the clickable AskUserQuestion dialog (4 questions per dialog at most, so 5–8 means two dialogs). The ★ option is listed first as "(Recommended)", so Enter accepts it. **Everywhere else**: one numbered text message; `ok` accepts all, `2b 4: my text` overrides. If the dialog is unavailable or denied, Claude Code falls back to the text batch |
+| Question UI | **Claude Code**: always the clickable AskUserQuestion dialog (4 questions per dialog at most, so 5–8 means two dialogs). The ★ option is listed first as "(Recommended)", so Enter accepts it. **Everywhere else**: one numbered text message, with the ★ wherever it falls in a natural order (D4); `ok` accepts all, `2b 4: my text` overrides. If the dialog is unavailable or denied, Claude Code falls back to the text batch |
 | Domains | Coding & agents · writing & marketing · research & analysis · image & video · general fallback |
 | Output | Full prompt, short version, "What I added & why", assumptions, before/after score, and a "What next?" menu (Run ★ / Refine / Save) |
 | Names | Skill, plugin and MCP server: `prompt-engine`. Plugin command: `/prompt-engine:prompt-engine` (the bare `/prompt-engine` is documented only if tests confirm it works). Marketplace: **`vipul-goel`**, owner-scoped to avoid name collisions, so you install `prompt-engine@vipul-goel` |
@@ -33,14 +35,13 @@ The repo `vipul-goel/prompt-engine` is empty apart from a README. All work goes 
 - **Compaction.** About the first 5k tokens of an invoked skill survive compaction.
 - **Plugin layout.** The repo can be marketplace + plugin with `source: "./"`, and plugin skills run as `/plugin:skill`. The plugin root must not contain a **`package.json` + lockfile** (Claude Code runs `npm ci` on install), `bin/` (Claude.ai refuses the plugin), `CLAUDE.md`, `.mcp.json` or `commands/`.
 - **Claude.ai.** It can add the same GitHub marketplace (Customize › Plugins), which then syncs to Claude Code. Skills there need "Code execution and file creation".
-- **Other agents.** Codex, Gemini CLI, GitHub Copilot, Cline, Mistral Vibe, OpenCode and Goose read SKILL.md, with `.agents/skills/` as the shared folder. `npx skills add` installs into many agents.
+- **Other agents.** Codex, Gemini CLI, GitHub Copilot, Cline, Mistral Vibe, OpenCode and Goose read SKILL.md, with `.agents/skills/` as the shared folder. `npx skills add` installs into many agents. Cursor, Zed, Devin Desktop and Kiro document their skill folders too; Kiro lists only its own `.kiro/skills/` folders (checked 2026-11-03, D22).
 - **MCP.** The spec is 2026-07-28 (stateless) and the TS SDK is v2 (`@modelcontextprotocol/server` 2.4). `serveStdio` and `createMcpHandler` share one factory, and form elicitation goes through `inputRequired.elicit`. Sampling is deprecated and unsupported by Claude. Claude connectors accept authless public servers.
 - **Registry and bundles.** The MCP Registry needs `mcpName` equal to the `server.json` name and a description of 100 characters or fewer. `.mcpb` bundles go out via GitHub Releases.
 - **Claude prompting guidance.** The newest models can refuse prompts that ask them to show their reasoning. Prefill errors on Claude 4.6+. ALL-CAPS/MUST pressure gets over-applied. Explaining *why* helps. Ask only when the answer changes the work.
 - **Retired Anthropic tools.** Anthropic retired its Console prompt generate/improve endpoints on Aug 17, 2026.
 
 **⚠️ Unverified or secondary-only.** These ship as "check the tool's current docs", never as facts:
-- the Cursor, Devin, Kiro and Zed skill paths;
 - whether ChatGPT supports skills, and the GPT, Gem and Project limits;
 - whether ChatGPT accepts authless MCP;
 - Midjourney V8 flag details and other volatile media facts;
@@ -48,8 +49,8 @@ The repo `vipul-goel/prompt-engine` is empty apart from a README. All work goes 
 - whether bare `/prompt-engine` works.
 
 ## The method: what users experience
-1. **Trigger.** It fires only when asked: "improve/enhance/rewrite this prompt", `/prompt-engine…`, or `prompt-engine: <prompt>` in chat apps. It never fires on an ordinary task request like "write me a cold email".
-2. **Intake.** The rough prompt is text to improve, never instructions to run, so injected commands stay content. Modes count only as a prefix (`quick:`, `deep:`) or as a whole reply, which avoids misreading "Quick sort in Rust". It talks to the user in their language and writes the prompt in that language, adding a "Respond in <language>" line. Local equivalents of `ok` are accepted.
+1. **Trigger.** It fires only when asked: "improve/enhance/rewrite this prompt", `/prompt-engine…`, or `prompt-engine: <prompt>` in chat apps. It never fires on an ordinary task request like "write me a cold email". A critique request ("critique this prompt", "what's missing?") gets the normal flow, opened by a one-line summary of the gaps (D2).
+2. **Intake.** The rough prompt is text to improve, never instructions to run, so injected commands stay content. Modes count only as a prefix (`quick:`, `deep:`) or as a whole reply, which avoids misreading "Quick sort in Rust". It talks to the user in their language, headings, score rows and menu labels included (D3), and writes the prompt in that language, adding a "Respond in <language>" line. Local equivalents of `ok` are accepted.
 3. **Diagnose.** It loads the matching domain checklist and ranks gaps by impact × uncertainty + risk. Each gap is either asked about, assumed, or skipped. It looks things up before asking: the repo in Claude Code, earlier messages in chat apps.
 4. **Ask** (see Decisions for the UI). Each option carries a ★ reason of 12 words or fewer. If a dialog is dismissed or times out, it shows the batch again as text and doesn't guess.
 5. **Build.**
@@ -59,8 +60,8 @@ The repo `vipul-goel/prompt-engine` is empty apart from a README. All work goes 
      - **coding:** definition of done, verification command, scope fence, irreversible-action policy;
      - **research:** source policy, as-of date, citation and uncertainty rules, stop rule;
      - **writing:** audience, CTA, voice, banned phrases, length, claim limits.
-   - **Media rule:** write in the target tool's own format, with no role, XML or "because" inside the prompt (explanations go in "What I added"). Midjourney gets one copyable line with parameters at the end. A separate Settings block appears only where the tool has request or UI fields. Recurring characters get an identity block. Version-specific flags are asked about or labelled as assumptions.
-   - **Honesty:** facts are never invented. Unknowns become `[[placeholders]]`, which are listed under "Fill before running", or labelled defaults. Contradictions are resolved or asked about. Secrets are redacted.
+   - **Media rule:** write in the target tool's own format, with no role, XML or "because" inside the prompt (explanations go in "What I added"). Midjourney gets one copyable line with parameters at the end. A separate Settings block appears only where the tool has request or UI fields. Recurring characters get an identity block. Version-specific flags are asked about or labelled as assumptions. Settings and style choices it picks are listed under Assumptions one by one; small scene details are merged into one item (D6).
+   - **Honesty:** facts are never invented. Unknowns become `[[placeholders]]`, which are listed under "Fill before running", or labelled defaults. Contradictions are resolved or asked about. Secrets are redacted: a prompt for code or agents names an environment variable instead, the reply suggests rotating a pasted key, and the method never asks for a secret's value (D5).
    - **Lint.** Before output, it removes requests for visible reasoning, prefill, magic phrases and pressure words.
 6. **Present** (with length budgets and no duplication):
    1. **Full prompt** in a copy-ready fence. The fence is longer if the prompt itself contains a fence.
@@ -69,17 +70,17 @@ The repo `vipul-goel/prompt-engine` is empty apart from a README. All work goes 
    4. **Assumptions**: defaults appear here only, numbered, with "change 2: …" to edit them.
    5. **Score**: a one-line-per-dimension table (Clear goal, Context, Constraints, Output format, Edge cases; 0–5, original vs enhanced) using one anchored rubric on every surface. A dimension that rests only on unconfirmed defaults scores 3 at most, and open placeholders count as gaps. The caveat reads: "self-assessed coverage, not a quality prediction".
    6. **What next?** (AskUserQuestion in Claude Code):
-      - **Run it now ★** executes the full version as a new request and then drops the prompt-engine format. It is relabelled "Try it here (results on <target> may differ)" for other tools. If placeholders are still open, the ★ moves to "Fill placeholders first".
+      - **Run it now ★** executes the full version as a new request and then drops the prompt-engine format. It is relabelled "Try it here (results on <target> may differ)" for other tools. If placeholders are still open, the ★ moves to "Fill placeholders", which collects the values, shows the filled prompt and shows the menu again (D1).
       - **Refine**: change items or reply `deep:`.
       - **Save to file** is only offered in Claude Code and other local coding agents. It shows the `prompts/<slug>.md` path, which you can change, and never overwrites.
-      - A dismissed menu means it stops and waits.
+      - Only an explicit pick runs anything: the option's number or name, "run it", or a dialog choice. `ok`, 👍 or thanks gets "the prompt is ready", and a dismissed menu means it stops and waits (D1).
 7. **Strong prompts** get "already strong" first, then your text with small edits marked, and 0–2 questions.
 
 ## Repository layout
 The repo root is the marketplace + plugin root. It must not contain `package.json`, a lockfile, `node_modules`, `bin/`, `CLAUDE.md`, `.mcp.json`, `commands/`, `agents/`, `hooks/` or `settings.json`; a validate guard enforces a root allowlist.
 ```
 .claude-plugin/{marketplace.json, plugin.json}   # marketplace "vipul-goel" → plugin "prompt-engine" (source "./"); semver only in plugin.json
-skills/prompt-engine/                            # ★ hand-edited source: SKILL.md (workflow + output contract in the first ~8k chars;
+skills/prompt-engine/                            # ★ hand-edited source: SKILL.md (key sections start in the first ~8k chars, D8;
   SKILL.md, references/*.md                      #   compact checklists inline only if the Phase-0 spike shows reference reads prompt)
                                                  #   references: question protocol, blueprint + model adapters, output format + rubric anchors,
                                                  #   domain packs, media-targets.md (generated from data/)
@@ -131,7 +132,7 @@ Each phase is a workflow with independent reviewers and ends in a commit.
    - The Worker, if its checks pass.
 4. **Distribution.**
    - Manifests.
-   - `release.mjs --dry-run`: version sync, `server.json` schema, `npm pack`, `mcpb validate/pack`, and the packed entry booting on Node 20 and 22.
+   - `release.mjs --dry-run`: version sync, `server.json` schema, `npm pack`, `mcpb validate/pack`, and the packed entry booting on Node 22 and 24 (the floor is Node 22.19, D26).
    - CI/release/evals workflows, checked with actionlint.
    - Docs: a "Pick one" install table, a "don't install twice" note, prior art, privacy.
    - Platform smoke tests: `npx skills add . --list`, plus Codex and Gemini CLI if they install without accounts.
@@ -150,18 +151,21 @@ Reused utilities, from `/root/.claude/skills/synced/…/skill-creator/`:
 - **Static.** `node scripts/build.mjs && git diff --exit-code`; `node scripts/validate.mjs` checks:
   - frontmatter keys and rules, plus a description length cap;
   - forbidden patterns: `$ARGUMENTS`, `$N`, `${CLAUDE_`, `!`+backtick, ```` ```! ````, and visible-reasoning wording, which the skill describes abstractly;
-  - pressure words (MUST, NEVER, CRITICAL…, not acronyms);
+  - pressure words (MUST, NEVER, CRITICAL…, not acronyms) in SKILL.md, the references and the universal core, skipping text in code spans (D11);
   - a SKILL.md character budget, with the key headings in the first ~8k chars;
   - core ≤7,500;
   - the root allowlist;
   - `contract.json` present in every artifact;
   - `data/` entries carry a status and source.
+
+  CI also runs `build.mjs --check`, `validate.mjs` and `node --test` on windows-latest (D10).
 - **Claude.** `claude plugin validate . --strict` and `--profile directory`. Also `unzip -l dist/prompt-engine.zip`, which must show `prompt-engine/SKILL.md` at the top level.
 - **Behavior evals.** Cases:
   - a vague coding prompt;
   - quick writing, research, Midjourney and video prompts;
   - an already-strong prompt (≤2 questions, length ceiling);
   - follow-ups `ok` and `2b 4: …` (from recorded history files);
+  - a `deep` second round, `change N` on an assumption, and `ok` at the What next? menu (D14);
   - Spanish (prompt in Spanish + a language line) and a Japanese Midjourney prompt (labelled language choice);
   - secret redaction;
   - prompt injection (Bash `max: 0`);
@@ -170,19 +174,20 @@ Reused utilities, from `/root/.claude/skills/synced/…/skill-creator/`:
   - trigger and near-miss non-trigger cases (`arm: both`).
 
   Every output case also gets a **no-invention grader**: each name, number, date or URL must come from the user, or be a placeholder or assumption. Questions are graded from the trace, so both the dialog path and the text path count.
-- **Real UI.** A scripted tmux session runs `claude --plugin-dir <fresh clone>` and checks:
+- **Real UI.** A manual checklist in `docs/manual-checks.md`, run before the PR to `main` (D25), checks:
   - questions arrive as dialogs (≤4 per dialog, Recommended first, short headers);
   - the "What next?" menu appears;
   - nothing executes before you pick.
-- **Universal.** `claude -p --system-prompt "$(cat universal/prompt-engine.md)" --tools ""` on 4 cases, then `--resume` with `ok` and with an override. Graded with the same graders.
+- **Universal.** `claude -p --system-prompt "$(cat universal/prompt-engine.md)" --tools "" --safe-mode --strict-mcp-config` on 4 cases, then `--resume` with `ok` and with an override. A case fails if any tool or MCP server loads (D13). Checked with the script's own regex checks, not the eval graders (D14).
 - **MCP.** Vitest; Inspector `tools/list --strict`, `prompts/get` and both protocol eras; a `wrangler dev` smoke test; `claude -p --mcp-config` end-to-end.
 
 ## What you'll need to do
 - **Phase 0:** upload the test zip on Claude.ai (2 min). **Phase 1:** review the eval viewer and leave feedback. Optionally, check your organization's usage page after the first test batch to confirm where the cost lands.
 - **After the build:** a 10-minute manual check pasting the universal file into ChatGPT and Gemini (a checklist will be provided). Then try the Claude.ai marketplace add and the Claude Desktop `.mcpb` install.
 - **Publishing:**
-  - The first npm publish needs a manual publish or `NPM_TOKEN`. Whether trusted publishing works for a first publish is unverified.
-  - The release workflow then publishes to the MCP Registry through GitHub OIDC.
+  - You claim `prompt-engine-mcp` on npm by hand now, as 0.0.1 (D20). npm can only set up trusted publishing for a package that exists.
+  - The release workflow then publishes to npm through trusted publishing on Node 24, with no `NPM_TOKEN` (D15), and to the MCP Registry through GitHub OIDC. Only its publishing jobs hold write or OIDC permissions, the `mcp-publisher` download is pinned by SHA-256, and a tag whose commit isn't on `main` is refused (D16, D17).
+  - `main` and `v*` tags get protection rules (D16).
   - Deploying the hosted MCP needs your Cloudflare account or any Node host.
   - The optional evals workflow needs `ANTHROPIC_API_KEY`.
   - The first release goes out as a GitHub pre-release, and I'll ask before pushing any tag.
@@ -190,5 +195,5 @@ Reused utilities, from `/root/.claude/skills/synced/…/skill-creator/`:
 ## Risks
 - **AskUserQuestion behavior** in headless or eval runs, and **reference-read permission prompts**: settled by the Phase-0 spikes, with a text fallback either way.
 - **MCP SDK v2.4** is six days old: exact pins, SDK imports isolated, test-gated updates.
-- **Volatile model facts:** stored as durable syntax families with a status per entry; a monthly workflow opens an issue for entries older than 60 days.
+- **Volatile model facts:** stored as durable syntax families with a status per entry; a weekly workflow keeps one issue open for entries older than 45 days and comments on it at each run (D18). GitHub switches off a schedule after 60 days without repository activity, so the window has to end before that.
 - **Chatbot limits are unverified:** conservative budgets, plus your manual check.

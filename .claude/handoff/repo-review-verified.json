@@ -30,6 +30,14 @@
     "confirmed": 43,
     "needs owner decision": 2
   },
+  "owner_answers": {
+    "date": "2026-11-04",
+    "answer": "The owner accepted every recommended answer in owner_decisions.",
+    "still_open": [
+      "D8, second question: should quick mode also read references/questions.md? It had no recommendation."
+    ],
+    "recorded_in": ".claude/handoff/plan.md (changed lines carry their D number) and .claude/CLAUDE.md"
+  },
   "not_verified": [],
   "severity_note": "severity is the verifiers' own rating; review_severity is the original review's. Ten findings stay major: 1, 3, 5, 13, 16, 27, 28, 35, 37 and 39.",
   "index": [
@@ -356,7 +364,8 @@
         3
       ],
       "question": "At the What next? menu, should a bare ok, yes or 👍 pick the ★ option and run it, the way Enter does in the Claude Code dialog? Or should only an explicit pick (the number, the option name, \"run it\", a dialog choice) start anything? Today one universal run read ok as Run it now. Also: should Fill placeholders collect the values and then run, as Run it now does today, or collect them, show the filled prompt and show the menu again?",
-      "recommended": "Explicit picks only; ok, 👍 or thanks gets \"the prompt is ready\" and nothing runs. Fill placeholders collects the values, shows the filled prompt and shows the menu again."
+      "recommended": "Explicit picks only; ok, 👍 or thanks gets \"the prompt is ready\" and nothing runs. Fill placeholders collects the values, shows the filled prompt and shows the menu again.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D2",
@@ -364,7 +373,8 @@
         11
       ],
       "question": "What should \"critique this prompt\" or \"what's missing from this prompt?\" get? (A) Feedback only: the original's scores and its 3-5 biggest gaps, then an offer to build. (B) The normal flow, with \"critique\" dropped from the description; this needs a billed re-run of the 24 trigger tests. (C) The normal flow as today (a one-line gap summary, then questions), written down in SKILL.md and output-format.md:104.",
-      "recommended": "C if critique is not meant to be its own feature (cheapest, matches today's behavior); A if it is."
+      "recommended": "C if critique is not meant to be its own feature (cheapest, matches today's behavior); A if it is.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D3",
@@ -372,7 +382,8 @@
         9
       ],
       "question": "In non-English replies, should the section headings, score rows, caveat line, What next? labels and reply keywords (ok, change N, deep) be translated, or stay in English as fixed labels?",
-      "recommended": "Translate them, as output-format.md:3 and questions.md:73 already say; make the universal core say the same."
+      "recommended": "Translate them, as output-format.md:3 and questions.md:73 already say; make the universal core say the same.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D4",
@@ -380,7 +391,8 @@
         10
       ],
       "question": "In the text format, should the ★ sit wherever it falls in a natural order (as the examples and README show), or always on option a), like the dialog?",
-      "recommended": "Natural order: drop \"the recommended option first\" from SKILL.md:57 and questions.md:38; keep the dialog rule."
+      "recommended": "Natural order: drop \"the recommended option first\" from SKILL.md:57 and questions.md:38; keep the dialog rule.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D5",
@@ -388,7 +400,8 @@
         2
       ],
       "question": "For prompts meant for code or agents, should the method name an environment variable (such as OPENAI_API_KEY) instead of a [[api key]] placeholder, always suggest rotating a pasted key in the first line, and never ask for a secret's value?",
-      "recommended": "Yes to all three."
+      "recommended": "Yes to all three.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D6",
@@ -396,7 +409,8 @@
         4
       ],
       "question": "In image and video prompts, which details the model picks should be listed under Assumptions: every small scene detail (merged into one item), or only numbers, settings and style choices?",
-      "recommended": "Numbers, settings and style choices as their own items; small scene details merged into one item."
+      "recommended": "Numbers, settings and style choices as their own items; small scene details merged into one item.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D7",
@@ -404,7 +418,8 @@
         7
       ],
       "question": "Keep the approved cap rule (plan.md:70: cap a dimension at 3 only when it rests only on defaults) and just fix the template's sample score, or adopt a stricter rule where anything above 3 must come from what the user stated or confirmed?",
-      "recommended": "Keep the approved rule; set the sample to Context 3 and Output format 3, and make the sample menu show Fill placeholders ★."
+      "recommended": "Keep the approved rule; set the sample to Context 3 and Output format 3, and make the sample menu show Fill placeholders ★.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D8",
@@ -412,7 +427,8 @@
         8
       ],
       "question": "Keep the 8,000-character rule as a check on where the key sections start (and reword plan.md:82), or require whole sections to fit, which means cutting about 940 characters of method text and re-running the evals? Should quick mode also read references/questions.md, so a later deep round has the full question rules?",
-      "recommended": "Keep it as a start check, reword plan.md:82, and copy the caveat text and the at-most-3 caps into SKILL.md:90. Quick mode reading questions.md: your call (one extra 5.4 KB read per quick run)."
+      "recommended": "Keep it as a start check, reword plan.md:82, and copy the caveat text and the at-most-3 caps into SKILL.md:90. Quick mode reading questions.md: your call (one extra 5.4 KB read per quick run).",
+      "decision": "Accepted as recommended on 2026-11-04. The second question (should quick mode also read references/questions.md?) had no recommendation and is still open."
     },
     {
       "id": "D9",
@@ -420,7 +436,8 @@
         14
       ],
       "question": "Will anyone but you record history fixtures, possibly on Windows? May the fix spend one billed recording (capped at $1) to confirm the skill still reads its references when Read is limited to the plugin folder?",
-      "recommended": "Also run the secret scan from validate.mjs either way, so every committed fixture is checked; allow the one recording."
+      "recommended": "Also run the secret scan from validate.mjs either way, so every committed fixture is checked; allow the one recording.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D10",
@@ -428,7 +445,8 @@
         16
       ],
       "question": "Add a windows-latest CI job for build --check, validate and node --test?",
-      "recommended": "Yes, after the fixes for 13 and 16 land."
+      "recommended": "Yes, after the fixes for 13 and 16 land.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D11",
@@ -436,7 +454,8 @@
         17
       ],
       "question": "How should blueprint.md:56 and :99 name the patterns they warn against once the self-lint covers the references: in backticks, with the lint skipping code spans, or reworded without the literal words?",
-      "recommended": "Backticks, with the lint skipping code spans only (not quoted text)."
+      "recommended": "Backticks, with the lint skipping code spans only (not quoted text).",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D12",
@@ -444,7 +463,8 @@
         20
       ],
       "question": "May build.mjs refuse a recording whose Read used offset or limit, so it has to be re-recorded? No committed recording has one.",
-      "recommended": "Yes (low stakes)."
+      "recommended": "Yes (low stakes).",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D13",
@@ -452,7 +472,8 @@
         22
       ],
       "question": "Is claude -p close enough to a chatbot for the universal test, or should it call the Messages API directly (needs an ANTHROPIC_API_KEY, billed separately, and replaces the approach plan.md:177 approved)?",
-      "recommended": "Keep claude -p, add --safe-mode and --strict-mcp-config, and fail the case if the init event lists any tool or MCP server."
+      "recommended": "Keep claude -p, add --safe-mode and --strict-mcp-config, and fail the case if the init event lists any tool or MCP server.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D14",
@@ -460,7 +481,8 @@
         5
       ],
       "question": "Which billed eval cases should be added: a deep round, change N, Run it now, ok at the menu? Each costs about $0.10-0.20 per run plus a one-time recording. Should the universal test reuse the eval graders, including LLM-judged ones?",
-      "recommended": "Add deep, change N and ok-at-the-menu (after D1); keep the universal test's own regex checks."
+      "recommended": "Add deep, change N and ok-at-the-menu (after D1); keep the universal test's own regex checks.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D15",
@@ -468,7 +490,8 @@
         26
       ],
       "question": "How should CI publish to npm? (a) Trusted publishing with a direct npm publish: fully automatic, though npm's best-practice list prefers staging. (b) Trusted publishing with npm stage publish: you approve each version with 2FA, then run the MCP Registry publish by hand. (c) Publish by hand at every release and remove npm from the workflow.",
-      "recommended": "(a), on Node 24."
+      "recommended": "(a), on Node 24.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D16",
@@ -477,7 +500,8 @@
         32
       ],
       "question": "Split release.yml into four jobs so only the publishing jobs hold write or OIDC permissions? main has no branch protection or rulesets: protect it and limit who can create v* tags? Should a release refuse a tag whose commit isn't on main, and should it re-run the full CI first?",
-      "recommended": "Four-job split; protect main and v* tags; refuse tags not on main; trust main's CI instead of re-running it."
+      "recommended": "Four-job split; protect main and v* tags; refuse tags not on main; trust main's CI instead of re-running it.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D17",
@@ -485,7 +509,8 @@
         28
       ],
       "question": "Pin the mcp-publisher download by its SHA-256, or verify its Sigstore bundle with cosign as the registry guide does?",
-      "recommended": "SHA-256 pin (no new action; update the hash with each version bump)."
+      "recommended": "SHA-256 pin (no new action; update the hash with each version bump).",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D18",
@@ -494,7 +519,8 @@
         31
       ],
       "question": "While the stale-data issue stays open, should each run add a comment (notifies watchers) or only refresh the list? GitHub switches off scheduled workflows after 60 quiet days, the same span after which entries go stale: is a doc note enough, or should the check run weekly with a 45-day window?",
-      "recommended": "Comment on each run; weekly with a 45-day window (otherwise the reminder almost never fires in a quiet repository)."
+      "recommended": "Comment on each run; weekly with a 45-day window (otherwise the reminder almost never fires in a quiet repository).",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D19",
@@ -503,7 +529,8 @@
         34
       ],
       "question": "Move the workflows (handoff step 2) right after 1c, before 1d, so the docs need no interim wording? ci.yml runs only on pull requests and pushes to main: may the session open a draft PR to main at step 2 so CI runs?",
-      "recommended": "Yes to both."
+      "recommended": "Yes to both.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D20",
@@ -512,7 +539,8 @@
         26
       ],
       "question": "Will you claim prompt-engine-mcp on npm now (needs npm login on your Mac)? As a placeholder such as 0.0.1 built from this branch, or as 0.1.0 from the final PR head right before merge? npm never reuses a version, and trusted publishing can only be set up for a package that exists.",
-      "recommended": "Claim it now with 0.0.1 by hand; it closes the name gap and is the first publish trusted publishing needs."
+      "recommended": "Claim it now with 0.0.1 by hand; it closes the name gap and is the first publish trusted publishing needs.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D21",
@@ -520,7 +548,8 @@
         35
       ],
       "question": "Should README.md:5 stay a one-line pitch that links to docs/compatibility.md, or spell out the test status for each group of apps?",
-      "recommended": "One-line pitch that links to compatibility.md."
+      "recommended": "One-line pitch that links to compatibility.md.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D22",
@@ -529,7 +558,8 @@
         35
       ],
       "question": "Cursor, Zed, Devin Desktop and Kiro now document their skill folders. Move them from unverified (plan.md:43, install.md:93, compatibility.md:25) to \"✓ docs\"? Kiro would get its own folder, since its docs don't list ~/.agents/skills/.",
-      "recommended": "Yes, citing the pages checked on 2026-11-03."
+      "recommended": "Yes, citing the pages checked on 2026-11-03.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D23",
@@ -537,7 +567,8 @@
         39
       ],
       "question": "Can you recover the 24 trigger requests (the cloud session in 55a5b2b's Claude-Session trailer may show them)? Was the shipped description the tuning loop's output or picked by hand after seeing all 24 results? Do you still have the round-2 re-run results?",
-      "recommended": "If the set can't be recovered: call it a one-off test whose set isn't in the repository, and replace compatibility.md:40 with step 3's results."
+      "recommended": "If the set can't be recovered: call it a one-off test whose set isn't in the repository, and replace compatibility.md:40 with step 3's results.",
+      "decision": "Accepted as recommended on 2026-11-04. The owner did not say the 24-request set can be recovered, so the fallback applies unless it turns up. Whether the description was picked by hand stays unknown, so the docs use wording that holds either way."
     },
     {
       "id": "D24",
@@ -545,7 +576,8 @@
         40
       ],
       "question": "README.md:91 says most other enhance-prompt buttons rewrite silently, and nothing backs it. Delete it, give a source, or narrow it to tools you have tried?",
-      "recommended": "Delete it."
+      "recommended": "Delete it.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D25",
@@ -553,7 +585,8 @@
         43
       ],
       "question": "plan.md promised a scripted tmux check of the Claude Code dialogs, and none was committed. Do you want that script (repeatable, billed, tied to the screen layout), or is a manual checklist in docs/manual-checks.md enough? The only run predates 998e0c8: should handoff step 4 (re-run the interactive test) become required before the PR?",
-      "recommended": "Manual checklist, and make step 4 required."
+      "recommended": "Manual checklist, and make step 4 required.",
+      "decision": "Accepted as recommended on 2026-11-04."
     },
     {
       "id": "D26",
@@ -561,7 +594,8 @@
         45
       ],
       "question": "Node 20 has been end-of-life since 2026-04-30. Keep it as the floor (mcp/package.json engines, the CI matrix, plan.md:134), or raise the floor to Node 22?",
-      "recommended": "Raise the floor to Node 22.19 (what the MCP checks already need)."
+      "recommended": "Raise the floor to Node 22.19 (what the MCP checks already need).",
+      "decision": "Accepted as recommended on 2026-11-04."
     }
   ],
   "coordination": [
@@ -842,7 +876,8 @@
         "1. At the What next? menu, should a bare `ok` (or 👍, `yes`) pick the ★ option and run the prompt? It accepts the ★ answers in question rounds, and Enter picks the recommended option in the Claude Code dialog. Or should only an explicit pick (`1`, \"run it\", a dialog choice) start a run? Today one universal run read `ok` as Run it now.\n2. When placeholders are open, should \"Fill placeholders\" collect the values and then run the prompt (how plan.md:72's \"Fill placeholders first\" reads), or collect them, show the filled prompt and wait for a new pick?",
         "1. At the \"What next?\" menu, should a bare `ok`, `yes` or 👍 pick the ★ option and run, as Enter does in the Claude Code dialog (README.md:67)? Or should only an explicit pick (`1`, an option name, \"run it\") start anything? And should `thanks` do nothing? In today's only test (U3), the model read `ok` as Run it now.\n2. When placeholders are open, should \"Fill placeholders\" collect the values and then run? That is how plan.md:72's \"Fill placeholders first\" reads, and what the universal core does today. Or should it collect them, show the filled prompt, and wait for a new pick?",
         "1. At the What next? menu, should a bare `ok`, `yes` or 👍 pick the ★ option and run it, the way Enter does in the Claude Code dialog (README.md:67)? Or should only an explicit pick (`1`, an option name, \"run it\", a dialog choice) start anything? In today's one test (U3), the model read `ok` as Run it now. Either way, I assume `thanks` alone should pick nothing.\n2. When placeholders are open, should \"Fill placeholders\" collect the values and then run? That is how Run it now works today (SKILL.md:97, universal:56, plan.md:72), and how two of three recorded skill runs read it. Or should it collect them, show the filled prompt, and wait for a new pick?"
-      ]
+      ],
+      "resolution": "D1, 2026-11-04: only an explicit pick runs anything; ok, 👍 or thanks gets \"the prompt is ready\". Fill placeholders collects the values, shows the filled prompt and shows the menu again. Apply the explicit-picks branch of proposed_fix, with the audit's fix_corrections."
     },
     {
       "id": 4,
@@ -1463,7 +1498,8 @@
       "owner_questions": [
         "What should 'critique this prompt' or 'what's missing from this prompt?' get? (A) Feedback only: the original's scores and its 3–5 biggest gaps, then an offer to build. (B) The normal improve flow, with 'critique' removed from the description, which needs a billed re-run of the 24 trigger tests. (C) The normal improve flow as today, written down in SKILL.md, keeping 'critique'.",
         "What should 'critique this prompt' or 'what's missing from this prompt?' get?\n(A) Feedback only: the original's scores and its 3-5 biggest gaps, then an offer to build.\n(B) The normal improve flow, with 'critique' dropped from the description. This needs a billed re-run of the 24 trigger tests.\n(C) The normal improve flow as today, written down in SKILL.md and output-format.md:104."
-      ]
+      ],
+      "resolution": "D2, 2026-11-04: option C. Keep the normal flow and write it down: a critique request gets a one-line summary of the gaps, then the questions. Amend output-format.md:104 and the universal core's question-round rule to allow that line, and record it in plan.md's trigger list (done 2026-11-04)."
     },
     {
       "id": 12,
