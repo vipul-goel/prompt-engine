@@ -12,6 +12,7 @@ Read `docs/architecture.md` first for the map. The approved build plan, with the
     - `references/media-targets.md`
     - `mcp/src/generated/content.ts`
     - the skill text inside `evals/*/history.jsonl`
+    - `evals/*/graders/lint-prompt*.md` (lint graders, from `data/lint-rules.json`)
 - **SKILL.md frontmatter** may only use `name`, `description` (at most 200 characters, one line, no `<>` or quotes), `license`, `allowed-tools` and `metadata`. Claude.ai and the Skills API reject other keys.
 - **Method text** has no capitalized pressure words and no requests to show reasoning. The validator enforces both through `data/lint-rules.json`.
 - **Honesty.** The owner wants honesty above all: never state unverified facts as facts in docs or prompts. Use the status labels in `docs/compatibility.md`.
@@ -24,10 +25,10 @@ node scripts/build.mjs --check && node scripts/validate.mjs && node --test scrip
 ```
 
 ```bash
-cd mcp && npm ci && npm run build && npm test && npm run test:inspector && npm run pack:mcpb && npm pack --dry-run
+cd mcp && npm ci && npm run build && npm test && npm run test:inspector && npm run pack:mcpb && npm run test:pack
 ```
 
-`npm run test:worker` downloads wrangler through npx and needs Node 22 or later.
+The MCP checks need Node 22.19 or later: `npm run test:inspector` stops with an error on older versions. `npm run test:pack` installs the packed package, which needs the npm registry, and `npm run test:worker` downloads wrangler through npx.
 
 ## Status at handoff (2026-11-06, branch `claude/gallant-thompson-eblqe0`)
 
@@ -40,7 +41,7 @@ Done and pushed (up to 34d9caa):
 
 Done and pushed (34d9caa..3956d22):
 - **Adversarial verification of the MCP fixes (old step 1).** Attackers tried to break all 13 items, including the slow-regex probes over `--http` with a concurrent `tools/list`, ask_user's cancel and decline handling, allowlists with ports, AskUserQuestion in served resources, and the icon. About 70 claimed breaks were triaged. The real ones were fixed: a u/v empty-match infinite loop, gate bypasses, window and excerpt bugs, the result-size bound, a bad Host giving 500, slow-body memory exhaustion, log injection, allowlist parsing, ask_user validation and capability reading, adaptation drift, the icon check, language-detection regressions, and tests that couldn't fail. Every original repro was re-run against the merged build, the docs were rewritten and fact-checked, and two more attack rounds checked the follow-up fixes; two rules that a round broke were undone (4f23883).
-- Gates at 4f23883: 233 MCP tests (Node 24 only; Node 20 and 22 aren't installed on this machine), 31/32 root tests, 32/32 Inspector gates, the MCPB bundle, the npm tarball (11 files) and the Worker checks. The failing root test is `version.test.mjs`: on macOS, `build.mjs` silently does nothing when run through a symlinked path, a repo-review finding (step 1 below).
+- Gates at 4f23883: 233 MCP tests (Node 24 only; Node 20 and 22 aren't installed on this machine), 31/32 root tests, 32/32 Inspector gates, the MCPB bundle, the npm tarball (11 files) and the Worker checks. The failing root test was `version.test.mjs`: on macOS, `build.mjs` silently did nothing when run through a symlinked path (finding 13). Since step 1c's fix for finding 13, it passes on macOS with the default `TMPDIR`.
 - Known limits, left by design and documented in `mcp/README.md`: check_prompt's language detection is a heuristic (some unlisted languages read as English; English requests quoting a longer passage in another script read as non-English; subject phrases such as "returns JSON" count as an output format); check_prompt is about 20-30% slower than at 34d9caa, still linear; GET, DELETE and OPTIONS reach the SDK, which reads the body before its 405; `<scheme>://*` allowlist entries other than http and https are kept silently; a single-★ rating on the recommended option loses its ★; SDK-written errors aren't covered by the result budget; whether Claude Desktop keeps a 2025-era form open for the hour-long wait is unverified (optional check in `docs/manual-checks.md`).
 - **Owner answer (2026-11-07):** keep the server's form handling. A declined form falls back to ★, recorded as assumptions; a closed form makes the model ask in chat. `.claude/handoff/plan.md` line 101 now says so.
 - **Owner action (D20):** claim `prompt-engine-mcp` on npm as 0.0.1, by hand. Rehearsed on 2026-11-04 without publishing: in a clean copy at a real path (`git archive HEAD`, not through `/tmp` or `/var`), `node scripts/version.mjs 0.0.1`, then in `mcp/` `npm ci` and `npm publish --access public` after `npm login`. The 233 MCP tests passed and the tarball has 11 files. A plain `npm version 0.0.1` in `mcp/` fails `manifests.test.ts`, which requires every manifest to carry the same version.
@@ -88,7 +89,7 @@ Not finished, in order. When you finish a step or sub-step, mark it done here wi
 - **Nested runs.** When running `claude -p` or `claude plugin eval` from inside another Claude Code session, unset `CLAUDE_CODE_SESSION_ID` and `CLAUDE_CODE_REMOTE_SESSION_ID` first.
 - **Description tuning.** If you tune the description with skill-creator's `run_loop`, run each query in its own project folder. Parallel runs that share one `.claude/commands/` folder see each other's copies and give false negatives.
 - **Choosing eval cases.** `claude plugin eval --case` takes a single glob, with no braces and no repeats. Run several commands, or use `--tag`.
-- **macOS.** There is no `timeout` command: use `perl -e 'alarm shift; exec @ARGV' <seconds> <command>`. In a copy under `/tmp` (a symlink to `/private/tmp`), run the build as `node "$(realpath scripts/build.mjs)"`, or it does nothing.
+- **macOS.** There is no `timeout` command: use `perl -e 'alarm shift; exec @ARGV' <seconds> <command>`.
 - **Git on the owner's Mac.** `origin` uses SSH (`git@github.com:vipul-goel/prompt-engine.git`) and signs in as vipul-goel. Keep it on SSH: the macOS Keychain holds a GitHub login for an account that can't push here. Git's name and e-mail are set, so commit normally, with the `Co-Authored-By` trailer.
 - **Invisible characters in source.** The Edit tool can write a `\uXXXX` escape as the literal character. Write `\u{XXXX}` instead, and check the bytes after editing tests about invisible characters. In a regular expression, `\u{XXXX}` works only with the `u` flag: without it, `/^\u{FEFF}/` matches the text `u{FEFF}` and strips no BOM.
 - **Headless skill runs.** `claude -p --safe-mode` also hides a plugin loaded with `--plugin-dir`; without `--safe-mode`, your own installed and synced skills compete with it. `claude plugin eval --ablation none` runs only the skill arm, and `--output-dir` keeps results out of `evals/results/`.
