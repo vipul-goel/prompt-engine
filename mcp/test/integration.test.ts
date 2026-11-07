@@ -68,6 +68,8 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
     const askInput = JSON.stringify(byName.ask_user!.inputSchema);
     expect(askInput).toMatch(/The form's message: one line in the user's language\. The form has its own controls, so don't say how to reply\./);
     expect(askInput).toMatch(/without a ★: ask_user adds the ★ to the recommended option \(write a rating in words/);
+    // The form preselects the recommended option and a decline returns it, so it has to stand as an answer.
+    expect(askInput).toMatch(/must work as the answer if the user accepts it unchanged/);
   });
 
   it('lists the enhance prompt with one optional mode argument', async () => {
