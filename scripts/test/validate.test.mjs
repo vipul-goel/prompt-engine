@@ -116,3 +116,11 @@ test('passes with CRLF line endings', () =>
   passes((d) => {
     for (const f of [SKILL, 'skills/prompt-engine/references/media-targets.md', 'universal/prompt-engine.md', 'data/contract.json']) edit(d, f, (t) => t.replace(/\n/g, '\r\n'));
   }));
+
+test('ignores the files Finder and Explorer write into folders', () =>
+  passes((d) => {
+    for (const f of ['.DS_Store', 'Thumbs.db', 'desktop.ini']) {
+      writeFileSync(join(d, 'skills/prompt-engine', f), 'x');
+      writeFileSync(join(d, 'skills/prompt-engine/references', f), 'x');
+    }
+  }));

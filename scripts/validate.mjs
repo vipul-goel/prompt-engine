@@ -13,7 +13,7 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, basename } from 'node:path';
-import { buildAll, root, normalize } from './build.mjs';
+import { buildAll, root, normalize, OS_JUNK } from './build.mjs';
 
 const errors = [];
 const warnings = [];
@@ -86,7 +86,7 @@ else {
 }
 
 // ---------- skill folder ----------
-const walk = (dir) => readdirSync(join(root, dir)).flatMap((f) => {
+const walk = (dir) => readdirSync(join(root, dir)).filter((f) => !OS_JUNK.has(f)).flatMap((f) => {
   const p = `${dir}/${f}`;
   return statSync(join(root, p)).isDirectory() ? walk(p) : [p];
 });
@@ -140,7 +140,7 @@ if (chars(core) > B.universalCoreMaxChars) err(`universal/prompt-engine.md: ${ch
 
 // References: every file is linked from SKILL.md, every link resolves, one level deep.
 const linked = new Set([...skillBody.matchAll(/references\/([\w-]+\.md)/g)].map((m) => m[1]));
-const refFiles = readdirSync(join(root, SKILL_DIR, 'references'));
+const refFiles = readdirSync(join(root, SKILL_DIR, 'references')).filter((f) => !OS_JUNK.has(f));
 for (const f of refFiles) {
   if (statSync(join(root, SKILL_DIR, 'references', f)).isDirectory()) err(`${SKILL_DIR}/references/${f}: keep references one level deep`);
   else if (!linked.has(f)) err(`${SKILL_DIR}/references/${f}: not linked from SKILL.md`);
