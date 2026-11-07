@@ -65,7 +65,10 @@ const skillFile = join(root, skillRel);
 const skill = normalize(readFileSync(skillFile, 'utf8'));
 const front = skill.match(/^---\n[\s\S]*?\n---\n/);
 if (!front || !/^ {2}version: "[^"]*"$/m.test(front[0])) fail(`${skillRel}: no metadata.version line in the frontmatter`);
-pending.push([skillFile, skill.replace(front[0], front[0].replace(/^( {2}version: ")[^"]*(")$/m, `$1${next}$2`)), skillRel]);
+// Concatenate instead of skill.replace(front[0], …): a replacement string would expand any
+// $$, $&, $` or $' in the frontmatter.
+const newFront = front[0].replace(/^( {2}version: ")[^"]*(")$/m, `$1${next}$2`);
+pending.push([skillFile, newFront + skill.slice(front[0].length), skillRel]);
 
 for (const [file, text, rel] of pending) {
   writeFileSync(file, text);

@@ -112,3 +112,26 @@ test('sets the version in a CRLF checkout, changing only the version lines', () 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("keeps $$, $&, $' and $` in SKILL.md's frontmatter as they are", () => {
+  const dir = copyRepo();
+  try {
+    const rel = 'skills/prompt-engine/SKILL.md';
+    // A function replacer, so this setup doesn't expand the $ sequences itself.
+    const description = "description: \"Use to improve a prompt for any AI tool: $$ $& $' $` stay as typed.\"";
+    writeFileSync(join(dir, rel), read(dir, rel).replace(/^description: .*$/m, () => description));
+    const before = read(dir, rel);
+    assert.ok(before.includes(description), 'the setup wrote the description as typed');
+    const bumped = run(dir, 'version.mjs', '9.8.7');
+    assert.equal(bumped.code, 0, bumped.out);
+    const after = read(dir, rel);
+    assert.equal(after.match(/^description: .*$/m)[0], description);
+    const versionLine = /^ {2}version: "[^"]*"$/m;
+    assert.match(after, /^ {2}version: "9\.8\.7"$/m);
+    assert.equal(after.replace(versionLine, ''), before.replace(versionLine, ''));
+    const checked = run(dir, 'validate.mjs');
+    assert.equal(checked.code, 0, checked.out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
