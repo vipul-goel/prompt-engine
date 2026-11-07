@@ -29,38 +29,73 @@ const SKILL_DIR = 'skills/prompt-engine';
 const SKILL = `${SKILL_DIR}/SKILL.md`;
 
 // ---------- frontmatter ----------
+// A small YAML subset that strict YAML parsers and Claude Code read the same way:
+// `key: value` lines, one level of `  key: value` lines under a bare `key:` line, no
+// duplicate keys, and every value either a "double-quoted string" with no " or \ inside,
+// or a single bare word. Single-quoted values are valid YAML but refused, to keep one
+// form (scripts/version.mjs writes the version in double quotes). No tabs outside a quoted
+// string, and no control characters.
+const FRONTMATTER = /^---\n([\s\S]*?)\n---\n?/;
+const QUOTED = /^"[^"\\]*"$/;
+const BARE = /^[A-Za-z][\w./+-]*$/;
+// Words that don't read as strings, refused as values and as keys: YAML 1.1 reads the first
+// nine as booleans or null, and the yaml package's YAML 1.1 mode reads e1, E-2 and the like
+// as numbers.
+const NOT_A_STRING = /^(?:y|n|yes|no|true|false|on|off|null|e[-+]?\d+)$/i;
+// A nested key must start with a letter: 0x1, 012 or 1e5 read as numbers.
+const KEY = /^[A-Za-z][\w-]*$/;
+// Control characters, refused anywhere. In a quoted string, js-yaml and PyYAML read a CR as a
+// line break and refuse the other C0 ones; PyYAML also reads U+0085 as a line break and refuses
+// DEL, the other C1 ones, U+FFFE and U+FFFF.
+const CONTROL = /[\x00-\x08\x0B-\x1F\x7F-\x9F\uFFFE\uFFFF]/;
+function scalar(value, line) {
+  if (QUOTED.test(value)) return value.slice(1, -1);
+  if (BARE.test(value) && !NOT_A_STRING.test(value)) return value;
+  throw new Error(`frontmatter value must be a "double-quoted string" without " or \\ inside, or a single bare word: ${line}`);
+}
 export function parseFrontmatter(text) {
-  const m = text.match(/^---\n([\s\S]*?)\n---\n?/);
+  const m = text.match(FRONTMATTER);
   if (!m) return { data: null, body: text };
   const data = {};
   let parent = null;
   for (const line of m[1].split('\n')) {
-    if (!line.trim()) continue;
-    const nested = line.match(/^  ([\w-]+):\s*(.*)$/);
-    const top = line.match(/^([\w-]+):\s*(.*)$/);
+    if (/^ *$/.test(line)) continue;
+    if (CONTROL.test(line)) throw new Error(`frontmatter must not contain control characters: ${JSON.stringify(line)}`);
+    // PyYAML refuses a tab between a key and its value, at the end of a line and on a blank line.
+    if (line.replace(/"[^"\\]*"/, '').includes('\t')) throw new Error(`frontmatter must not contain tabs outside a "double-quoted string": ${JSON.stringify(line)}`);
+    const nested = line.match(/^ {2}([\w-]+): +(.*?) *$/);
+    const top = line.match(/^([\w-]+):(?: +(.*?))? *$/);
     if (nested && parent) {
-      data[parent][nested[1]] = unquote(nested[2]);
+      if (!KEY.test(nested[1]) || NOT_A_STRING.test(nested[1])) throw new Error(`frontmatter key must start with a letter and not read as a YAML boolean, null or number: ${line}`);
+      if (Object.hasOwn(data[parent], nested[1])) throw new Error(`duplicate frontmatter key: ${parent}.${nested[1]}`);
+      data[parent][nested[1]] = scalar(nested[2], line);
     } else if (top) {
-      if (top[2] === '') { data[top[1]] = {}; parent = top[1]; }
-      else { data[top[1]] = unquote(top[2]); parent = null; }
+      if (Object.hasOwn(data, top[1])) throw new Error(`duplicate frontmatter key: ${top[1]}`);
+      if (!top[2]) { data[top[1]] = {}; parent = top[1]; }
+      else { data[top[1]] = scalar(top[2], line); parent = null; }
     } else {
       throw new Error(`unsupported frontmatter line: ${line}`);
     }
   }
   return { data, body: text.slice(m[0].length) };
 }
-const unquote = (v) => {
-  const t = v.trim();
-  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) return t.slice(1, -1);
-  return t;
-};
 
 const skillText = read(SKILL);
-let fm;
-try { fm = parseFrontmatter(skillText); } catch (e) { err(`${SKILL}: ${e.message}`); fm = { data: {}, body: skillText }; }
-const { data: front, body: skillBody } = fm;
-if (!front) err(`${SKILL}: missing YAML frontmatter`);
-else {
+let front;
+let skillBody;
+let frontError = false;
+try {
+  ({ data: front, body: skillBody } = parseFrontmatter(skillText));
+} catch (e) {
+  // Report only the parse error: the field checks below would fail after it for no new reason.
+  err(`${SKILL}: ${e.message}`);
+  frontError = true;
+  front = null;
+  skillBody = skillText.replace(FRONTMATTER, '');
+}
+if (!front) {
+  if (!frontError) err(`${SKILL}: missing YAML frontmatter`);
+} else {
   const allowed = new Set(['name', 'description', 'license', 'allowed-tools', 'metadata']);
   for (const k of Object.keys(front)) {
     if (!allowed.has(k)) err(`${SKILL}: frontmatter key "${k}" is not portable (claude.ai/Skills API reject it; allowed: ${[...allowed].join(', ')})`);
@@ -81,7 +116,6 @@ else {
   if (front['allowed-tools'] !== undefined && front['allowed-tools'] !== 'Read') err(`${SKILL}: allowed-tools should be exactly "Read"`);
   const meta = front.metadata ?? {};
   if (typeof meta !== 'object') err(`${SKILL}: metadata must be a mapping`);
-  else for (const [k, v] of Object.entries(meta)) if (typeof v !== 'string') err(`${SKILL}: metadata.${k} must be a string`);
   if (!/^\d+\.\d+\.\d+$/.test(meta.version ?? '')) err(`${SKILL}: metadata.version must be semver`);
 }
 
@@ -115,13 +149,16 @@ for (const f of skillFiles) {
 // Instruction text the models read directly: lint rules marked selfCheck in
 // data/lint-rules.json (pressure words, requests to expose reasoning) must not occur.
 const lint = JSON.parse(read('data/lint-rules.json'));
-for (const r of lint.rules) {
-  try { new RegExp(r.pattern, r.flags); } catch (e) { err(`data/lint-rules.json ${r.id}: bad pattern (${e.message})`); }
-}
+// A rule whose pattern doesn't compile is reported here and skipped below, so a broken
+// self-check rule can't stop validation before the error list is printed.
+const compiles = (r) => {
+  try { new RegExp(r.pattern, r.flags); return true; } catch (e) { err(`data/lint-rules.json ${r.id}: bad pattern (${e.message})`); return false; }
+};
+const selfCheckRules = lint.rules.filter(compiles).filter((r) => r.selfCheck);
 const INSTRUCTION_FILES = [SKILL, 'universal/prompt-engine.md'];
 for (const f of INSTRUCTION_FILES) {
   const t = read(f);
-  for (const r of lint.rules.filter((x) => x.selfCheck)) {
+  for (const r of selfCheckRules) {
     const m = t.match(new RegExp(r.pattern, r.flags));
     if (m) err(`${f}: "${m[0]}" (${r.id}): ${r.message}`);
   }
