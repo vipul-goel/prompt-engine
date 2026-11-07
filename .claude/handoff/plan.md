@@ -184,7 +184,7 @@ Reused utilities, from `/root/.claude/skills/synced/…/skill-creator/`:
   - questions arrive as dialogs (≤4 per dialog, Recommended first, short headers);
   - the "What next?" menu appears;
   - nothing executes before you pick, shell commands included, for an imperative coding prompt too (D32).
-- **Universal.** `claude -p --system-prompt "$(cat universal/prompt-engine.md)" --tools "" --safe-mode --strict-mcp-config` on 4 cases, then `--resume` with `ok` and with an override. A case fails if any tool or MCP server loads (D13). Checked with the script's own regex checks, not the eval graders (D14).
+- **Universal.** `claude -p --system-prompt "$(cat universal/prompt-engine.md)" --tools "" --safe-mode --strict-mcp-config --disallowedTools "mcp__*" --output-format stream-json --verbose` on 6 cases, then `--resume` with `ok`, an override, `deep` or `change 1: …`. A case fails if any tool or MCP server loads (D13). Checked with the script's own regex checks, not the eval graders (D14).
 - **MCP.** Vitest; Inspector `tools/list --strict`, `prompts/get` and both protocol eras; a `wrangler dev` smoke test; `claude -p --mcp-config` end-to-end.
 
 ## What you'll need to do
