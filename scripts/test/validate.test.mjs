@@ -7,7 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,10 +31,12 @@ function validate(dir) {
   return { code: r.status, out: r.stdout + r.stderr };
 }
 
-// `expected` is a regex or a list of regexes that must all match the output.
-function expectRun({ code: got, out }, expected, code) {
+// `expected` is a regex or a list of regexes that must all match the output; none of
+// `unexpected` may match it.
+function expectRun({ code: got, out }, expected, code, unexpected = []) {
   assert.equal(got, code, `expected exit ${code}, got:\n${out}`);
   for (const re of [expected].flat()) assert.match(out, re);
+  for (const re of [unexpected].flat()) assert.doesNotMatch(out, re);
 }
 
 function withMutation(mutate, expected, code = 1) {
@@ -42,6 +44,34 @@ function withMutation(mutate, expected, code = 1) {
   try {
     mutate(dir);
     expectRun(validate(dir), expected, code);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// A copy that is also a git repository, for the rules that read `git ls-files`. It tracks
+// the files this checkout tracks (everything, when the checkout has no .git); files the
+// checkout doesn't track are copied but stay untracked.
+const hasGit = spawnSync('git', ['--version']).status === 0;
+function gitCopy() {
+  const dir = copyRepo();
+  const git = (args, input) => {
+    const r = spawnSync('git', ['-c', 'core.autocrlf=false', ...args], { cwd: dir, encoding: 'utf8', input });
+    if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
+    return r.stdout;
+  };
+  git(['init', '-q']);
+  const listed = existsSync(join(repo, '.git')) ? spawnSync('git', ['ls-files', '-z'], { cwd: repo, encoding: 'utf8' }) : null;
+  if (listed?.status === 0) git(['--literal-pathspecs', 'add', '--pathspec-from-file=-', '--pathspec-file-nul'], listed.stdout.split('\0').filter((f) => f && existsSync(join(dir, f))).join('\0'));
+  else git(['add', '-A']);
+  return { dir, git };
+}
+
+function inGitCopy(mutate, expected, code = 1, unexpected = []) {
+  const { dir, git } = gitCopy();
+  try {
+    mutate(dir, git);
+    expectRun(validate(dir), expected, code, unexpected);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -217,6 +247,25 @@ const ROWS = [
   }, /validate: OK/, 0],
 ];
 
+// Rules on tracked files, which need a git copy: [name, mutate(dir, git), expected, code, unexpected].
+// The directory rules warn (D40), so those runs pass.
+const GIT_ROWS = [
+  ['warns about a tracked file of 256 KiB or more, but not about a smaller or an untracked one', (d, git) => {
+    put(d, 'docs/big.md', 'x'.repeat(256 * 1024));
+    put(d, 'docs/small.md', 'x'.repeat(256 * 1024 - 1));
+    put(d, 'docs/local.md', 'x'.repeat(300_000));
+    git(['add', 'docs/big.md', 'docs/small.md']);
+  }, /warning: docs\/big\.md: 262144 bytes; Anthropic's plugin directory holds/, 0, [/small\.md/, /local\.md/]],
+  ['warns about more than 512 tracked files', (d, git) => {
+    for (let i = 0; i < 520; i++) put(d, `many/${i}.md`, `${i}\n`);
+    git(['add', 'many']);
+  }, /warning: the plugin folder \(the repository root\) has \d+ tracked files; Anthropic's plugin directory holds a plugin with more than 512/, 0],
+  ['warns about a tracked binary file that is not an image or font, but not about the PNG icons', (d, git) => {
+    put(d, 'docs/guide.pdf', Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00, 0x01]));
+    git(['add', 'docs/guide.pdf']);
+  }, /warning: docs\/guide\.pdf: a binary file; Anthropic's plugin directory holds/, 0, /icon\.png/],
+];
+
 test('the repository passes as-is', () => {
   const dir = copyRepo();
   try {
@@ -243,3 +292,6 @@ test('copies a checkout in a folder named like a skipped entry, still without it
 });
 
 for (const [name, mutate, expected, code] of ROWS) test(name, () => withMutation(mutate, expected, code));
+for (const [name, mutate, expected, code, unexpected] of GIT_ROWS) {
+  test(name, { skip: !hasGit && 'needs git' }, () => inGitCopy(mutate, expected, code, unexpected));
+}

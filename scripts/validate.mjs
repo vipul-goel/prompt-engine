@@ -11,7 +11,8 @@
 // inside skill text, and a plugin root must not hold package.json + lockfile,
 // bin/, CLAUDE.md or .mcp.json.
 
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, lstatSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, relative, basename } from 'node:path';
 import { buildAll, root, normalize, OS_JUNK } from './build.mjs';
 
@@ -200,6 +201,52 @@ const FORBIDDEN_ROOT = ['package.json', 'package-lock.json', 'npm-shrinkwrap.jso
   'CLAUDE.md', '.mcp.json', '.lsp.json', 'commands', 'agents', 'hooks', 'settings.json', 'SKILL.md',
   'output-styles', 'monitors', 'workflows', 'themes'];
 for (const f of FORBIDDEN_ROOT) if (exists(f)) err(`${f}: not allowed at the repo root, which is also the plugin root`);
+
+// Every committed file reaches each Claude Code install twice: in the marketplace clone
+// and in the plugin cache. The rules below read the tracked files from git, because
+// untracked files (build output, a maintainer's own notes) never ship. Without git, or
+// in a copy without .git, they are skipped.
+function trackedFiles() {
+  if (!exists('.git')) return null; // a folder, or the file a worktree has instead
+  try {
+    const out = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
+    return out.split('\0').filter(Boolean);
+  } catch {
+    return null; // no git on PATH, or not a work tree
+  }
+}
+const tracked = trackedFiles();
+
+// Anthropic's plugin directory holds a plugin version for a reviewer when the plugin folder
+// has more than 512 files, a file that isn't an image or font and isn't under 256 KiB, or a
+// binary file other than a PNG, JPEG, GIF or WebP image or a font
+// (claude.com/docs/plugins/pre-submission-checklist, "Files in the plugin folder").
+// `claude plugin validate . --strict --profile directory` reported none of the three in a
+// test copy (Claude Code 2.1.319). Warnings until the plugin is to be listed (D40).
+const LISTED_IN_DIRECTORY = false; // set to true once the plugin is to be listed: the rules then fail
+const directoryRule = LISTED_IN_DIRECTORY ? err : warn;
+const IMAGE_OR_FONT = /\.(png|jpe?g|gif|webp|woff2?|ttf|otf)$/i;
+const DIRECTORY_MAX_FILES = 512;
+const DIRECTORY_MAX_BYTES = 256 * 1024; // a file must stay under this
+function hasNulByte(file) {
+  const fd = openSync(file, 'r');
+  try {
+    const buf = Buffer.alloc(8000); // git's own text-or-binary test reads the first 8,000 bytes
+    return buf.subarray(0, readSync(fd, buf, 0, buf.length, 0)).includes(0);
+  } finally {
+    closeSync(fd);
+  }
+}
+if (tracked) {
+  if (tracked.length > DIRECTORY_MAX_FILES) directoryRule(`the plugin folder (the repository root) has ${tracked.length} tracked files; Anthropic's plugin directory holds a plugin with more than ${DIRECTORY_MAX_FILES} for a reviewer`);
+  for (const f of tracked) {
+    let st;
+    try { st = lstatSync(join(root, f)); } catch { continue; } // deleted, and the deletion not yet staged
+    if (!st.isFile() || IMAGE_OR_FONT.test(f)) continue;
+    if (st.size >= DIRECTORY_MAX_BYTES) directoryRule(`${f}: ${st.size} bytes; Anthropic's plugin directory holds a file of 256 KiB or more that isn't an image or font for a reviewer`);
+    if (hasNulByte(join(root, f))) directoryRule(`${f}: a binary file; Anthropic's plugin directory holds a binary file other than a PNG, JPEG, GIF or WebP image or a font for a reviewer`);
+  }
+}
 
 // ---------- manifests ----------
 const plugin = JSON.parse(read('.claude-plugin/plugin.json'));
