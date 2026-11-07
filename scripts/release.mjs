@@ -33,8 +33,18 @@ mkdirSync(dist, { recursive: true });
 // 1. Skill zip: the archive's top-level entry must be the prompt-engine/ folder (claude.ai rejects a bare SKILL.md at the root).
 const zipPath = join(dist, 'prompt-engine.zip');
 rmSync(zipPath, { force: true });
-run('zip', ['-q', '-r', zipPath, 'prompt-engine', '-x', ...[...OS_JUNK].map((f) => `*${f}`)], { cwd: join(root, 'skills') });
-const listing = execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' }).split('\n').filter(Boolean);
+// zip and unzip are external commands. Stock Windows has neither, so say what to do instead of a stack trace.
+const needs = (cmd, fn) => {
+  try {
+    return fn();
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    console.error(`release.mjs needs the ${cmd} command, which isn't installed. On Linux, install the zip and unzip packages. On Windows, zip the skills/prompt-engine folder yourself instead: in File Explorer, right-click it, then Show more options > Send to > Compressed (zipped) folder (on Windows 10, Send to is in the first menu); the archive must have prompt-engine/ at its top level.`);
+    process.exit(1);
+  }
+};
+needs('zip', () => run('zip', ['-q', '-r', zipPath, 'prompt-engine', '-x', ...[...OS_JUNK].map((f) => `*${f}`)], { cwd: join(root, 'skills') }));
+const listing = needs('unzip', () => execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' })).split('\n').filter(Boolean);
 if (!listing.includes('prompt-engine/SKILL.md') || listing.some((f) => !f.startsWith('prompt-engine/'))) {
   console.error('zip layout is wrong: expected everything under prompt-engine/');
   process.exit(1);
