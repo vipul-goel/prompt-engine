@@ -78,7 +78,7 @@
     "recorded_in": ".claude/handoff/plan.md (changed lines carry their D number) and .claude/CLAUDE.md"
   },
   "not_verified": [],
-  "severity_note": "severity is the verifiers' own rating; review_severity is the original review's. From step 1a, ten findings stay major: 1, 3, 5, 13, 16, 27, 28, 35, 37 and 39. Step 1b adds six majors, all as the review rated them: 46, 47, 48, 49, 50 and 68. Three step 1b findings drop to trivial: 60, 67 and 80.",
+  "severity_note": "severity is the verifiers' own rating; review_severity is the original review's. From step 1a, ten findings stay major: 1, 3, 5, 13, 16, 27, 28, 35, 37 and 39. Step 1b adds six majors, all as the review rated them: 46, 47, 48, 49, 50 and 68. Three step 1b findings drop to trivial: 60, 67 and 80. Finding 73 became major on 2026-11-07, when a billed check confirmed the load (its check field).",
   "index": [
     {
       "id": 1,
@@ -587,7 +587,7 @@
     {
       "id": 73,
       "verdict": "needs owner decision",
-      "severity": "minor",
+      "severity": "major",
       "review_severity": "minor",
       "title": "The maintainer's .claude/CLAUDE.md ships inside the plugin, and Claude Code's nested-memory loader can load it into a user's session"
     },
@@ -7186,7 +7186,7 @@
       "review_location": ".claude/CLAUDE.md:1",
       "verdict": "needs owner decision",
       "confidence": "medium",
-      "severity": "minor",
+      "severity": "major",
       "summary": "The file does ship: every install holds .../prompt-engine/0.1.0/.claude/CLAUDE.md (12,212 bytes), and the marketplace clone holds another copy. That it loads into a user's session rests only on reading the 2.1.318 binary; I didn't run a session. By the code, in a session started in the home folder, reading a cached reference file makes Claude Code inject that file as 'Contents of <path>' project memory, and the plugin cache isn't excluded. Settling it needs one live session, which this step's rules don't allow. Both fixes reverse an approved plan line: plan.md:93, or plan.md:36 and :80.",
       "locations": [
         ".claude/CLAUDE.md:1",
@@ -7288,10 +7288,18 @@
         "1. Can a later session run one check? It could be one short skill run started in a home-like folder (billed, a few cents), or a run of the real CLI against a local mock API, which costs nothing but is outside this step's rules. 2. Which fix do you want? (a) Keep the root as the plugin and move the contributor notes out of .claude/CLAUDE.md. This reverses plan.md:93, and cloud sessions would no longer load the notes. (b) Move the plugin into plugin/. This reverses plan.md:36 and :80, and also shrinks the cache from finding 72.",
         "1. May a later session run one billed check? It would be one short skill run started in a home-like folder, with an InstructionsLoaded hook that logs file_path, load_reason and trigger_file_path; it costs a few cents.\n2. Which fix do you want?\n   (a) Keep the root as the plugin and move the contributor notes out of .claude/. This reverses plan.md:93, and cloud sessions stop loading the notes automatically.\n   (b) Move the plugin into plugin/. This reverses plan.md:36 and :80, and also fixes most of finding 72."
       ],
-      "resolution": "D39, 2026-11-07: run one billed check of the home-folder load; keep the repository root as the plugin. If the check shows the load, move the remaining notes to docs/maintainers.md, import it from an untracked .claude/CLAUDE.md and have validate.mjs refuse tracked .claude/ entries; if not, keep .claude/CLAUDE.md. Either way, .claude/handoff and the Status and Not-finished notes move to a maintainer-notes branch before the PR leaves draft.",
+      "resolution": "D39, 2026-11-07: keep the repository root as the plugin. The check on 2026-11-07 showed the load, so before the PR leaves draft: move .claude/handoff and the Status and Not-finished notes to a maintainer-notes branch, move the remaining contributor notes to docs/maintainers.md, import it from an untracked .claude/CLAUDE.md, and have validate.mjs refuse tracked .claude/ entries (plus a root CLAUDE.md, CLAUDE.local.md and AGENTS.md, per the audit), in the same commit.",
       "decisions": [
         "D39"
-      ]
+      ],
+      "check": {
+        "date": "2026-11-07",
+        "result": "The file loads. When the skill read a reference from the plugin cache, Claude Code loaded the cached .claude/CLAUDE.md as project memory and sent its text to the model.",
+        "setup": "Claude Code 2.1.319 (it updated itself again), --model claude-sonnet-5-5. The plugin was installed from the branch at 45895d5 into an isolated config folder <test>/cfg, so its cache copy sat at <test>/cfg/plugins/cache/vipul-goel/prompt-engine/0.1.0, the same layout a home-folder session has under ~/.claude. The session started in <test>. An isolated config folder isn't signed in, so the session used the owner's own config and loaded the cached copy with --plugin-dir; an InstructionsLoaded hook passed with --settings logged every instruction file. Prompt: /prompt-engine:prompt-engine quick: write a product description for a handmade ceramic mug for my Etsy shop.",
+        "evidence": "The hook logged one event: file_path <test>/cfg/plugins/cache/vipul-goel/prompt-engine/0.1.0/.claude/CLAUDE.md, memory_type Project, load_reason nested_traversal, trigger_file_path .../0.1.0/skills/prompt-engine/references/output-format.md (the skill's first Read). The session transcript holds a nested_memory attachment with the file's text (14,382 bytes at 45895d5), and that text appears in the recorded API request. The run cost $0.19.",
+        "not_tested": "The config folder that holds the cache was not the session's own config folder, because only the owner's config is signed in. The 2.1.318 code has no exclusion for the config folder (read in step 1b), but that difference wasn't run.",
+        "severity_after_check": "major: in a session started in the home folder, 14 KB of maintainer notes, with imperative git rules, enter the context once the skill reads a reference."
+      }
     },
     {
       "id": 74,
