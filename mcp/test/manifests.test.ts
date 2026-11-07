@@ -33,7 +33,7 @@ describe('package.json', () => {
     expect(pkg.bin).toEqual({ 'prompt-engine-mcp': 'dist/cli.js' });
     // The Cloudflare Worker entry is built into dist/ but isn't part of the npm package.
     expect(pkg.files).toEqual(['dist', '!dist/worker.js']);
-    expect(pkg.engines).toEqual({ node: '>=20' });
+    expect(pkg.engines).toEqual({ node: '>=22.19.0' });
     expect(pkg.license).toBe('MIT');
     expect(pkg.mcpName).toBe(server.name);
     expect(pkg.repository).toMatchObject({ url: 'git+https://github.com/vipul-goel/prompt-engine.git', directory: 'mcp' });
@@ -98,7 +98,20 @@ describe('manifest.json (MCPB)', () => {
       entry_point: 'server/index.js',
       mcp_config: { command: 'node', args: ['${__dirname}/server/index.js'] },
     });
-    expect(manifest.compatibility.runtimes).toEqual({ node: '>=20.0.0' });
+    expect(Object.keys(manifest.compatibility.runtimes)).toEqual(['node']);
     expect(manifest.tools.map((t: { name: string }) => t.name)).toEqual([...TOOL_NAMES]);
+  });
+
+  it('states the same Node floor as package.json engines', () => {
+    // The lowest version a range such as ">=22.19" or ">=22.19.0" allows, as x.y.z. Any other
+    // shape of range throws: if engines or the manifest switch to one, update this helper too.
+    const floor = (range: string) => {
+      const m = /^>=(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(range);
+      if (!m) throw new Error(`unexpected Node range ${JSON.stringify(range)}: expected >=x, >=x.y or >=x.y.z`);
+      return [m[1], m[2] ?? '0', m[3] ?? '0'].join('.');
+    };
+    expect(floor('>=22.19')).toBe('22.19.0');
+    expect(() => floor('^22.19.0')).toThrow(/unexpected Node range/);
+    expect(floor(manifest.compatibility.runtimes.node)).toBe(floor(pkg.engines.node));
   });
 });

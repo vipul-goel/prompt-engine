@@ -33,7 +33,7 @@
     "!dist/worker.js"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "mcpName": "io.github.vipul-goel/prompt-engine",
   "scripts": {

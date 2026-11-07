@@ -45,7 +45,7 @@ Add `--scope user` to use it in every project. If you also installed the Prompt 
 }
 ```
 
-The server needs Node.js 20 or later. On Windows, some clients need `"command": "cmd", "args": ["/c", "npx", "-y", "prompt-engine-mcp"]`.
+The server is supported on Node.js 22.19 or later. On Windows, some clients need `"command": "cmd", "args": ["/c", "npx", "-y", "prompt-engine-mcp"]`.
 
 ## Use it
 
@@ -174,7 +174,7 @@ One client can still hold all 128 request slots with slow uploads, or all 1,024 
 
 ## Development and testing
 
-From a clone, in this folder (Node.js 22.19 or later for the full tool chain; the server itself runs on Node.js 20+):
+From a clone, in this folder (Node.js 22.19 or later):
 
 ```bash
 npm ci

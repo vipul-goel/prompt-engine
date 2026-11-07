@@ -19,7 +19,10 @@ const result = await build({
   bundle: true,
   platform: 'node',
   format: 'esm',
-  target: 'node20',
+  // The major version of the supported floor (engines in package.json). The target
+  // doesn't change the output: with esbuild 0.28.2 and these sources, node20,
+  // node22, node22.19 and node24 give byte-identical bundles.
+  target: 'node22',
   // Bundled CommonJS code, if any, may call require(); give it a real one.
   banner: { js: "import { createRequire as __peCreateRequire } from 'node:module';\nconst require = __peCreateRequire(import.meta.url);" },
   legalComments: 'eof',
