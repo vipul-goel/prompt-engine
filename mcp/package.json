@@ -45,6 +45,7 @@
     "test:worker": "node scripts/worker-smoke.mjs",
     "bundle": "node scripts/bundle.mjs",
     "pack:mcpb": "npm run bundle && node scripts/pack-mcpb.mjs",
+    "test:pack": "node scripts/smoke-pack.mjs",
     "prepublishOnly": "npm run build && npm test",
     "prepack": "node scripts/license.mjs copy",
     "postpack": "node scripts/license.mjs remove"

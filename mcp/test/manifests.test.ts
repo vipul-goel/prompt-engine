@@ -41,7 +41,44 @@ describe('package.json', () => {
     expect(pkg.license).toBe('MIT');
     expect(pkg.mcpName).toBe(server.name);
     expect(pkg.repository).toMatchObject({ url: 'git+https://github.com/vipul-goel/prompt-engine.git', directory: 'mcp' });
-    for (const script of ['build', 'test', 'test:inspector', 'bundle', 'pack:mcpb', 'prepublishOnly']) expect(pkg.scripts[script], script).toBeTruthy();
+    for (const script of ['build', 'test', 'test:inspector', 'test:pack', 'bundle', 'pack:mcpb', 'prepublishOnly']) expect(pkg.scripts[script], script).toBeTruthy();
+    // CI and the release build call `npm run test:pack [-- <tgz>]`; the tarball path reaches
+    // smoke-pack.mjs as its first argument.
+    expect(pkg.scripts['test:pack']).toBe('node scripts/smoke-pack.mjs');
+  });
+
+  it('copies the root LICENSE in for npm pack, keeps a hand-placed one, and fails when there is none', () => {
+    // A copy of scripts/license.mjs in a temporary tree, so the real LICENSE files stay put.
+    const root = mkdtempSync(join(tmpdir(), 'prompt-engine-license-'));
+    try {
+      const script = join(root, 'mcp', 'scripts', 'license.mjs');
+      mkdirSync(dirname(script), { recursive: true });
+      cpSync(join(PKG, 'scripts', 'license.mjs'), script);
+      const run = (action: string) => spawnSync(process.execPath, [script, action], { encoding: 'utf8' });
+      const copy = join(root, 'mcp', 'LICENSE');
+
+      // No LICENSE in either place: prepack fails, so npm pack and npm publish stop.
+      const none = run('copy');
+      expect(none.status).toBe(1);
+      expect(none.stderr).toMatch(/no LICENSE at .* or .*; the npm package must carry one/);
+      expect(existsSync(copy)).toBe(false);
+
+      // The root LICENSE is copied in, and remove deletes that copy.
+      writeFileSync(join(root, 'LICENSE'), 'root license\n');
+      expect(run('copy').status).toBe(0);
+      expect(readFileSync(copy, 'utf8')).toBe('root license\n');
+      expect(run('remove').status).toBe(0);
+      expect(existsSync(copy)).toBe(false);
+
+      // A LICENSE put in mcp/ by hand is used as it is and kept, even with no root LICENSE.
+      rmSync(join(root, 'LICENSE'));
+      writeFileSync(copy, 'hand-placed\n');
+      expect(run('copy').status).toBe(0);
+      expect(run('remove').status).toBe(0);
+      expect(readFileSync(copy, 'utf8')).toBe('hand-placed\n');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('packs the built server without the Cloudflare Worker entry', () => {

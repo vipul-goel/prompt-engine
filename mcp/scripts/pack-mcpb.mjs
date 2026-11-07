@@ -58,7 +58,8 @@ let checked = false;
 try {
   cpSync(join(pkg, 'mcpb', 'server'), join(stage, 'server'), { recursive: true });
   const license = join(repo, 'LICENSE');
-  if (existsSync(license)) copyFileSync(license, join(stage, 'LICENSE'));
+  if (!existsSync(license)) throw new Error(`${license} is missing`);
+  copyFileSync(license, join(stage, 'LICENSE'));
   const icon = join(pkg, 'icon.png');
   if (!existsSync(icon)) throw new Error(`${icon} is missing`);
   copyFileSync(icon, join(stage, 'icon.png'));
