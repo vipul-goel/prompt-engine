@@ -65,7 +65,7 @@ if (existsSync(join(root, 'mcp', 'package.json'))) {
   assets.push('prompt-engine.mcpb');
 }
 
-// 4. Checksums (the MCP Registry lists an .mcpb package with its SHA-256).
+// 4. Checksums, for anyone checking a download: shasum -a 256 -c --ignore-missing SHA256SUMS (sha256sum on Linux).
 const sums = assets.map((f) => `${createHash('sha256').update(readFileSync(join(dist, f))).digest('hex')}  ${f}`);
 writeFileSync(join(dist, 'SHA256SUMS'), `${sums.join('\n')}\n`);
 console.log(`\nrelease artifacts for v${version} in dist/:\n${sums.join('\n')}`);
