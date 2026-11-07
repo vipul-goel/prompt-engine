@@ -195,8 +195,10 @@ for (const [file, groups] of Object.entries(contract.artifacts)) {
 }
 
 // ---------- plugin root hygiene ----------
-// With marketplace source "./", the repo root is the plugin root: these would load as
-// plugin components, make Claude Code run npm ci on install, or make claude.ai refuse it.
+// With marketplace source "./", the repo root is the plugin root. These entries would load
+// as plugin components, make Claude Code run npm ci on install, or make claude.ai refuse the
+// plugin. A root CLAUDE.md also draws a `claude plugin validate` warning, and Claude Code can
+// load it as project memory in a user's session (see MEMORY_FILES below).
 const FORBIDDEN_ROOT = ['package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'bun.lock', 'node_modules', 'bin',
   'CLAUDE.md', '.mcp.json', '.lsp.json', 'commands', 'agents', 'hooks', 'settings.json', 'SKILL.md',
   'output-styles', 'monitors', 'workflows', 'themes'];
@@ -216,6 +218,20 @@ function trackedFiles() {
   }
 }
 const tracked = trackedFiles();
+
+// By Claude Code's documentation and code, it loads project memory (CLAUDE.md,
+// CLAUDE.local.md, AGENTS.md, files under .claude/) from each folder between a session's
+// working directory and a file it reads. So in a session started in a folder that contains
+// the plugin cache (as the home folder contains ~/.claude), the skill's first Read of a
+// reference can load such a file from the plugin root into the user's context. A run with
+// Claude Code 2.1.319 on 2026-11-07 showed it for .claude/CLAUDE.md; for AGENTS.md and
+// CLAUDE.local.md it rests on the documentation and code, not on a run. A root CLAUDE.md
+// is refused above. Tracked files only: a maintainer's untracked CLAUDE.local.md passes
+// here (`claude plugin validate . --strict` still flags one on disk).
+const MEMORY_FILES = new Set(['AGENTS.md', 'CLAUDE.local.md']);
+for (const f of tracked ?? []) {
+  if (MEMORY_FILES.has(f)) err(`${f}: don't commit it at the plugin root: Claude Code can load it as project memory in a user's session`);
+}
 
 // Anthropic's plugin directory holds a plugin version for a reviewer when the plugin folder
 // has more than 512 files, a file that isn't an image or font and isn't under 256 KiB, or a

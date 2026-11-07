@@ -264,6 +264,13 @@ const GIT_ROWS = [
     put(d, 'docs/guide.pdf', Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00, 0x01]));
     git(['add', 'docs/guide.pdf']);
   }, /warning: docs\/guide\.pdf: a binary file; Anthropic's plugin directory holds/, 0, /icon\.png/],
+  // Memory files at the plugin root (finding 73): refused when tracked, and only then, so a
+  // maintainer's private copy passes.
+  ...['AGENTS.md', 'CLAUDE.local.md'].flatMap((f) => [
+    [`rejects a tracked ${f} at the plugin root`, (d, git) => { put(d, f, '# Notes\n'); git(['add', f]); },
+      new RegExp(`(^|\\n)error: ${reEsc(f)}: don't commit it at the plugin root: Claude Code can load it as project memory`), 1],
+    [`ignores an untracked ${f} at the plugin root`, (d) => put(d, f, '# Notes\n'), /validate: OK/, 0],
+  ]),
 ];
 
 test('the repository passes as-is', () => {
