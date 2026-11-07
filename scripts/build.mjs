@@ -18,8 +18,8 @@ export const root = process.env.PE_ROOT || join(dirname(fileURLToPath(import.met
 // so a CRLF checkout (Git for Windows' default) or a BOM an editor added changes nothing.
 export const normalize = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s).replace(/\r\n/g, '\n');
 const read = (p) => normalize(readFileSync(join(root, p), 'utf8'));
-// Files the operating system writes into folders (Finder, Explorer). validate.mjs skips
-// them, and release.mjs leaves them out of the skill zip.
+// Files the operating system writes into folders (Finder, Explorer). Git ignores them
+// (.gitignore), validate.mjs skips them and release.mjs leaves them out of the skill zip.
 export const OS_JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 
 const STATUS_LABEL = {
