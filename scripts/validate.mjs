@@ -190,11 +190,19 @@ for (const f of refFiles) if (f.endsWith('.md') && !ordered.has(f)) err(`${SKILL
 for (const k of KNOWLEDGE_ORDER) if (!refFiles.includes(`${k}.md`)) err(`scripts/build.mjs: KNOWLEDGE_ORDER lists ${k}, but references/${k}.md does not exist`);
 
 // ---------- output contract ----------
+// A contract heading counts only in one of two forms: a ## to #### heading (on its own line or
+// right after a list marker) whose text is followed by a colon or the end of the line, or a
+// **bold** label that starts a list item. So "Score anchors" doesn't count as "Score", and
+// neither would "### Score (0-5)". The other contract strings may appear anywhere in the text.
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const headingRe = (h) => new RegExp(`(^|\\n)[ \\t]*(?:(?:[-*]|\\d+\\.)?[ \\t]*#{2,4}[ \\t]+${esc(h)}[ \\t]*(?::|\\n|$)|(?:[-*]|\\d+\\.)[ \\t]+\\*\\*${esc(h)}\\*\\*)`);
 for (const [file, groups] of Object.entries(contract.artifacts)) {
   if (!exists(file)) { err(`${file}: listed in data/contract.json but missing`); continue; }
   const t = read(file);
   for (const g of groups) for (const s of contract.required[g] ?? []) {
-    if (!t.includes(s)) err(`${file}: missing contract string ${JSON.stringify(s)} (${g})`);
+    if (g === 'headings') {
+      if (!headingRe(s).test(t)) err(`${file}: missing contract heading ${JSON.stringify(s)} (a ## to #### heading followed by a colon or the end of the line, or a **bold** label that starts a list item)`);
+    } else if (!t.includes(s)) err(`${file}: missing contract string ${JSON.stringify(s)} (${g})`);
   }
 }
 

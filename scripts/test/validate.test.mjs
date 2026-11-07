@@ -219,7 +219,19 @@ const ROWS = [
     [/SKILL\.md: links references\/research\.md, which does not exist/, /scripts\/build\.mjs: KNOWLEDGE_ORDER lists research, but references\/research\.md does not exist/, /error: build failed: ENOENT/]],
   // ---- output contract
   ['rejects a contract artifact that does not exist', (d) => editJson(d, 'data/contract.json', (j) => { j.artifacts['docs/missing.md'] = ['markers']; }), /docs\/missing\.md: listed in data\/contract\.json but missing/],
-  ['rejects a missing contract heading', (d) => edit(d, CORE, (t) => t.replaceAll('Fill before running', 'Fill in')), /universal\/prompt-engine\.md: missing contract string "Fill before running" \(headings\)/],
+  ['rejects a missing contract string', (d) => edit(d, `${REF}/questions.md`, (t) => t.replaceAll('Reply `ok` to accept every ★', 'Reply yes to accept')),
+    /questions\.md: missing contract string "Reply `ok` to accept every ★" \(replyLine\)/],
+  // A contract heading counts only as a heading line or as a bold label that starts a list item,
+  // so the word left elsewhere in the text doesn't hide a renamed heading (finding 23).
+  ['rejects a missing contract heading', (d) => edit(d, CORE, (t) => t.replaceAll('Fill before running', 'Fill in')), /universal\/prompt-engine\.md: missing contract heading "Fill before running"/],
+  ['rejects a renamed Score heading, though "Score anchors" remains', (d) => edit(d, `${REF}/output-format.md`, (t) => t.replace('\n### Score\n', '\n### Rating\n')),
+    /output-format\.md: missing contract heading "Score"/],
+  ['rejects a heading with words after it', (d) => edit(d, `${REF}/output-format.md`, (t) => t.replace('\n### Score\n', '\n### Score (0-5)\n')),
+    /output-format\.md: missing contract heading "Score" \(a ## to #### heading followed by a colon or the end of the line/],
+  ['rejects a renamed What next? heading, though a bold "What next?" outside a list remains',(d) => edit(d, `${REF}/output-format.md`, (t) => t.replace('\n### What next?\n', '\n### Next steps\n')),
+    /output-format\.md: missing contract heading "What next\?"/],
+  ['rejects a renamed heading in a list item', (d) => edit(d, CORE, (t) => t.replace('\n- ### Score:', '\n- ### Rating:')), /universal\/prompt-engine\.md: missing contract heading "Score"/],
+  ['rejects a renamed bold label in a list item', (d) => edit(d, SKILL, (t) => t.replace('\n7. **Score**', '\n7. **Rating**')), /SKILL\.md: missing contract heading "Score"/],
   // ---- plugin root
   ...FORBIDDEN_ROOT.map((f) => [`rejects ${f} at the plugin root`, (d) => writeFileSync(join(d, f), ''), new RegExp(`(^|\\n)error: ${reEsc(f)}: not allowed at the repo root`)]),
   // ---- manifests
