@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Validates the repository: Agent Skill format and portability rules, the shared
 // output contract, size budgets, plugin-root hygiene, data files, manifests,
-// eval cases and generated-file freshness. Zero dependencies (Node >= 20).
+// eval cases and generated-file freshness. Zero dependencies (Node >= 22.19).
 //
 //   node scripts/validate.mjs        # exit 1 on any error; warnings are printed
 //

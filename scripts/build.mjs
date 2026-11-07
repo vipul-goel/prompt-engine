@@ -4,7 +4,7 @@
 //   skills/prompt-engine/references/*.md -> universal/prompt-engine-knowledge.md
 //   skills/, universal/ and data/        -> mcp/src/generated/content.ts (when mcp/ exists)
 //   SKILL.md and references/            -> the skill text inside evals/*/history.jsonl
-// Zero dependencies: Node >= 20 built-ins only. Output is deterministic (no timestamps),
+// Zero dependencies: Node >= 22.19 built-ins only. Output is deterministic (no timestamps),
 // so `node scripts/build.mjs && git diff --exit-code` detects stale generated files.
 // `node scripts/build.mjs --check` exits 1 instead of writing when anything is stale.
 

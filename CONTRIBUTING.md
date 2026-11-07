@@ -15,7 +15,7 @@ One method ships in four formats, so most changes start in one place and flow ou
 
 ## Setup
 
-- **Node.js 20 or later** (22 recommended). The scripts in `scripts/` use only Node built-ins, so there's nothing to install at the repository root.
+- **Node.js 22.19 or later.** That's the oldest version the project supports, and the MCP server's checks need it: `npm run test:inspector` runs the MCP Inspector, which stops with an error on older versions. The scripts in `scripts/` use only Node built-ins, so there's nothing to install at the repository root.
 - **No `package.json` at the root.** The root is also the Claude Code plugin root, and Claude Code runs `npm ci` when someone installs a plugin that has a `package.json` and a lockfile. The validator enforces this, along with the other files a plugin root must not contain.
 - **For the MCP server:** `cd mcp && npm ci`.
 - **[Claude Code](https://code.claude.com/docs)** for `claude plugin validate` and the behavior evals.
