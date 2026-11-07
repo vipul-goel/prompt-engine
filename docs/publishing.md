@@ -93,9 +93,9 @@ The server can also run over HTTP for people who want a remote URL instead of a 
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Evals (manual runs only) | Running the behavior evals in CI. Each run makes billed model calls; the workflow defaults to a $5 cost ceiling |
 
-## Monthly data check
+## Weekly data check
 
-The "Re-verify tool data" workflow opens an issue once a month when an entry in `data/media-targets.json` hasn't been checked for 60 days. To handle it:
+The "Re-verify tool data" workflow runs once a week. When entries in `data/media-targets.json` haven't been checked for 45 days, it opens one issue that lists them; while that issue stays open, each run that finds stale entries updates the list and adds a comment. To handle it:
 1. Check each listed tool against the vendor's current docs.
 2. Update the entry's fields, `status` and `sources`, and set `last_verified` to today.
 3. Run `node scripts/build.mjs` and commit the regenerated files.

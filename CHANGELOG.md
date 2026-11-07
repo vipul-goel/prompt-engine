@@ -31,5 +31,5 @@ First version.
   - trigger tests for the skill description (24 requests, half of them near-misses);
   - a two-turn test of the universal prompt;
   - MCP server tests, and a check that the `.mcpb` bundle ships a 512×512 icon;
-  - CI, release and monthly data re-verification workflows.
+  - CI, release and weekly data re-verification workflows.
 
