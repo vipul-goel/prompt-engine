@@ -22,10 +22,11 @@ import { REPO } from './helpers.js';
 
 const RESULT_MAX_CHARS = 32_000;
 
-// A contract heading counts as a ## to #### heading line (optionally inside a list item) or as a
-// **bold** label that starts a list item, followed by a colon or the end of the line, so "Score
-// anchors" doesn't count as "Score". Keep this in step with the contract check in
-// scripts/validate.mjs, which tests the source files.
+// A contract heading counts only as a ## to #### heading (on its own line or right after a list
+// marker) whose text is followed by a colon or the end of the line, or as a **bold** label that
+// starts a list item. So "Score anchors" doesn't count as "Score", and neither does
+// "### Score (0-5)". Keep this in step with the contract check in scripts/validate.mjs, which
+// tests the source files.
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const headingRe = (h: string) =>
   new RegExp(`(^|\\n)[ \\t]*(?:(?:[-*]|\\d+\\.)?[ \\t]*#{2,4}[ \\t]+${esc(h)}[ \\t]*(?::|\\n|$)|(?:[-*]|\\d+\\.)[ \\t]+\\*\\*${esc(h)}\\*\\*)`);
@@ -58,7 +59,8 @@ describe('the method brief', () => {
     expect(headingRe('Score').test(renamed)).toBe(false);
     // In the universal method, "Score anchors" follows the heading: a substring check would pass.
     expect(headingRe('Score').test('- ### Rating: a table\n\nScore anchors: 0 missing')).toBe(false);
-    for (const label of ['## Score', '### Score\nNext', '- ### Score: a table', '7. **Score**']) expect(headingRe('Score').test(label), label).toBe(true);
+    // A bold label needs nothing after it; a heading line needs a colon or the end of the line.
+    for (const label of ['## Score', '### Score\nNext', '- ### Score: a table', '7. **Score**', '- **Score** (0-5)']) expect(headingRe('Score').test(label), label).toBe(true);
     for (const other of ['### Score anchors', '### Score (0-5)', '**Score** in a sentence']) expect(headingRe('Score').test(other), other).toBe(false);
   });
 
@@ -118,8 +120,10 @@ describe('checklists and references', () => {
     expect(Object.keys(REFERENCES).sort()).toEqual([...DOMAINS, ...REFERENCE_RESOURCES].sort());
   });
 
-  it('lists every domain, in order, wherever the server names them', () => {
+  it("lists every domain, in order, in the instructions, the brief and get_checklist's description", () => {
     // DOMAINS also builds get_checklist's enum, but these lists are written out by hand.
+    // integration.test.ts checks the other two, in get_checklist's domain field and the
+    // checklist template's description, as a client sees them.
     expect(INSTRUCTIONS).toContain(`(${DOMAINS.join(', ')})`);
     expect(buildBrief()).toContain(`(${DOMAINS.slice(0, -1).join(', ')} or ${DOMAINS.at(-1)})`);
     const described = DOMAINS.map((d) => `${esc(d)} \\([^()]*\\)`).join(', ');
