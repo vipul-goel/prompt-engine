@@ -181,7 +181,7 @@ npm ci
 npm run build            # tsc → dist/
 npm test                 # build, type-check, then unit, in-process integration (both protocol eras) and end-to-end tests
 npm run test:inspector   # MCP Inspector CLI gates: tools/list --strict, prompts, resources, tool calls, modern and legacy eras
-npm run pack:mcpb        # esbuild bundle → mcpb/server/index.js, then mcpb validate + pack → dist-mcpb/prompt-engine.mcpb; then unpacks it, checks the 512×512 icon and lists the packed server's tools
+npm run pack:mcpb        # esbuild bundle → mcpb/server/index.js and THIRD_PARTY_NOTICES.txt, then mcpb validate + pack → dist-mcpb/prompt-engine.mcpb; then unpacks it and checks the 512×512 icon, that the notices name every bundled package, and the server's tools and prompts against manifest.json
 npm run test:worker      # Cloudflare Worker dry-run and wrangler dev smoke test (downloads Wrangler)
 ```
 

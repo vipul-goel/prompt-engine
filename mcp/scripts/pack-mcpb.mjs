@@ -1,11 +1,19 @@
 #!/usr/bin/env node
 // Packs the MCPB bundle for Claude Desktop: dist-mcpb/prompt-engine.mcpb.
 // Run `npm run bundle` first (`npm run pack:mcpb` does both). The bundle holds
-// manifest.json, server/index.js (one self-contained file), the project's LICENSE
-// and icon.png (mcp/icon.png: the plugin icon at 512x512, the size mcpb recommends).
-// After packing, the archive is unpacked: its manifest must name icon.png, that file
-// must be a 512x512 PNG, and its server is started the way Claude Desktop does and
-// must list the tools. If a check fails, the bundle is deleted.
+// manifest.json, server/index.js (one self-contained file), the third-party license
+// notices next to it (server/THIRD_PARTY_NOTICES.txt), the project's LICENSE and
+// icon.png (mcp/icon.png: the plugin icon at 512x512, the size mcpb recommends).
+// After packing, the archive is unpacked and checked:
+// - its manifest names icon.png, and that file is a 512x512 PNG;
+// - the notices name every package index.js bundles, and the packages the MCP SDK
+//   inlines (scripts/notices.mjs);
+// - its server, started as manifest.json's mcp_config describes
+//   (node ${__dirname}/server/index.js), lists exactly the manifest's tools, and no
+//   prompt the manifest doesn't cover.
+// Claude Desktop is reported to run some Node extensions in its own host instead
+// (anthropics/claude-code#35175); that isn't checked here. If a check fails, the
+// bundle is deleted.
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -14,6 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { SDK_INLINED, bundledPackages, noticeHeadings } from './notices.mjs';
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(pkg, '..');
@@ -69,15 +78,38 @@ try {
     throw new Error(`the packed manifest's icon is ${JSON.stringify(packed.icon)} and the packed icon.png is ${iconSize}; expected "icon.png" at 512x512`);
   }
 
-  // Start the packed server as Claude Desktop would (node ${__dirname}/server/index.js).
+  // The license notices ship, and have a heading for every package esbuild bundled (its
+  // path comments in index.js) and for each package the SDK inlines, which those comments
+  // never name, at the version SDK_INLINED pins.
+  const noticesFile = join(unpacked, 'server', 'THIRD_PARTY_NOTICES.txt');
+  if (!existsSync(noticesFile)) throw new Error('the packed bundle has no server/THIRD_PARTY_NOTICES.txt');
+  const headings = noticeHeadings(readFileSync(noticesFile, 'utf8'));
+  const markers = bundledPackages(readFileSync(join(unpacked, 'server', 'index.js'), 'utf8'));
+  if (!markers.length) throw new Error('the packed index.js has no `// node_modules/` path comments to check the notices against (was it minified?)');
+  const unnamed = [
+    ...markers.filter((name) => !headings.some((h) => h.name === name)),
+    ...SDK_INLINED.filter((spec) => !headings.some((h) => `${h.name}@${h.version}` === spec)),
+  ];
+  if (unnamed.length) throw new Error(`server/THIRD_PARTY_NOTICES.txt doesn't name: ${unnamed.join(', ')}`);
+
+  // Start the packed server as manifest.json's mcp_config describes (node ${__dirname}/server/index.js).
   const args = packed.server.mcp_config.args.map((a) => a.replace('${__dirname}', unpacked));
   const client = new Client({ name: 'mcpb-check', version: '0.0.0' });
   await client.connect(new StdioClientTransport({ command: process.execPath, args, cwd: unpacked, stderr: 'inherit' }));
   try {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort().join(', ');
-    if (tools.length !== manifest.tools.length) throw new Error(`the packed server lists ${tools.length} tools (${names}); manifest.json lists ${manifest.tools.length}`);
-    console.log(`the packed server starts and lists: ${names}`);
+    const declared = manifest.tools.map((t) => t.name).sort().join(', ');
+    if (names !== declared) throw new Error(`the packed server lists tools ${names}; manifest.json declares ${declared}`);
+    // MCPB reads a missing prompts_generated as false: the bundle has no prompts beyond
+    // manifest.prompts. Claude Desktop is reported to refuse a prompt the manifest doesn't
+    // declare ("attempted undeclared prompt"); that hasn't been checked here.
+    const { prompts } = await client.listPrompts();
+    const undeclared = prompts.map((p) => p.name).filter((n) => !(manifest.prompts ?? []).some((p) => p.name === n));
+    if (undeclared.length && manifest.prompts_generated !== true) {
+      throw new Error(`the packed server lists prompts manifest.json doesn't declare: ${undeclared.join(', ')} (set prompts_generated, or declare them)`);
+    }
+    console.log(`the packed server starts and lists: ${names}; prompts: ${prompts.map((p) => p.name).join(', ') || 'none'}`);
   } finally {
     await client.close();
   }

@@ -37,13 +37,14 @@
     },
     {
       "name": "ask_user",
-      "description": "Asks your clarifying questions in a form, with the recommended answers preselected."
+      "description": "Asks your clarifying questions: in a form where the app supports one, with the recommended answers preselected, otherwise as a numbered list."
     },
     {
       "name": "check_prompt",
       "description": "A heuristic structure-and-lint report on a draft prompt."
     }
   ],
+  "prompts_generated": true,
   "keywords": [
     "prompt engineering",
     "prompts",
