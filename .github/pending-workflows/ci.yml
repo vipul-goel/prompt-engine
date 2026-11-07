@@ -21,14 +21,35 @@ jobs:
         run: node scripts/build.mjs --check
       - name: Validate (portability, lint, budgets, contract, manifests)
         run: node scripts/validate.mjs
-      - name: Script tests (validator mutations, version bumps, lint-rule timing)
+      - name: Script tests (build, validator, version, release and eval scripts, lint-rule timing)
         run: node --test scripts/test/*.test.mjs
       - name: Skill zip layout
         run: node scripts/release.mjs --zip
-      - name: Claude Code plugin validation
+      - name: Claude Code plugin validation (with the directory profile)
         run: |
           npm install -g @anthropic-ai/claude-code@2.1.312
-          claude plugin validate . --strict
+          claude plugin validate . --strict --profile directory
+
+  # The skill job's first three checks, on Windows. bash expands the test glob as it does
+  # on Linux. Not release.mjs --zip: it needs the zip and unzip commands, which stock
+  # Windows doesn't have.
+  windows:
+    name: Scripts on Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Generated files are up to date
+        run: node scripts/build.mjs --check
+      - name: Validate (portability, lint, budgets, contract, manifests)
+        run: node scripts/validate.mjs
+      - name: Script tests (build, validator, version, release and eval scripts, lint-rule timing)
+        run: node --test scripts/test/*.test.mjs
 
   mcp:
     name: MCP server (Node ${{ matrix.node }})
@@ -36,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 22]
+        node: [22, 24]
     defaults:
       run:
         working-directory: mcp
@@ -51,8 +72,20 @@ jobs:
       - name: MCP Inspector gates (needs Node >= 22.19)
         if: matrix.node == 22
         run: npm run test:inspector
-      - name: Package checks
+      - name: Install and start the packed npm package
+        run: npm run test:pack
+      - name: MCPB bundle (packs it, then starts the packed server)
+        run: npm run pack:mcpb
+      # node-version 22 doesn't mean 22.19.0, so the lowest version mcp/package.json's
+      # engines allow gets its own run of the two package checks.
+      - name: Switch to the lowest supported Node (22.19.0)
+        if: matrix.node == 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.19.0
+      - name: The packed server and the npm package start on Node 22.19.0
         if: matrix.node == 22
         run: |
-          npm pack --dry-run
+          [ "$(node --version)" = v22.19.0 ] || { echo "::error::expected Node v22.19.0, got $(node --version)"; exit 1; }
           npm run pack:mcpb
+          npm run test:pack
