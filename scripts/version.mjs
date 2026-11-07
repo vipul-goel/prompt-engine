@@ -77,7 +77,9 @@ for (const [file, text, rel] of pending) {
 execFileSync(process.execPath, [join(root, 'scripts', 'build.mjs')], { stdio: 'inherit' });
 
 const changelog = join(root, 'CHANGELOG.md');
-if (!existsSync(changelog) || !readFileSync(changelog, 'utf8').includes(`## [${next}]`)) {
-  console.log(`\nNext: add a "## [${next}] - YYYY-MM-DD" section to CHANGELOG.md.`);
+// Remind until the version has a dated heading, so "## [0.1.0] - not yet released" still gets it.
+const dated = new RegExp(`^## \\[${next.replaceAll('.', '\\.')}\\] - \\d{4}-\\d{2}-\\d{2}$`, 'm');
+if (!existsSync(changelog) || !dated.test(readFileSync(changelog, 'utf8'))) {
+  console.log(`\nNext: give CHANGELOG.md a "## [${next}] - YYYY-MM-DD" heading with the release date.`);
 }
 console.log(`Then run the checks and tag v${next} (see docs/publishing.md).`);

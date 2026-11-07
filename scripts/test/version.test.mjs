@@ -135,3 +135,32 @@ test("keeps $$, $&, $' and $` in SKILL.md's frontmatter as they are", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('reminds about CHANGELOG.md until the version has a dated heading', () => {
+  const dir = copyRepo();
+  try {
+    const changelog = join(dir, 'CHANGELOG.md');
+    const reminder = /Next: give CHANGELOG\.md a "## \[9\.8\.7\] - YYYY-MM-DD" heading/;
+    const withHeading = (heading, eol = '\n') =>
+      writeFileSync(changelog, `# Changelog\n\n## [Unreleased]\n\n${heading}\n\nFirst version.\n`.replaceAll('\n', eol));
+    for (const heading of ['## [9.8.7] - not yet released', '## [9.8.70] - 2026-11-10']) {
+      withHeading(heading);
+      const r = run(dir, 'version.mjs', '9.8.7');
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.out, reminder, heading);
+    }
+    rmSync(changelog);
+    const missing = run(dir, 'version.mjs', '9.8.7');
+    assert.equal(missing.code, 0, missing.out);
+    assert.match(missing.out, reminder, 'no CHANGELOG.md');
+    for (const eol of ['\n', '\r\n']) {
+      withHeading('## [9.8.7] - 2026-11-10', eol);
+      const r = run(dir, 'version.mjs', '9.8.7');
+      assert.equal(r.code, 0, r.out);
+      assert.doesNotMatch(r.out, /Next: give CHANGELOG/, JSON.stringify(eol));
+      assert.match(r.out, /Then run the checks and tag v9\.8\.7/);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
