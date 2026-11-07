@@ -22,6 +22,14 @@ import { REPO } from './helpers.js';
 
 const RESULT_MAX_CHARS = 32_000;
 
+// A contract heading counts as a ## to #### heading line (optionally inside a list item) or as a
+// **bold** label that starts a list item, followed by a colon or the end of the line, so "Score
+// anchors" doesn't count as "Score". Keep this in step with the contract check in
+// scripts/validate.mjs, which tests the source files.
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const headingRe = (h: string) =>
+  new RegExp(`(^|\\n)[ \\t]*(?:(?:[-*]|\\d+\\.)?[ \\t]*#{2,4}[ \\t]+${esc(h)}[ \\t]*(?::|\\n|$)|(?:[-*]|\\d+\\.)[ \\t]+\\*\\*${esc(h)}\\*\\*)`);
+
 describe('the method brief', () => {
   const brief = buildBrief();
 
@@ -32,12 +40,26 @@ describe('the method brief', () => {
     expect(brief).toContain(adaptMethod().trim());
   });
 
-  it('keeps every contract string the universal method carries', () => {
+  it('keeps every contract string the universal method carries, each heading as a heading', () => {
     const groups = CONTRACT.artifacts['universal/prompt-engine.md'];
     expect(groups.length).toBeGreaterThan(0);
     for (const group of groups) {
-      for (const s of CONTRACT.required[group]) expect(brief, `${group}: ${s}`).toContain(s);
+      for (const s of CONTRACT.required[group]) {
+        if (group === 'headings') expect(headingRe(s).test(brief), `${group}: ${s}`).toBe(true);
+        else expect(brief, `${group}: ${s}`).toContain(s);
+      }
     }
+  });
+
+  it('catches a renamed contract heading even when its word is still in the text', () => {
+    // Nothing else in the brief stands in for the Score heading once it is renamed.
+    const renamed = brief.replace(headingRe('Score'), (heading) => heading.replace('Score', 'Rating'));
+    expect(renamed).not.toBe(brief);
+    expect(headingRe('Score').test(renamed)).toBe(false);
+    // In the universal method, "Score anchors" follows the heading: a substring check would pass.
+    expect(headingRe('Score').test('- ### Rating: a table\n\nScore anchors: 0 missing')).toBe(false);
+    for (const label of ['## Score', '### Score\nNext', '- ### Score: a table', '7. **Score**']) expect(headingRe('Score').test(label), label).toBe(true);
+    for (const other of ['### Score anchors', '### Score (0-5)', '**Score** in a sentence']) expect(headingRe('Score').test(other), other).toBe(false);
   });
 
   it('explains how to use this server', () => {
@@ -90,6 +112,20 @@ describe('the method brief', () => {
 });
 
 describe('checklists and references', () => {
+  // build.mjs puts each reference in KNOWLEDGE_ORDER into REFERENCES; the server serves a
+  // reference only as a domain checklist or a reference resource, by name.
+  it('serves every reference the build includes, as a domain or a reference resource', () => {
+    expect(Object.keys(REFERENCES).sort()).toEqual([...DOMAINS, ...REFERENCE_RESOURCES].sort());
+  });
+
+  it('lists every domain, in order, wherever the server names them', () => {
+    // DOMAINS also builds get_checklist's enum, but these lists are written out by hand.
+    expect(INSTRUCTIONS).toContain(`(${DOMAINS.join(', ')})`);
+    expect(buildBrief()).toContain(`(${DOMAINS.slice(0, -1).join(', ')} or ${DOMAINS.at(-1)})`);
+    const described = DOMAINS.map((d) => `${esc(d)} \\([^()]*\\)`).join(', ');
+    expect(TOOL_DESCRIPTIONS.get_checklist, 'get_checklist: "Domains: name (what it covers), ..."').toMatch(new RegExp(`Domains: ${described}\\.`));
+  });
+
   it('serves every domain pack, within budget', () => {
     for (const domain of DOMAINS) {
       const text = buildChecklist(domain);
