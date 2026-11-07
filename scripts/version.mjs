@@ -7,13 +7,14 @@
 // Files: .claude-plugin/plugin.json, skills/prompt-engine/SKILL.md (metadata.version)
 // and, when the MCP server is present, mcp/package.json, mcp/package-lock.json,
 // mcp/server.json (its version and each package's version) and mcp/manifest.json.
-// Edits are textual, so the files keep their formatting; each JSON edit is
-// re-parsed and compared with the intended change before anything is written.
+// Edits are textual, so the files keep their formatting, except that they are written
+// with LF line endings and without a byte-order mark (normalize() in build.mjs); each
+// JSON edit is re-parsed and compared with the intended change before anything is written.
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { root } from './build.mjs';
+import { root, normalize } from './build.mjs';
 
 const next = process.argv[2];
 if (!/^\d+\.\d+\.\d+$/.test(next ?? '')) {
@@ -30,7 +31,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function bumpJson(rel, intend) {
   const file = join(root, rel);
   if (!existsSync(file)) return;
-  const text = readFileSync(file, 'utf8');
+  const text = normalize(readFileSync(file, 'utf8'));
   const want = JSON.parse(text);
   intend(want);
   const updated = text.replace(/("version"\s*:\s*")[^"]*(")/g, `$1${next}$2`);
@@ -50,7 +51,7 @@ bumpJson('mcp/server.json', (d) => {
 const lockRel = 'mcp/package-lock.json';
 const lockFile = join(root, lockRel);
 if (existsSync(lockFile)) {
-  const text = readFileSync(lockFile, 'utf8');
+  const text = normalize(readFileSync(lockFile, 'utf8'));
   const lock = JSON.parse(text);
   if (`${JSON.stringify(lock, null, 2)}\n` !== text) fail(`${lockRel}: unexpected formatting; run \`npm version ${next} --no-git-tag-version\` in mcp/ instead`);
   lock.version = next;
@@ -61,7 +62,7 @@ if (existsSync(lockFile)) {
 // SKILL.md: only the metadata.version line inside the frontmatter.
 const skillRel = 'skills/prompt-engine/SKILL.md';
 const skillFile = join(root, skillRel);
-const skill = readFileSync(skillFile, 'utf8');
+const skill = normalize(readFileSync(skillFile, 'utf8'));
 const front = skill.match(/^---\n[\s\S]*?\n---\n/);
 if (!front || !/^ {2}version: "[^"]*"$/m.test(front[0])) fail(`${skillRel}: no metadata.version line in the frontmatter`);
 pending.push([skillFile, skill.replace(front[0], front[0].replace(/^( {2}version: ")[^"]*(")$/m, `$1${next}$2`)), skillRel]);

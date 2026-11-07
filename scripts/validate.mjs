@@ -13,13 +13,13 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, basename } from 'node:path';
-import { buildAll, root } from './build.mjs';
+import { buildAll, root, normalize } from './build.mjs';
 
 const errors = [];
 const warnings = [];
 const err = (msg) => errors.push(msg);
 const warn = (msg) => warnings.push(msg);
-const read = (p) => readFileSync(join(root, p), 'utf8');
+const read = (p) => normalize(readFileSync(join(root, p), 'utf8'));
 const exists = (p) => existsSync(join(root, p));
 const chars = (s) => [...s].length;
 

@@ -91,3 +91,24 @@ test('changes nothing when a file has an unexpected "version" key', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('sets the version in a CRLF checkout, changing only the version lines', () => {
+  const dir = copyRepo();
+  try {
+    const files = ['.claude-plugin/plugin.json', 'skills/prompt-engine/SKILL.md', 'mcp/package.json', 'mcp/package-lock.json', 'mcp/server.json', 'mcp/manifest.json'];
+    for (const f of files) writeFileSync(join(dir, f), read(dir, f).replace(/\n/g, '\r\n'));
+    const before = Object.fromEntries(files.map((f) => [f, read(dir, f).replace(/\r\n/g, '\n').split('\n')]));
+    const bumped = run(dir, 'version.mjs', '9.8.7');
+    assert.equal(bumped.code, 0, bumped.out);
+    for (const f of files) {
+      const after = read(dir, f).split('\n');
+      assert.equal(after.length, before[f].length, f);
+      const changed = after.filter((l, i) => l !== before[f][i]);
+      assert.ok(changed.length > 0 && changed.every((l) => /9\.8\.7/.test(l)), `${f}: ${changed.join(' | ')}`);
+    }
+    const checked = run(dir, 'validate.mjs');
+    assert.equal(checked.code, 0, checked.out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

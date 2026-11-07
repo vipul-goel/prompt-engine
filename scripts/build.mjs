@@ -8,13 +8,16 @@
 // so `node scripts/build.mjs && git diff --exit-code` detects stale generated files.
 // `node scripts/build.mjs --check` exits 1 instead of writing when anything is stale.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // PE_ROOT lets tests point the scripts at a temporary copy of the repository.
 export const root = process.env.PE_ROOT || join(dirname(fileURLToPath(import.meta.url)), '..');
-const read = (p) => readFileSync(join(root, p), 'utf8');
+// Text as the scripts compare it: without a leading byte-order mark and with LF line endings,
+// so a CRLF checkout (Git for Windows' default) or a BOM an editor added changes nothing.
+export const normalize = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s).replace(/\r\n/g, '\n');
+const read = (p) => normalize(readFileSync(join(root, p), 'utf8'));
 
 const STATUS_LABEL = {
   verified: '✓ verified against the vendor’s own documentation',
@@ -191,7 +194,7 @@ function main() {
   let stale = 0;
   for (const [p, content] of Object.entries(outputs)) {
     const abs = join(root, p);
-    const current = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+    const current = existsSync(abs) ? normalize(readFileSync(abs, 'utf8')) : null;
     if (current === content) continue;
     if (check) { console.error(`stale: ${p}`); stale++; continue; }
     mkdirSync(dirname(abs), { recursive: true });
@@ -202,4 +205,9 @@ function main() {
   if (check) console.log('generated files are up to date');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+// Run only as the entry point. Compare real paths: import.meta.url is percent-encoded and
+// symlink-free, process.argv[1] is neither (spaces, /tmp and /var on macOS, Windows).
+const isEntry = () => {
+  try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); } catch { return false; }
+};
+if (isEntry()) main();

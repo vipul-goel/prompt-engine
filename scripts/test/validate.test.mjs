@@ -100,3 +100,19 @@ test('rejects an unlinked reference file', () =>
 
 test('rejects a version mismatch between SKILL.md and plugin.json', () =>
   withMutation((d) => edit(d, '.claude-plugin/plugin.json', (t) => t.replace(/"version": "[^"]+"/, '"version": "9.9.9"')), /metadata\.version/));
+
+function passes(mutate) {
+  const dir = copyRepo();
+  try {
+    mutate(dir);
+    const { code, out } = validate(dir);
+    assert.equal(code, 0, out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('passes with CRLF line endings', () =>
+  passes((d) => {
+    for (const f of [SKILL, 'skills/prompt-engine/references/media-targets.md', 'universal/prompt-engine.md', 'data/contract.json']) edit(d, f, (t) => t.replace(/\n/g, '\r\n'));
+  }));
