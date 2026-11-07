@@ -62,17 +62,20 @@
   "owner_answers": {
     "date": "2026-11-04",
     "answer": "The owner accepted every recommended answer in owner_decisions.",
-    "still_open": [
-      "D8, second question: should quick mode also read references/questions.md? It had no recommendation."
-    ],
-    "recorded_in": ".claude/handoff/plan.md (changed lines carry their D number) and .claude/CLAUDE.md"
+    "still_open": [],
+    "recorded_in": ".claude/handoff/plan.md (changed lines carry their D number) and .claude/CLAUDE.md",
+    "answered_later": [
+      "D8, second question: yes, quick mode also reads references/questions.md (owner, 2026-11-07)."
+    ]
   },
   "owner_answers_1b": {
-    "status": "D27-D45 are open: the owner hasn't answered them yet.",
-    "still_open_from_1a": [
-      "D8, second question: should quick mode also read references/questions.md? It had no recommendation.",
-      "plan.md line 100 says declined or cancelled answers fall back to ★, but the MCP server asks in chat when the form is cancelled, as plan.md:54 and the skill say. Keep the server's behavior and fix line 100? (Listed in .claude/CLAUDE.md.)"
-    ]
+    "date": "2026-11-07",
+    "answer": "The owner accepted every recommended answer in D27-D45, and answered yes to both questions still open from step 1a.",
+    "answers_to_1a_questions": [
+      "D8, second question: yes, quick mode also reads references/questions.md (a 1d method change).",
+      "plan.md line 100 (now 101): keep the MCP server's behavior. A declined form falls back to ★, recorded as assumptions; a form closed without an answer makes the model ask in the chat. plan.md now says so."
+    ],
+    "recorded_in": ".claude/handoff/plan.md (changed lines carry their D number) and .claude/CLAUDE.md"
   },
   "not_verified": [],
   "severity_note": "severity is the verifiers' own rating; review_severity is the original review's. From step 1a, ten findings stay major: 1, 3, 5, 13, 16, 27, 28, 35, 37 and 39. Step 1b adds six majors, all as the review rated them: 46, 47, 48, 49, 50 and 68. Three step 1b findings drop to trivial: 60, 67 and 80.",
@@ -709,7 +712,7 @@
       ],
       "question": "Keep the 8,000-character rule as a check on where the key sections start (and reword plan.md:82), or require whole sections to fit, which means cutting about 940 characters of method text and re-running the evals? Should quick mode also read references/questions.md, so a later deep round has the full question rules?",
       "recommended": "Keep it as a start check, reword plan.md:82, and copy the caveat text and the at-most-3 caps into SKILL.md:90. Quick mode reading questions.md: your call (one extra 5.4 KB read per quick run).",
-      "decision": "Accepted as recommended on 2026-11-04. The second question (should quick mode also read references/questions.md?) had no recommendation and is still open."
+      "decision": "Accepted as recommended on 2026-11-04. The second question (should quick mode also read references/questions.md?) was answered on 2026-11-07: yes."
     },
     {
       "id": "D9",
@@ -885,7 +888,7 @@
       ],
       "question": "Two-arm runs leave every skill-fired check unscored. The trigger case gets `arm: both`, as plan.md:174 already says. The other 11 are in cases that name prompt-engine. Keep them as unscored indicators and add a jq gate to evals.yml and step 3? Or give them `arm: both` too? That is simpler, but every without arm then fails one check by design, and the with/without delta rises.",
       "recommended": "Keep them as indicators and add the gate, so the delta stays comparable with earlier rounds.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D28",
@@ -894,7 +897,7 @@
       ],
       "question": "Which agent should every prompt.md pin: Sonnet 5.5, which compatibility.md names and which recorded the follow-up fixtures and ran the trigger tests, or Opus 5.5, the documented default for most Claude Code users (about twice the price)? Should the judge be pinned to claude-haiku-5-5? And were the 2026-10-29 rounds run with --model claude-sonnet-5-5?",
       "recommended": "Pin Sonnet 5.5 and the claude-haiku-5-5 judge. If you don't know which model the October rounds used, compatibility.md says it wasn't recorded.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D29",
@@ -903,7 +906,7 @@
       ],
       "question": "plan.md:166 asks for a length ceiling on the strong-prompt case but gives no number. Is 1.5 times the user's prompt right? That is 1,130 characters here; the 2026-11-04 reply was 2.0 times. And for an already-strong prompt, may the skill add short sections, such as a final check or tags around the inputs, if the user's sentences stay in order and mostly word for word? Or should it only edit in place?",
       "recommended": "1.5 times. Short additions are fine if the user's sentences stay in order and each addition is listed under What I added; regrouping the prompt under new headings is not.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D30",
@@ -912,7 +915,7 @@
       ],
       "question": "plan.md:176 says every name, number, date or URL the user didn't give must be a placeholder or an assumption, and output-format.md:66 says every default that shaped the prompt is listed. Should text prompts follow that literally, as D6 does for media? Then small picks such as \"1-3 lines per paragraph\", \"a 3–5 sentence overview\" or an output file name each need an Assumption, merged where minor. Or should only values that shape the deliverable count (length, item counts, limits, names)? The literal reading fails the 2026-11-04 writing, Spanish and secret-redaction replies until the method changes.",
       "recommended": "Literal, in line with D6: lengths, counts, limits and names as their own items, small formatting picks merged into one. Land the method change and the stricter grader together in 1d.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D31",
@@ -921,7 +924,7 @@
       ],
       "question": "plan.md:28 set one run per case as a cost guard, and the same follow-up case passed on 2026-11-03 and failed on 2026-11-04. (a) Keep one run, add a caveat to compatibility.md:32, and re-check each failing case at 3 runs before recording it (about $0.30-0.45 per case). (b) Move step 3 and evals.yml to 3 runs (about $6-7 per full run with D14's cases, with a $10 cap). If (b): should a case pass only when every run is perfect, or when each grader passes in most runs?",
       "recommended": "(a). Keep the 1.0 threshold. Lowering it to 0.8 would hide the real follow-up failure.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D32",
@@ -931,7 +934,7 @@
       ],
       "question": "Should eval runs grant Bash, as plan.md:171-172 says, so the safety cases can see a deletion? The grant reaches every case, and Bash really runs, sandboxed, in each run's temporary folder. The Linux CI job would need bubblewrap and socat, and possibly an AppArmor change, untested on GitHub's runners (ubuntu-latest moves to Ubuntu 26.04 in November 2026). A middle way grants only read-only shell commands, so a delete attempt is recorded and refused (not tested live). Or keep Bash off: plan.md:171-172 and README.md:81 then say the shell path isn't covered, and the D25 checklist gets an imperative coding prompt.",
       "recommended": "Keep Bash off for now and say so in plan.md and README.md. Add the imperative prompt to the D25 checklist, plus the free file-content checks. Revisit the read-only grant once CI runs (step 2).",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D33",
@@ -940,7 +943,7 @@
       ],
       "question": "When the user accepts a ★ that only rules something out, such as \"None. Write for the reader first\" for SEO, must the full prompt say so? SKILL.md:66 says to use each accepted ★ as offered; SKILL.md:74 says to leave out what the model does by default. Requiring it adds a line to blueprint.md:96. Allowing it to be left out adds a sentence to SKILL.md:66, from the 194 characters left before \"### 5. Present\". Also: may answers the user typed be tagged [you], or only [your answer]?",
       "recommended": "The prompt states every accepted answer (blueprint.md:96). Graders accept [you] or [your answer] for typed answers; the tag rules don't change.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D34",
@@ -950,7 +953,7 @@
       ],
       "question": "The save-to-file recording still shows the old skill's dialog search and a repeated menu (history.jsonl lines 10-12). Re-record it (about $0.10; it waits for finding 14's sanitizer fix, goes in D14's recording batch and can be D9's one recording)? Or cut lines 10-12 by hand (free, but it edits a recording and leaves a stop_reason the resume code reads, so it still needs one billed run)?",
       "recommended": "Re-record it in D14's batch, and reuse that clean output-and-menu history for the new menu cases.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D35",
@@ -959,7 +962,7 @@
       ],
       "question": "Should a reply that echoes part of a pasted key fail secret-redaction-quick? The proposed check fails any 8-character piece of the key's secret part, including its first or last 8 characters. Prefixes or suffixes of 4-7 characters, such as sk-proj-7Hq2…, pass.",
       "recommended": "Yes.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D36",
@@ -968,7 +971,7 @@
       ],
       "question": "May build.mjs generate two lint graders in each output case (evals/<case>/graders/lint-prompt.md and lint-prompt-i.md) from data/lint-rules.json? That adds them to CLAUDE.md's list of generated files. Or keep hand-written graders plus a test that catches drift? Either way, should all 10 output cases get them? On the 2026-11-04 results, the no-skill mean in compatibility.md would rise by about 0.04.",
       "recommended": "Generate them with build.mjs, in all 10 output cases, leaving template-leftover out of secret-redaction-quick (a correct GitHub Actions prompt contains ${{ … }}).",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D37",
@@ -978,7 +981,7 @@
       ],
       "question": "Which new billed cases, beyond D14's three (deep, change N, ok at the menu)? (a) Saving when the file already exists (should create -2). (b) Saving to a path you give. (c) A prompt that contains a code block. (d) A ChatGPT prompt with nothing to fill (Try it here ★). (e) Picking Fill placeholders after D1 (needs the re-recorded history). (f) A pasted key in quick mode, then reply 1, since D5 says the method never asks for a secret's value. Each costs about $0.10-0.15 per run, plus a recording for the history cases.",
       "recommended": "(a), (c), (e) and (f): file safety, the code-fence rule, D1's new behavior and D5's promise. About $0.50 more per full run.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D38",
@@ -988,7 +991,7 @@
       ],
       "question": "Claude Desktop isn't installed on this Mac, and nothing records the .mcpb working there. Before the first release: (a) you install Claude Desktop and run the Desktop checks in docs/manual-checks.md, with the prompt and silent-decline checks added, as a required release step (as D25 did for Claude Code); (b) the first pre-release ships the .mcpb labelled ? unverified; or (c) the .mcpb stays out of releases until it has been checked?",
       "recommended": "(b): label it in compatibility.md and next to each download link, and run the Desktop check when you can.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D39",
@@ -998,7 +1001,7 @@
       ],
       "question": "Every plugin install copies the whole repository, including .claude/handoff (811 KB, 38% of the bytes) and .claude/CLAUDE.md. By Claude Code 2.1.318's code (read, not run), a session started in the home folder would load .claude/CLAUDE.md as project memory once the skill reads a reference. (1) After the merge, where should .claude/handoff and the Status and Not-finished parts of .claude/CLAUDE.md live: a non-default branch, a GitHub issue, or main? (2) May a later session run one short billed check (a few cents) that confirms or rules out the home-folder load? (3) Keep the repository root as the plugin and move the contributor notes out of .claude/ (reverses plan.md:93; cloud sessions stop loading them automatically), or move the plugin into plugin/ (reverses plan.md:36 and :80, and changes paths across scripts, docs and fixtures)?",
       "recommended": "(1) A non-default branch such as maintainer-notes, moved there before the PR leaves draft. (2) Yes. (3) Keep the root as the plugin. If the check shows the load, move the rest of the notes to docs/maintainers.md, import it from an untracked .claude/CLAUDE.md, and have validate.mjs refuse tracked .claude/ entries. If it doesn't load, keep .claude/CLAUDE.md, as plan.md:93 says.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D40",
@@ -1007,7 +1010,7 @@
       ],
       "question": "Do you plan to list the plugin in Anthropic's plugin directory? If yes, the new file-size and file-count check in validate.mjs fails CI, and you run the portal's Validate on the PR head before merging (it needs your paid plan; it also settles the fake test key and finding 16's .gitattributes). If not, the check only warns.",
       "recommended": "Warn for now; make it an error once you decide to list it.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D41",
@@ -1016,7 +1019,7 @@
       ],
       "question": "Between releases, new plugin installs get main under the last released version, while existing installs keep the copy they have. Which model? (a) Keep it and document it. (b) Bump the version in every PR that changes skills/ or .claude-plugin/, with a CI check; the MCP package's version then runs ahead of npm. (c) Drop version, so installs follow every commit (reverses plan.md:82; validate.mjs and the --strict check change). (d) Point the marketplace entry at the release tag (validate.mjs:175 changes, each release needs a follow-up commit, and branch installs stop testing the branch). (e) A stable branch that users add with #stable (Claude Code only).",
       "recommended": "(a).",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D42",
@@ -1025,7 +1028,7 @@
       ],
       "question": "After the merge, will you run the Claude.ai update check with your account? Add the marketplace and the plugin, push one commit to main without a version change and one with a bump, and note whether \"Synced commit\" moves on its own or only after Check for updates, and whether the plugin's SKILL.md changes. Until then, the docs keep the Claude.ai update path marked unverified.",
       "recommended": "Yes, as an optional check after the first release.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D43",
@@ -1034,7 +1037,7 @@
       ],
       "question": "Should node scripts/release.mjs --zip work on stock Windows, which has no zip command? That means about 60 lines of node:zlib code in place of zip and unzip (a prototype passed unzip -t, matched zip's file list and gave byte-identical runs) and running it in D10's Windows CI job. Or is a one-line error plus the documented manual zip enough, since each release carries the zip?",
       "recommended": "The one-line error and the documented manual zip.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D44",
@@ -1043,7 +1046,7 @@
       ],
       "question": "Optional: list the Claude Desktop bundle in the MCP Registry too? That needs a second server.json package (registryType mcpb, the release download URL, and a fileSha256 filled in at release time) and changes to manifests.test.ts:72-74 and version.mjs. The comment fix doesn't depend on it.",
       "recommended": "Not for the first release. Revisit once the .mcpb has passed the Desktop check (D38).",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     },
     {
       "id": "D45",
@@ -1052,7 +1055,7 @@
       ],
       "question": "Finding 61 is wrong: the Veo FAIL was a correct catch. The reply repeated the clip length in its prose (\"over the full 8 seconds\"), which image-video.md:104 rules out. Should 1d fix that skill miss? The fix extends :104 to cover a repeated length, exempts segment timestamps, starts the Veo example at :89 with \"One continuous\", and changes the grader's wording to match.",
       "recommended": "Yes, in 1d, with the audit's wording rather than the reply's (coordination: method examples), then re-run video-veo-quick with a cost cap.",
-      "decision": "Open: waiting for the owner."
+      "decision": "Accepted as recommended on 2026-11-07."
     }
   ],
   "coordination": [
@@ -5232,6 +5235,7 @@
         "plan.md:28 set one run per case as a cost guard. Option (a): keep it, add a caveat, and re-check each failing case at 3 runs (about $0.30 per case). Option (b): move step 3 and evals.yml to 3 runs (about $6-7 per full run with D14's cases; cap $10). Which do you want? And should a case pass only when every run is perfect (threshold 1.0), or when each grader passes in most runs?",
         "plan.md:28 set one run per case as a cost guard. Which do you want?\n(a) Keep it, add a caveat to compatibility.md:32, and re-check each failing case at 3 runs before recording it (about $0.30-0.45 per case).\n(b) Move step 3 and evals.yml to 3 runs (about $6-7 per full run with D14's cases, with a $10 cap).\nAnd if you choose 3 runs, should a case pass only when every run is perfect (threshold 1.0), or when each grader passes in most runs (threshold 0 plus the majority gate)?"
       ],
+      "resolution": "D31, 2026-11-07: keep one run per case and the 1.0 pass bar; re-check a failing case at 3 runs before recording it, and add the caveat to compatibility.md:32.",
       "decisions": [
         "D31"
       ]
@@ -6213,6 +6217,7 @@
       "proposed_fix": "None for this finding: the grader caught a real miss, so relaxing image-video.md:104 or criterion (3) would be wrong. The miss itself is D45. If the owner accepts it, use the audit's fix_corrections in 1d (they avoid the reply's wording) and re-run video-veo-quick with a cost cap.",
       "owner_questions": [],
       "owner_questions_note": "The verifier asked whether a pacing phrase that repeats the clip length counts as writing settings into the prose. The arbitration settled it from the method text: it does. Whether to fix the skill miss is D45.",
+      "resolution": "D45, 2026-11-07: no grader fix. Fix the skill miss in 1d with the audit's wording, then re-run video-veo-quick with a cost cap.",
       "decisions": [
         "D45"
       ]
@@ -7283,6 +7288,7 @@
         "1. Can a later session run one check? It could be one short skill run started in a home-like folder (billed, a few cents), or a run of the real CLI against a local mock API, which costs nothing but is outside this step's rules. 2. Which fix do you want? (a) Keep the root as the plugin and move the contributor notes out of .claude/CLAUDE.md. This reverses plan.md:93, and cloud sessions would no longer load the notes. (b) Move the plugin into plugin/. This reverses plan.md:36 and :80, and also shrinks the cache from finding 72.",
         "1. May a later session run one billed check? It would be one short skill run started in a home-like folder, with an InstructionsLoaded hook that logs file_path, load_reason and trigger_file_path; it costs a few cents.\n2. Which fix do you want?\n   (a) Keep the root as the plugin and move the contributor notes out of .claude/. This reverses plan.md:93, and cloud sessions stop loading the notes automatically.\n   (b) Move the plugin into plugin/. This reverses plan.md:36 and :80, and also fixes most of finding 72."
       ],
+      "resolution": "D39, 2026-11-07: run one billed check of the home-folder load; keep the repository root as the plugin. If the check shows the load, move the remaining notes to docs/maintainers.md, import it from an untracked .claude/CLAUDE.md and have validate.mjs refuse tracked .claude/ entries; if not, keep .claude/CLAUDE.md. Either way, .claude/handoff and the Status and Not-finished notes move to a maintainer-notes branch before the PR leaves draft.",
       "decisions": [
         "D39"
       ]
