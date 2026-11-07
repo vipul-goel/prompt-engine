@@ -1,5 +1,6 @@
-// Tests for scripts/build.mjs, run against temporary copies of the repository: running it
-// from unusual paths, and sources with CRLF line endings or a byte-order mark.
+// Tests for scripts/build.mjs, mostly run against temporary copies of the repository: running
+// it from unusual paths, sources with CRLF line endings or a byte-order mark, and data it
+// can't render.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -9,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { renderMediaTargets } from '../build.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Build output and tool state the checks don't read: copying them only slows the tests down.
@@ -115,6 +117,33 @@ test('a byte-order mark at the start of a source file changes nothing', () => {
     assert.equal(check.code, 0, check.out);
     const validate = node(join(dir, 'scripts', 'validate.mjs'));
     assert.equal(validate.code, 0, validate.out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- data the build can't render ----------
+test('renderMediaTargets names the entry it cannot render', () => {
+  const data = (over) => ({ targets: [{ id: 'midjourney', name: 'Midjourney', kind: 'image', status: 'verified', last_verified: '2026-10-29', sources: ['https://example.com/docs'], ...over }] });
+  assert.match(renderMediaTargets(data({})), /^## Midjourney$/m);
+  assert.throws(() => renderMediaTargets(data({ status: 'verifed' })), { message: 'media-targets: unknown status "verifed" for midjourney' });
+  assert.throws(() => renderMediaTargets(data({ sources: undefined })), { message: 'media-targets: midjourney needs a sources array' });
+});
+
+test('build.mjs reports data it cannot render in one line, without a stack trace', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-baddata-'));
+  try {
+    copyTo(dir);
+    const file = join(dir, 'data/media-targets.json');
+    const data = JSON.parse(readFileSync(file, 'utf8'));
+    data.targets[0].status = 'verifed';
+    writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    for (const args of [[], ['--check']]) {
+      const r = node(join(dir, 'scripts', 'build.mjs'), args);
+      assert.equal(r.code, 1, r.out);
+      assert.equal(r.stdout, '', `build.mjs ${args.join(' ')}`);
+      assert.equal(r.stderr, `build failed: media-targets: unknown status "verifed" for ${data.targets[0].id}\n`);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

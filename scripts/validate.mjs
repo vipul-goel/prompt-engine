@@ -14,7 +14,7 @@
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, relative, basename } from 'node:path';
-import { buildAll, root, normalize, OS_JUNK } from './build.mjs';
+import { buildAll, root, normalize, OS_JUNK, KNOWLEDGE_ORDER } from './build.mjs';
 
 const errors = [];
 const warnings = [];
@@ -184,6 +184,10 @@ for (const f of refFiles) {
   else if (!linked.has(f)) err(`${SKILL_DIR}/references/${f}: not linked from SKILL.md`);
 }
 for (const f of linked) if (!refFiles.includes(f)) err(`${SKILL}: links references/${f}, which does not exist`);
+// build.mjs builds the universal knowledge file and the MCP server's content from KNOWLEDGE_ORDER only.
+const ordered = new Set(KNOWLEDGE_ORDER.map((k) => `${k}.md`));
+for (const f of refFiles) if (f.endsWith('.md') && !ordered.has(f)) err(`${SKILL_DIR}/references/${f}: add "${f.slice(0, -3)}" to KNOWLEDGE_ORDER in scripts/build.mjs, or the universal knowledge file and the MCP server won't include it`);
+for (const k of KNOWLEDGE_ORDER) if (!refFiles.includes(`${k}.md`)) err(`scripts/build.mjs: KNOWLEDGE_ORDER lists ${k}, but references/${k}.md does not exist`);
 
 // ---------- output contract ----------
 for (const [file, groups] of Object.entries(contract.artifacts)) {
@@ -298,7 +302,12 @@ const media = JSON.parse(read('data/media-targets.json'));
 for (const t of media.targets) {
   if (!['verified', 'secondary', 'unverified'].includes(t.status)) err(`data/media-targets.json ${t.id}: bad status "${t.status}"`);
   if (!Array.isArray(t.sources) || !t.sources.length || t.sources.some((s) => !/^https:\/\//.test(s))) err(`data/media-targets.json ${t.id}: needs https sources`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(t.last_verified ?? '')) err(`data/media-targets.json ${t.id}: last_verified must be YYYY-MM-DD`);
+  const d = t.last_verified ?? '';
+  const ms = Date.parse(`${d}T00:00:00Z`);
+  // The round trip catches dates that Date.parse rolls over, such as 2024-02-30.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== d) err(`data/media-targets.json ${t.id}: last_verified must be a real YYYY-MM-DD date`);
+  // One day of slack, for dates written in a time zone ahead of UTC.
+  else if (ms > Date.now() + 864e5) err(`data/media-targets.json ${t.id}: last_verified ${d} is in the future`);
 }
 
 // ---------- eval cases ----------
@@ -313,7 +322,10 @@ if (exists('evals')) {
 }
 
 // ---------- generated files ----------
-for (const [p, content] of Object.entries(buildAll())) {
+// buildAll() throws on sources it can't render: list that with the other errors.
+let built = {};
+try { built = buildAll(); } catch (e) { err(`build failed: ${e.message}`); }
+for (const [p, content] of Object.entries(built)) {
   if (!exists(p) || read(p) !== content) err(`${p}: stale; run node scripts/build.mjs`);
 }
 

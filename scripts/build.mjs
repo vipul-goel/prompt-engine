@@ -37,6 +37,7 @@ export function renderMediaTargets(data) {
   ];
   for (const t of data.targets) {
     if (!STATUS_LABEL[t.status]) throw new Error(`media-targets: unknown status "${t.status}" for ${t.id}`);
+    if (!Array.isArray(t.sources)) throw new Error(`media-targets: ${t.id} needs a sources array`);
     lines.push(`## ${t.name}`, '');
     lines.push(`*${t.kind} · ${STATUS_LABEL[t.status]} (last checked ${t.last_verified})*`, '');
     const fields = [
@@ -193,7 +194,9 @@ export function buildAll() {
 
 function main() {
   const check = process.argv.includes('--check');
-  const outputs = buildAll();
+  // A source the build can't render is a data error to fix, not a crash: one line, no stack.
+  let outputs;
+  try { outputs = buildAll(); } catch (e) { console.error(`build failed: ${e.message}`); process.exit(1); }
   let stale = 0;
   for (const [p, content] of Object.entries(outputs)) {
     const abs = join(root, p);

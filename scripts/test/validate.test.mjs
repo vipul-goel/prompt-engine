@@ -112,6 +112,9 @@ const bodyOf = (t) => t.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
 // Neutral text: no lint hits and no substitution syntax.
 const filler = (n) => 'filler '.repeat(Math.ceil(Math.max(n, 1) / 7)).slice(0, Math.max(n, 1));
 const setFront = (key, line) => (d) => edit(d, SKILL, (t) => t.replace(new RegExp(`^${key}:.*$`, 'm'), () => line));
+// The first entry of data/media-targets.json.
+const MEDIA_ID_RE = reEsc(JSON.parse(readFileSync(join(repo, 'data/media-targets.json'), 'utf8')).targets[0].id);
+const target = (fn) => (d) => editJson(d, 'data/media-targets.json', (j) => fn(j.targets[0]));
 
 // Frontmatter that doesn't parse, or that strict YAML parsers read differently (finding 76).
 // validate.mjs reports the parse error alone: "\n\n1 error(s)" follows its line.
@@ -209,6 +212,11 @@ const ROWS = [
   ['rejects a nested references folder', (d) => put(d, `${REF}/sub/extra.md`, '# Extra\n'), /references\/sub: keep references one level deep/],
   ['rejects an unlinked reference file', (d) => put(d, `${REF}/extra.md`, '# Extra\n'), /references\/extra\.md: not linked from SKILL\.md/],
   ['rejects a link to a reference that does not exist', (d) => edit(d, SKILL, (t) => `${t}\nSee references/missing.md.\n`), /SKILL\.md: links references\/missing\.md, which does not exist/],
+  ['rejects a reference missing from KNOWLEDGE_ORDER', (d) => { put(d, `${REF}/extra.md`, '# Extra\n'); edit(d, SKILL, (t) => `${t}\nSee references/extra.md.\n`); },
+    /references\/extra\.md: add "extra" to KNOWLEDGE_ORDER in scripts\/build\.mjs/],
+  // The build can't read the missing file either: its error is listed with the others (finding 21's guard).
+  ['rejects a KNOWLEDGE_ORDER entry whose file is missing, and still lists the other errors', (d) => rmSync(join(d, `${REF}/research.md`)),
+    [/SKILL\.md: links references\/research\.md, which does not exist/, /scripts\/build\.mjs: KNOWLEDGE_ORDER lists research, but references\/research\.md does not exist/, /error: build failed: ENOENT/]],
   // ---- output contract
   ['rejects a contract artifact that does not exist', (d) => editJson(d, 'data/contract.json', (j) => { j.artifacts['docs/missing.md'] = ['markers']; }), /docs\/missing\.md: listed in data\/contract\.json but missing/],
   ['rejects a missing contract heading', (d) => edit(d, CORE, (t) => t.replaceAll('Fill before running', 'Fill in')), /universal\/prompt-engine\.md: missing contract string "Fill before running" \(headings\)/],
@@ -228,8 +236,16 @@ const ROWS = [
   ['rejects a server.json package version mismatch', (d) => editJson(d, 'mcp/server.json', (j) => { j.packages[0].version = '9.9.9'; }), /server\.json: package \S+ version 9\.9\.9 != /],
   ['rejects an mcp/manifest.json version mismatch', (d) => editJson(d, 'mcp/manifest.json', (j) => { j.version = '9.9.9'; }), /mcp\/manifest\.json: version 9\.9\.9 != /],
   // ---- data
-  ['requires https sources', (d) => editJson(d, 'data/media-targets.json', (j) => { j.targets[0].sources = ['http://example.com/docs']; }), /media-targets\.json \S+: needs https sources/],
-  ['rejects a malformed last_verified date', (d) => editJson(d, 'data/media-targets.json', (j) => { j.targets[0].last_verified = '2026-1-29'; }), /media-targets\.json \S+: last_verified must be/],
+  ['requires https sources', target((t) => { t.sources = ['http://example.com/docs']; }), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: needs https sources`)],
+  ['rejects a malformed last_verified date', target((t) => { t.last_verified = '2026-1-29'; }), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: last_verified must be a real YYYY-MM-DD date`)],
+  ['rejects an impossible last_verified date', target((t) => { t.last_verified = '2024-02-30'; }), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: last_verified must be a real YYYY-MM-DD date`)],
+  ['rejects a last_verified date in the future', target((t) => { t.last_verified = '2099-01-01'; }), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: last_verified 2099-01-01 is in the future`)],
+  // Data the build can't render: the build's error is listed with the others, not a stack trace.
+  ['lists every data error when the build throws', target((t) => { t.status = 'verifed'; t.sources = ['http://example.com/docs']; }),
+    [new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: bad status "verifed"`), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: needs https sources`),
+      new RegExp(`error: build failed: media-targets: unknown status "verifed" for ${MEDIA_ID_RE}`)]],
+  ['names the entry whose sources array is missing', target((t) => { delete t.sources; }),
+    [new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: needs https sources`), new RegExp(`error: build failed: media-targets: ${MEDIA_ID_RE} needs a sources array`)]],
   // ---- eval cases
   ['rejects an eval case without prompt.md or case.yaml', (d) => mkdirSync(join(d, 'evals/empty-case')), /evals\/empty-case: needs prompt\.md or case\.yaml/],
   ['rejects an eval case without graders', (d) => put(d, 'evals/no-graders/prompt.md', 'hello\n'), /evals\/no-graders: needs at least one grader in graders\//],
