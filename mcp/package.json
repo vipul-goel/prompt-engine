@@ -1,7 +1,7 @@
 {
   "name": "prompt-engine-mcp",
   "version": "0.1.0",
-  "description": "MCP server for Prompt Engine: turns a rough prompt into a detailed, LLM-ready prompt by asking multiple-choice questions with recommended answers. No API key, no network calls.",
+  "description": "MCP server for Prompt Engine: turns a rough prompt into a detailed, LLM-ready prompt by asking multiple-choice questions with recommended answers. No API key, and it never calls a model or any other service.",
   "keywords": [
     "mcp",
     "mcp-server",

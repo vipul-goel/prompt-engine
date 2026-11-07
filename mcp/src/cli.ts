@@ -49,7 +49,7 @@ const MAX_CONNECTIONS = 1024;
 // some of them, such as TRACE.
 const SDK_METHODS = ['POST', 'GET', 'DELETE', 'OPTIONS'];
 
-const USAGE = `${NAME} ${VERSION}: Prompt Engine as an MCP server (no API key, no network calls).
+const USAGE = `${NAME} ${VERSION}: Prompt Engine as an MCP server (no API key; it never calls a model or any other service).
 
 Usage:
   ${NAME}                     serve over stdio (what MCP clients launch)

@@ -59,6 +59,20 @@ describe('package.json', () => {
   });
 });
 
+describe('how the server describes itself', () => {
+  // With --http the server answers network requests, so the npm description, the MCPB
+  // description and --help say what it never does instead: call a model or any other service.
+  it('says it never calls a model or any other service, not that it makes no network calls', () => {
+    const help = spawnSync(process.execPath, [join(PKG, 'dist', 'cli.js'), '--help'], { encoding: 'utf8' });
+    expect(help.status, help.stderr).toBe(0);
+    const texts = { 'package.json description': pkg.description, 'manifest.json long_description': manifest.long_description, '--help': help.stdout };
+    for (const [where, text] of Object.entries(texts)) {
+      expect(text, where).toMatch(/never calls a model or any other service/);
+      expect(text, where).not.toMatch(/network calls/i);
+    }
+  });
+});
+
 describe('server.json (MCP Registry)', () => {
   it('validates against the 2025-12-11 schema', () => {
     const schema = readJson(join(PKG, 'test', 'fixtures', 'server.schema.2025-12-11.json'));
