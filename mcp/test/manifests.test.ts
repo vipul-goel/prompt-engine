@@ -70,9 +70,14 @@ describe('package.json', () => {
       expect(run('remove').status).toBe(0);
       expect(existsSync(copy)).toBe(false);
 
-      // A LICENSE put in mcp/ by hand is used as it is and kept, even with no root LICENSE.
-      rmSync(join(root, 'LICENSE'));
+      // A LICENSE put in mcp/ by hand is used as it is and kept: next to the root LICENSE, as in
+      // this repository, and with no root LICENSE.
       writeFileSync(copy, 'hand-placed\n');
+      expect(run('copy').status).toBe(0);
+      expect(readFileSync(copy, 'utf8')).toBe('hand-placed\n');
+      expect(run('remove').status).toBe(0);
+      expect(readFileSync(copy, 'utf8')).toBe('hand-placed\n');
+      rmSync(join(root, 'LICENSE'));
       expect(run('copy').status).toBe(0);
       expect(run('remove').status).toBe(0);
       expect(readFileSync(copy, 'utf8')).toBe('hand-placed\n');
@@ -219,7 +224,7 @@ describe('third-party notices (MCPB bundle)', () => {
     for (const name of names) expect(headings.map((h) => h.name), name).toContain(name);
   });
 
-  it('fails, naming the package, when a vendored license text is missing', async () => {
+  it('fails, naming the package, when a vendored license text is missing or empty', async () => {
     const { collectNotices } = await notices();
     const { metafile } = await bundle();
     const thirdParty = temp();
@@ -227,6 +232,8 @@ describe('third-party notices (MCPB bundle)', () => {
       cpSync(join(PKG, 'third-party'), thirdParty, { recursive: true });
       rmSync(join(thirdParty, 'fast-uri@3.1.8'), { recursive: true });
       expect(() => collectNotices(metafile, { thirdParty })).toThrow(/fast-uri@3\.1\.8 \(inlined in @modelcontextprotocol\/server\): no license text/);
+      writeFileSync(join(thirdParty, 'content-type@1.0.5', 'LICENSE'), '\n \n');
+      expect(() => collectNotices(metafile, { thirdParty })).toThrow(/content-type@1\.0\.5 \(inlined in @modelcontextprotocol\/server\): third-party\/content-type@1\.0\.5\/LICENSE is empty/);
     } finally {
       rmSync(thirdParty, { recursive: true, force: true });
     }
@@ -241,7 +248,7 @@ describe('third-party notices (MCPB bundle)', () => {
     expect(() => collectNotices(metafile, { sdkInlined: [...SDK_INLINED, 'leftpad@1.0.0'] })).toThrow(/SDK_INLINED in scripts\/notices\.mjs lists leftpad@1\.0\.0, which @modelcontextprotocol\/server's \/\/#region comments don't name/);
   });
 
-  it('fails when a bundled package has no license file, or the SDK is missing or names nothing it inlines', async () => {
+  it('fails when a bundled package has no license file or an empty one, or the SDK is missing or names nothing it inlines', async () => {
     const { collectNotices } = await notices();
     const root = temp();
     try {
@@ -251,6 +258,9 @@ describe('third-party notices (MCPB bundle)', () => {
       };
       write('node_modules/bare/package.json', '{ "name": "bare", "version": "1.0.0" }');
       write('node_modules/bare/index.js', 'export {};\n');
+      write('node_modules/blank/package.json', '{ "name": "blank", "version": "2.0.0" }');
+      write('node_modules/blank/LICENSE.md', '\n');
+      write('node_modules/blank/index.js', 'export {};\n');
       write('node_modules/@modelcontextprotocol/server/package.json', '{ "name": "@modelcontextprotocol/server", "version": "2.4.0" }');
       write('node_modules/@modelcontextprotocol/server/LICENSE', 'Apache-2.0\n');
       write('node_modules/@modelcontextprotocol/server/dist/index.mjs', '//#region src/index.ts\nexport {};\n//#endregion\n');
@@ -262,8 +272,9 @@ describe('third-party notices (MCPB bundle)', () => {
         }
         return 'no error';
       };
-      const message = failure(['src/cli.ts', 'node_modules/bare/index.js', 'node_modules/@modelcontextprotocol/server/dist/index.mjs']);
+      const message = failure(['src/cli.ts', 'node_modules/bare/index.js', 'node_modules/blank/index.js', 'node_modules/@modelcontextprotocol/server/dist/index.mjs']);
       expect(message).toMatch(/bare@1\.0\.0: no license file in node_modules\/bare/);
+      expect(message).toMatch(/blank@2\.0\.0: node_modules\/blank\/LICENSE\.md is empty/);
       expect(message).toMatch(/lists ajv-formats@3\.0\.1, ajv@8\.18\.0, .*json-schema-traverse@1\.0\.0, which @modelcontextprotocol\/server's \/\/#region comments don't name/);
       expect(failure(['src/cli.ts'])).toMatch(/the bundle has no input from @modelcontextprotocol\/server/);
     } finally {

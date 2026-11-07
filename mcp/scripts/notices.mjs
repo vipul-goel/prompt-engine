@@ -35,8 +35,9 @@ export function pnpmVersion(segment) {
 
 // esbuild's metafile -> [{ name, version, text, via? }], sorted by name. `via` names the
 // package whose own dist inlines this one. Throws one error that lists every problem: a
-// package without a license text, an SDK other than SDK_VERSION, or an SDK that inlines a
-// set other than SDK_INLINED (this also catches //#region comments that stop naming them).
+// package without a license text or with an empty one, an SDK other than SDK_VERSION, or an
+// SDK that inlines a set other than SDK_INLINED (this also catches //#region comments that
+// stop naming them).
 // The options exist for the tests.
 export function collectNotices(metafile, { root = pkg, thirdParty = join(root, 'third-party'), sdkVersion = SDK_VERSION, sdkInlined = SDK_INLINED } = {}) {
   const packages = new Map(); // package folder -> { name, version, text }
@@ -50,8 +51,10 @@ export function collectNotices(metafile, { root = pkg, thirdParty = join(root, '
     if (!packages.has(folder)) {
       const { version } = JSON.parse(readFileSync(join(root, folder, 'package.json'), 'utf8'));
       const file = licenseFile(join(root, folder));
+      const text = file ? readFileSync(join(root, folder, file), 'utf8').trim() : '';
       if (!file) problems.push(`${name}@${version}: no license file in ${folder}`);
-      packages.set(folder, { name, version, text: file ? readFileSync(join(root, folder, file), 'utf8').trim() : '' });
+      else if (!text) problems.push(`${name}@${version}: ${folder}/${file} is empty`);
+      packages.set(folder, { name, version, text });
     }
     // Code another package's own build inlined, as rolldown's //#region comments name it:
     // //#region ../../node_modules/.pnpm/<segment>/node_modules/<name>/<file>
@@ -80,7 +83,8 @@ export function collectNotices(metafile, { root = pkg, thirdParty = join(root, '
     const dir = join(thirdParty, `${p.name}@${p.version}`);
     const file = licenseFile(dir);
     if (file) p.text = readFileSync(join(dir, file), 'utf8').trim();
-    else problems.push(`${p.name}@${p.version} (inlined in ${p.via}): no license text in third-party/${p.name}@${p.version}/`);
+    if (!file) problems.push(`${p.name}@${p.version} (inlined in ${p.via}): no license text in third-party/${p.name}@${p.version}/`);
+    else if (!p.text) problems.push(`${p.name}@${p.version} (inlined in ${p.via}): third-party/${p.name}@${p.version}/${file} is empty`);
   }
   if (problems.length) throw new Error(`third-party notices:\n  ${problems.join('\n  ')}`);
 
