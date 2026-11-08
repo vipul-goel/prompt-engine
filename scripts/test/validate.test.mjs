@@ -527,6 +527,16 @@ const ROWS = [
   ['accepts a quote from the user\'s request that an option also holds', (d) => put(d, `${OK_CASE}/graders/09-topic.md`, grader('llm', 'focus: last_message\n',
     '\nThe post must stay on the user\'s topic, "remote work", and not drift.\nPASS if it does. FAIL otherwise.\n')), /validate: OK/, 0],
   ['does not check the quotes of a case without a recording', (d) => edit(d, 'evals/writing-quick-launch-email/graders/11-no-invention.md', (t) => `${t}\nFor example "foo bar baz".\n`), /validate: OK/, 0],
+  // A rubric that judges the answers of the round the recording ends in quotes one of its options
+  // word for word, also when it speaks only of what was recommended or of what the user accepted
+  // (eval-cases.test.mjs checks a rubric that speaks only of options).
+  ['rejects a follow-up rubric about the accepted answers that quotes none of the options', (d) => {
+    put(d, `${OK_CASE}/graders/09-recommended.md`, grader('llm', 'focus: last_message\n', '\nPASS if the prompt follows every recommended default of the round. FAIL otherwise.\n'));
+    put(d, `${OK_CASE}/graders/10-accepted.md`, grader('llm', 'focus: last_message\n', '\nPASS if the prompt reflects every default the user accepted. FAIL otherwise.\n'));
+  }, ['09-recommended', '10-accepted'].map((n) => new RegExp(`^error: evals/followup-ok-accepts-recommendations/graders/${n}\\.md: judges the answers to the question round the recording ends in, but quotes none of its options; quote each answer it checks word for word, in double quotes \\(repo rule\\)$`, 'm'))],
+  // Every output case, the cases build.mjs writes lint graders for, has a no-invention judge (finding 49, D30).
+  ['rejects an output case without a no-invention judge', (d) => rmSync(join(d, `${VEO}/07-no-invention.md`)),
+    /^error: evals\/video-veo-quick: an output case \(LINT_GRADER_CASES in scripts\/build\.mjs\) needs an llm grader named <n>-no-invention\.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption \(repo rule\)\n\n1 error\(s\)$/m],
   // The request text a rubric quotes, in <original_prompt> tags or after "The user's whole
   // request", is the case's own, word for word (finding 50). A gloss outside the quotes doesn't count.
   ['rejects a rubric that misquotes the request', (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',

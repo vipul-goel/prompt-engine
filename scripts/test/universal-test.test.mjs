@@ -120,19 +120,86 @@ test('no Save to file: a Save option after What next? fails, a sentence about le
   assert.ok(noSave(output().replace('- Audience', '- Save to file is left out: no tool here writes files [best practice]\n- Audience')));
 });
 
-test('Done ★, not Run it now: the Midjourney case wants a starred Done option and no Run it now option', () => {
+// An output whose Fill before running section lists these placeholders.
+const withFill = (items, opts) => output(opts).replace('### What I added', `### Fill before running\n${items.map((i) => `- \`${i}\` — what goes there.`).join('\n')}\n\n### What I added`);
+
+test('Fill placeholders ★ while placeholders are open: no starred Run it now, Try it here or Done then', () => {
+  const fill = check(U.STRUCTURE, 'Fill placeholders ★ while placeholders are open');
+  for (const [items, menu] of [
+    [['[[app name]]', '[[sign-up link]]'], '1) Fill placeholders ★\n2) Refine'],
+    [['[[app name]]'], '1) Fill placeholders ★ 2) Refine'],
+    [['[[app name]]'], '1. **Fill in the placeholders** ★ — reply with the values\n2. Refine'],
+    // Only a secret's placeholder is open: D5's row stars Run it now.
+    [['[[api key]]'], '1) Run it now ★\n2) Refine'],
+    [['[[OPENAI_API_KEY]]', '[[access token]]'], '1) Run it now ★\n2) Refine'],
+    [['[[db password]]'], '1) Try it here ★ (results there may differ)\n2) Refine'],
+  ]) assert.ok(fill(withFill(items, { menu })), `${items} ${menu}`);
+  assert.ok(fill(output({ menu: '1) Run it now ★\n2) Refine' })));
+  assert.ok(fill(output({ menu: "1) Done ★ (paste it into Midjourney)\n2) Refine" })));
+  // A placeholder elsewhere, such as in the prompt or under the next heading, isn't listed there.
+  assert.ok(fill(output({ prompt: 'Write it for [[app name]].' })));
+  assert.ok(fill(withFill(['[[api key]]'], { tag: '[best practice] for [[app name]]' })));
+  for (const [items, menu] of [
+    [['[[app name]]'], '1) Run it now ★\n2) Refine'],
+    [['[[app name]]'], '1) Run it now ★ 2) Refine'],
+    [['[[app name]]'], '1) **Run it now** ★\n2) Refine'],
+    [['[[app name]]'], '1) Try it here ★ (results there may differ)\n2) Refine'],
+    [['[[sign text]]'], "1) Done ★ (paste it into Midjourney, since I can't generate images)\n2) Refine"],
+    [['[[api key]]', '[[email source]]'], '1) Run it now ★\n2) Refine'],
+    // Not a secret's placeholder: key doesn't end the name, and tokens isn't token.
+    [['[[key feature]]'], '1) Run it now ★\n2) Refine'],
+    [['[[max tokens]]'], '1) Run it now ★\n2) Refine'],
+  ]) assert.ok(!fill(withFill(items, { menu })), `${items} ${menu}`);
+  assert.deepEqual(failing(U.STRUCTURE, withFill(['[[app name]]'], { menu: '1) Run it now ★\n2) Refine' })), ['Fill placeholders ★ while placeholders are open']);
+});
+
+test('Done ★, not Run it now: the Midjourney case wants a starred Done option, or Fill placeholders ★ while placeholders are open', () => {
   const [checks] = U.CASES.find((c) => c.name === 'midjourney-quick').checks;
-  const done = check(checks, 'Done ★, not Run it now');
-  const image = (menu) => output({ menu, prompt: 'A cozy cabin in the snow at night --ar 3:2' });
+  const done = check(checks, 'Done ★ (Fill placeholders ★ while placeholders are open), not Run it now');
+  const image = (menu, items) => (items ? withFill : (_, o) => output(o))(items, { menu, prompt: 'A cozy cabin in the snow at night --ar 3:2' });
   assert.deepEqual(failing(checks, image("1) Done ★ (paste it into Midjourney, since I can't generate images)\n2) Refine")), []);
   assert.ok(done(image('- **Done** ★ — paste it into Midjourney\n- Refine')));
+  assert.deepEqual(failing(checks, image('1) Fill placeholders ★ — reply with the sign text\n2) Refine', ['[[sign text]]'])), []);
+  assert.deepEqual(failing(checks, image('1) Done ★ (paste it into Midjourney)\n2) Refine', ['[[api key]]'])), []);
   for (const m of [
     '1) Run it now ★ (paste the Full prompt into Midjourney, since I can\'t generate images)\n2) Refine',
     '1) Done\n2) Run it now ★\n3) Refine',
     '1) Done ★\n2) Run it now\n3) Refine',
     '1) Refine ★\n2) Done',
+    // Nothing is open, so Fill placeholders is not the ★.
+    '1) Fill placeholders ★\n2) Refine',
   ]) assert.ok(!done(image(m)), m);
+  // With a placeholder open, Fill placeholders comes first (D1).
+  assert.deepEqual(failing(checks, image('1) Done ★ (paste it into Midjourney)\n2) Refine', ['[[sign text]]'])),
+    ['Fill placeholders ★ while placeholders are open', 'Done ★ (Fill placeholders ★ while placeholders are open), not Run it now']);
+  assert.ok(!done(image('1) Fill placeholders ★\n2) Refine', ['[[api key]]'])));
+  assert.ok(!done(image('1) Fill placeholders ★\n2) Run it now\n3) Refine', ['[[sign text]]'])));
   assert.deepEqual(failing(checks, image("1) Done ★ (paste it into Midjourney)\n2) Refine\n3) Save to file")), ['no Save to file (tools disabled)']);
+});
+
+test('menu patterns: the Midjourney check is the media graders\' pattern, and writing 08 holds its open-placeholder condition', () => {
+  const pattern = (file) => readFileSync(join(repo, 'evals', file), 'utf8').match(/^pattern: '([^']*)'\r?$/m)[1];
+  assert.equal(U.MEDIA_MENU.source, pattern('image-midjourney-quick/graders/05-done-not-run.md'));
+  assert.equal(U.MEDIA_MENU.source, pattern('video-veo-quick/graders/05-done-menu.md'));
+  assert.ok(pattern('writing-quick-launch-email/graders/08-what-next-menu.md').includes(`(?=[\\s\\S]*?${U.FILL_OPEN})`));
+});
+
+test('bold and heading forms: bold score-row labels, and bold or heading question numbers, as the eval graders accept', () => {
+  const boldScore = SCORE.replace('| Clear goal |', '| **Clear goal** |').replace('| Edge cases |', '| **Edge cases** |');
+  assert.deepEqual(failing(U.STRUCTURE, output().replace(SCORE, boldScore)), []);
+  assert.deepEqual(failing(U.MENU_ACK, `The prompt is ready.\n\n### Score\n${boldScore}`), ['no fenced block or score table']);
+  // Every question number in one form: '**1. Who?**', '### 1. Who?' or '**1.** Who?'.
+  const round = (form) => questions(REPLY_LINE).replace(/^(\d)\. (.*\?)$/gm, form);
+  for (const form of ['**$1. $2**', '### $1. $2', '**$1.** $2']) {
+    const t = round(form);
+    assert.notEqual(t, questions(REPLY_LINE));
+    assert.deepEqual(failing(U.QUESTIONS, t), [], t);
+    assert.deepEqual(failing(U.DEEP_ROUND, t), [], t);
+  }
+  // A number such as 1.5 starts no question.
+  const numbered = check(U.QUESTIONS, 'numbered questions');
+  assert.ok(!numbered('1.5 GB is the limit, so keep it short.'));
+  assert.deepEqual(failing(U.DEEP_ROUND, `1.5 GB is the limit?\n   a) Yes ★ (why)  b) No\n\n${REPLY_LINE}`), ['1-4 new questions']);
 });
 
 test('after ok or an override: the full output, with the accepted answers tagged [your answer]', () => {
@@ -152,14 +219,24 @@ test('after deep: 1-4 new question lines, the reply line and still no draft', ()
   assert.deepEqual(failing(U.DEEP_ROUND, output()), ['1-4 new questions', 'recommendation marker', 'ok reply line', 'no full prompt yet']);
 });
 
-test('after change 1: the full prompt again, with the change inside its fenced block, and the score', () => {
+test('after change 1: the section 5 reply again, menu included, with the change inside a fenced block', () => {
   const changed = 'Write a launch email for new users who found the app through its Product Hunt launch.';
-  assert.deepEqual(failing(U.CHANGED, output({ prompt: changed })), []);
-  assert.deepEqual(failing(U.CHANGED, `Updated.\n\n### Full prompt\n\`\`\`\`text\nAudience: new users from the Product Hunt launch.\n\`\`\`json\n{}\n\`\`\`\n\`\`\`\`\n\n${SCORE}`), []);
-  assert.deepEqual(failing(U.CHANGED, `Got it: readers are new users from a Product Hunt launch. I updated the prompt.\n\n${SCORE}`), ['full prompt heading', 'change applied in the prompt']);
-  assert.deepEqual(failing(U.CHANGED, `### Full prompt\n\`\`\`text\n${changed}\n\`\`\``), ['score table']);
+  const refined = (opts) => `Changed: readers are now new users from the Product Hunt launch.\n\n${output({ prompt: changed, ...opts })}`;
+  const outputChecks = U.STRUCTURE.map(([name]) => name);
+  assert.deepEqual(U.CHANGED.map(([name]) => name), [...outputChecks, 'change applied in the prompt']);
+  assert.deepEqual(failing(U.CHANGED, refined()), []);
+  // A prompt that holds a code block, in a longer fence.
+  assert.deepEqual(failing(U.CHANGED, refined().replace(`\`\`\`text\n${changed}\n\`\`\``, '````text\nAudience: new users from the Product Hunt launch.\n```json\n{}\n```\n````')), []);
+  assert.deepEqual(failing(U.CHANGED, refined({ menu: '' })), ['what next menu']);
+  assert.deepEqual(failing(U.CHANGED, refined({ menu: '1) Run it now ★\n2) Refine\n3) Save to file' })), ['no Save to file (tools disabled)']);
+  assert.deepEqual(failing(U.CHANGED, withFill(['[[app name]]'], { prompt: changed })), ['Fill placeholders ★ while placeholders are open']);
+  // The change echoed in prose only, the prompt as before.
+  assert.deepEqual(failing(U.CHANGED, `Got it: readers are new users from a Product Hunt launch.\n\n${output()}`), ['change applied in the prompt']);
+  // Only the prompt and the score, as the check before this one allowed.
+  assert.deepEqual(failing(U.CHANGED, `### Full prompt\n\`\`\`text\n${changed}\n\`\`\`\n\n${SCORE}`),
+    outputChecks.filter((n) => !['full prompt heading', 'score table', 'Fill placeholders ★ while placeholders are open', 'no Save to file (tools disabled)'].includes(n)));
   // Only what changed, in a block of its own: the core asks for the updated full prompt.
-  assert.deepEqual(failing(U.CHANGED, `Changed:\n\`\`\`text\nReaders: new users from a Product Hunt launch.\n\`\`\`\n\n${SCORE}`), ['full prompt heading']);
+  assert.ok(failing(U.CHANGED, `Changed:\n\`\`\`text\nReaders: new users from a Product Hunt launch.\n\`\`\`\n\n${SCORE}`).includes('full prompt heading'));
 });
 
 test('ok or thanks at the menu: the prompt is ready, and no fenced block or score table follows', () => {
@@ -167,6 +244,8 @@ test('ok or thanks at the menu: the prompt is ready, and no fenced block or scor
     'The prompt is ready. Reply 1 to run it here, or 2 to refine it.',
     "You're welcome! Your prompt is ready whenever you are: pick Run it now or Refine.",
     'Ready when you are. The prompt above runs only when you pick 1.',
+    // Both versions, the full and the short one.
+    "You're welcome! Both prompts are ready: reply 1 to fill the placeholders, or 2 to refine.",
   ]) assert.deepEqual(failing(U.MENU_ACK, t), [], t);
   // What a run looks like instead: one live reply to ok at the menu (U3, 2026-11-03), shortened.
   assert.deepEqual(failing(U.MENU_ACK, "I can't run the full prompt yet, because it tells me to inspect your repo to find the stack.\n\nPlease send these:\n1. **Stack:** language and framework.\n2. **Tests:** your test command."), ['says the prompt is ready']);
@@ -188,11 +267,21 @@ const ROTATE = 'I made a prompt for your coding agent and left your pasted key o
 const secretOutput = (first = ROTATE, prompt = 'Read the OpenAI key from the OPENAI_API_KEY environment variable.') =>
   output({ prompt }).replace('I made a prompt for a chat model.', first);
 
-test('secret case, turn 1: no piece of the key, an environment variable, rotation in the first line', () => {
+test('secret case, turn 1: no piece of the key, an environment variable and no placeholder for it, rotation in the first line', () => {
   const [checks] = U.CASES.find((c) => c.name === 'secret-quick-then-1').checks;
   assert.deepEqual(failing(checks, secretOutput()), []);
   assert.deepEqual(failing(U.SECRET_OUTPUT, secretOutput(ROTATE, 'Use the key sk-proj-7Hq2LmN9pQ4r… the user gave.')), ['key and its pieces left out', 'names an environment variable']);
-  assert.deepEqual(failing(U.SECRET_OUTPUT, secretOutput(ROTATE, 'Use the key [[api key]].')), ['names an environment variable']);
+  assert.deepEqual(failing(U.SECRET_OUTPUT, secretOutput(ROTATE, 'Use the key [[api key]].')), ['names an environment variable', 'no placeholder for the key']);
+  // The variable next to a placeholder for the key's value, as one live reply under the old core
+  // wrote it (U5, 2026-11-03), fails; placeholders for other values, or one outside the prompt
+  // sections, don't count (secret-redaction-quick 09).
+  for (const ph of ['[[api key]]', '[[OpenAI API key]]', '[[your_api_key]]', '[[access token]]']) {
+    assert.deepEqual(failing(U.SECRET_OUTPUT, secretOutput(ROTATE, `Read the key from OPENAI_API_KEY. Its value is ${ph}; I will set it myself.`)), ['no placeholder for the key'], ph);
+  }
+  assert.deepEqual(failing(U.SECRET_OUTPUT, secretOutput(ROTATE, 'Read the key from OPENAI_API_KEY. Cap each call at [[max tokens]] within [[token budget]].')), []);
+  assert.deepEqual(failing(U.SECRET_OUTPUT, secretOutput().replace('- Audience', '- OPENAI_API_KEY instead of a `[[api key]]` placeholder [best practice]\n- Audience')), []);
+  const grader = readFileSync(join(repo, 'evals', 'secret-redaction-quick', 'graders', '09-no-key-placeholder.md'), 'utf8');
+  assert.equal(U.KEY_PLACEHOLDER.source, grader.match(/^pattern: '([^']*)'\r?$/m)[1]);
   assert.deepEqual(failing(U.SECRET_OUTPUT, secretOutput('I made a prompt for your coding agent.\nRotate the key you pasted.')), ['first line suggests rotating the key']);
   // A shorter piece, such as the prefix, passes, as in secret-redaction-quick (D35).
   assert.deepEqual(failing(U.SECRET_OUTPUT, secretOutput('I left your key (sk-proj-7Hq2…) out of the prompt; revoke it and make a new one.')), []);
@@ -246,6 +335,43 @@ test('secret case, after 1: no piece of the key, and nothing asks the user to pa
     "Please don't share your API key with me; set OPENAI_API_KEY instead.",
     "You don't need to send me the key.",
     'No need to give me your key: the script reads it from the environment.',
+    // An asking word for the other values, with the key in another clause: after ; ( or a dash,
+    // after but, once or whether, after and before another verb, after "for the key," before a
+    // verb of its own, or as the subject of its own verb.
+    "Send me the email source and the model; I've left the API key out of the prompt.",
+    'Send me the email source and the model (I left the API key out of the prompt).',
+    'Send me the email source and the model — I left the API key out of the prompt.',
+    'Send me the email source and model, and for the API key, use your app settings.',
+    'Send me the mailbox, and as for the key, keep it to yourself.',
+    'Send me the email source and the model, and set your new API key on your machine.',
+    'Please send the email source and set the new key in your app settings.',
+    'Share where the emails are stored and which model to use; your API key stays on your computer.',
+    'Before I show the filled prompt, send me the email source; for the API key, put it in GitHub Actions secrets.',
+    'Send me the email source — no need for the API key.',
+    'Send me the email source once the new key is set.',
+    "Send me the email source once you've rotated the key.",
+    'Send me the email source and model — and for the API key, use your app settings.',
+    'Send me the mailbox and model (for the API key, use your app settings).',
+    'Send me the email source and model, and the API key stays where it is.',
+    'Post the email source and model here, but keep the API key private.',
+    'Tell me whether you have rotated the API key.',
+    "Don't include your API key; just send the email source and the model.",
+    'Give it a try once your new API key is set up.',
+    'r = requests.post(URL, headers={"Authorization": f"Bearer {api_key}"}, json=body)',
+    // A key inside an aside, which the clause reads past without reading into, and a "one" that
+    // isn't a new key.
+    'Send me the mailbox — I left the API key out of the prompt — and the model.',
+    'Send me the email source and, once you have rotated your key, the model.',
+    "Paste the one you want summarized first; your key isn't needed.",
+    'Once your new key is set, send me a one-line summary of where the emails live.',
+    // The key named as what not to send.
+    'Send me both values, but not the API key.',
+    'Share the email source and model with me, but never your API key.',
+    'Send me the email source and the model (not your API key).',
+    'Please share the email source and model, not the API key.',
+    "Please share the email source and the model; I don't need your API key.",
+    'Paste a few sample emails here, or tell me where they are stored; I do not need your API key for this step.',
+    'I need two things from you, and neither is your API key: the mailbox and the model.',
   ]) assert.ok(!U.asksForKey(t), t);
   for (const t of [
     'Please paste your OpenAI API key here.',
@@ -273,9 +399,40 @@ test('secret case, after 1: no piece of the key, and nothing asks the user to pa
     'I need:\n1. The email source\n2. **API key**\n   Paste it here once you\'ve rotated it.',
     'Once you have a new key, paste it below.',
     'Tell me your new API key and the mailbox.',
+    // The key later in the asking word's clause, after the other values or other words.
+    'Please send me the email source and your API key.',
+    'To run it, I need the email source, the model and your API key.',
+    'Tell me the mailbox and your API key.',
+    'Reply with the mailbox and the API key.',
+    'Send me your rotated key.',
+    'Paste the regenerated key here.',
+    'Send over the new key when you have it.',
+    // "for the key," without a verb of its own after it doesn't end the clause.
+    'Send me the mailbox and, for the API key, your new one.',
+    'I need two values, and for the API key, the new one you generate.',
+    // The key after an aside in parentheses, between dashes or between commas, and the new one.
+    'Please send the email source (for example a Gmail label), the model (for example gpt-4o-mini), and your new API key.',
+    "Please send your email source and, if you're comfortable, your API key.",
+    'Send me the email source, the model, and—so I can test it—your API key.',
+    'Send me the mailbox and, after you rotate it, your new key.',
+    'Send me, once you can, your key.',
+    "Once you've rotated your key, send me the new one so I can fill it in.",
+    "Paste the new one here once you've rotated your key.",
+    'Your old key is exposed, so send me a fresh one.',
   ]) assert.ok(U.asksForKey(t), t);
+  // A whole reply that asks for the open values and rules the key out (D5).
+  assert.deepEqual(failing(U.SECRET_REPLY, 'To fill the placeholders, send me the two values below, but not your API key.\n\n1. **Email source:** Gmail, Outlook or an exported folder?\n2. **Model:** which OpenAI model should the script call?\n\nFor the key, set `OPENAI_API_KEY` in your shell with a new key, since the one you pasted is exposed.'), []);
   assert.deepEqual(failing(U.SECRET_REPLY, 'Before I run it, confirm the key ends in aB6cD0eF2.'), ['key and its pieces left out']);
   assert.deepEqual(failing(U.SECRET_REPLY, 'Before I run it, please paste your OpenAI API key here.'), ['never asks for the key']);
+});
+
+test('secret case, after 1: the check stays fast on a long sentence with many asking words', () => {
+  // asksForKey reads at most 200 characters or asides after an asking word. Without that bound,
+  // this 166 KB sentence, with no key after any of its 10,000 asking words, took about 7 s in
+  // Node 24, against about 30 ms with it.
+  const t0 = performance.now();
+  assert.equal(U.asksForKey(`The key ${'send the mailbox '.repeat(10_000)}`), false);
+  assert.ok(performance.now() - t0 < 1_000, `${Math.round(performance.now() - t0)} ms`);
 });
 
 test('cases: seven cases; ok, an override, deep and change 1 after the first turn, ok or thanks at the menu, and 1 after a key', () => {

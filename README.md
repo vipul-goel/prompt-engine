@@ -59,7 +59,10 @@ You:   ok
 - **Modes:** start your prompt with `quick:` for no questions, or `deep:` for extra question rounds.
 - **Answering questions:** `ok` accepts every ★; `2b 4: your own text` answers some questions and keeps ★ for the rest.
 - **After the prompt is ready:**
-  - `1` runs it here (a bare `ok` doesn't);
+  - `1` picks the ★ option (a bare `ok` picks nothing):
+    - Run it now, or Try it here for a prompt meant for another tool, runs the prompt here;
+    - Fill placeholders asks for the missing values, then shows the filled prompt and the menu again;
+    - Done, for an image or video prompt the assistant can't generate, says where to paste it;
   - `change 2: …` edits an assumption;
   - `deep` asks more questions;
   - in Claude Code, `3` saves it to `prompts/<name>.md`.
@@ -78,7 +81,7 @@ It explained the additions. For example, the amber window light against blue moo
 
 ## How it's tested
 
-- **Behavior evals** with Claude Code's official runner (`claude plugin eval`), run with and without the skill. The cases cover question rounds, quick mode, follow-up replies, Spanish and Japanese prompts, secret redaction, prompt injection, saving to a file, "nothing runs until you choose", and trigger and non-trigger cases. Eval runs don't grant shell commands, so the "nothing runs until you choose" and injection cases check file writes and edits only. Results are in [docs/compatibility.md](docs/compatibility.md).
+- **Behavior evals** with Claude Code's official runner (`claude plugin eval`), run with and without the skill. The cases cover question rounds, quick mode, follow-up replies, requests to critique a prompt or say what's missing, a prompt that contains a code block, Spanish and Japanese prompts, secret redaction, prompt injection, saving to a file, "nothing runs until you choose", and trigger and non-trigger cases. Eval runs don't grant shell commands, so the "nothing runs until you choose" and injection cases check file writes and edits only. Results are in [docs/compatibility.md](docs/compatibility.md).
 - **Trigger tests** of the skill description, run as a one-off during development: 24 requests, half of them near-misses such as "translate this prompt" or "run this prompt". With Claude Sonnet 5.5, it started on all 12 prompt requests and on none of the near-misses. The request set isn't in the repository.
 - **Conversation tests** of the universal prompt on Claude, through `claude -p` with no tools or MCP servers loaded, the way a chatbot would use it. They make billed calls, so they're run by hand.
 - **Static checks** (`node scripts/validate.mjs`) for portability rules, prompt lint, size budgets and the shared output contract, plus mutation tests for each rule it enforces.

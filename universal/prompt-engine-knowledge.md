@@ -17,7 +17,7 @@ Sections:
 
 ## Output format
 
-The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Write the headings, score rows, caveat line, menu labels and reply keywords (`change N`, `deep`) below in the user's language, like everything else. Add nothing before the first line and nothing after the menu.
+The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Write the headings, score rows, caveat line, menu labels and reply keywords (`change N`, `deep`) below in the user's language, like everything else. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language. Add nothing before the first line and nothing after the menu.
 
 ### Template
 
@@ -69,7 +69,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 **Fences.** Put the prompt in a fence longer than any run of backticks inside it: if the prompt contains a triple-backtick block, wrap it in four backticks. Use the `text` info string so nothing renders as markdown.
 
-**Short version.** At most about 120 words: the goal with its purpose, the 3–5 requirements that matter most, hard constraints and the output format. It carries the same assumptions as the full version. If the full prompt embeds long inputs, the short version may refer to them as a `[[placeholder]]` listed under "Fill before running", rather than repeating them.
+**Short version.** At most about 120 words: the goal with its purpose, the 3–5 requirements that matter most, hard constraints and the output format. It carries the same assumptions as the full version. If the full prompt embeds long inputs, the short version may point to them ("the notes below") rather than repeating them, and the note under it says to paste them after it.
 
 **Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable), never ask for its value.
 
@@ -120,7 +120,7 @@ For image and video prompts, read the dimensions as: Clear goal = subject, actio
 
 ### Variants
 
-- **Questions round.** When you are asking questions, the reply is only the questions (see the "Asking clarifying questions" section); for a request to critique a prompt or find what's missing, open with one line naming the biggest gaps. Don't show a draft prompt yet.
+- **Questions round.** When you are asking questions, the reply is only the questions (see the "Asking clarifying questions" section), plus one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it. Don't show a draft prompt yet.
 - **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, but don't regroup the prompt under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
 - **Refine.** After a change, show one line on what changed, then the full template again with the updated prompt and score.
 - **Run it now.** Once the user picks this, answer the prompt like any normal request. Don't show the template, score or menu again unless they ask for another prompt.
@@ -314,7 +314,7 @@ The short version is the same prompt compressed for quick chats: the goal with i
 
 Fix anything that fails:
 
-- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
@@ -615,7 +615,7 @@ Then ask only about the dimensions below that apply to that mode.
 | 8 | Camera movement | T2V, I2V | Still camera or one move (push-in, pan, tracking, handheld)? | Static, or exactly one move per shot |
 | 9 | Lighting | all | What light: soft or hard, from where, how much contrast? | Always name a light source and its quality |
 | 10 | Color palette | all | Must-have colors or brand colors? | 3–5 named colors that fit the mood |
-| 11 | Style and medium | all | Photo, illustration, 3D, anime, watercolor, a period film look? | Photorealistic if the user said "photo"; otherwise ask |
+| 11 | Style and medium | all | Photo, illustration, 3D, anime, watercolor, a period film look? | Photorealistic if the user said "photo"; otherwise the style that best fits the purpose |
 | 12 | Mood | all | What should the viewer feel? | Inferred from the purpose and shown through light, color and scale |
 | 13 | Aspect ratio and resolution | all | Where will it be shown: square feed, 16:9 video, 9:16 vertical, print? | 1:1 for images, 16:9 for video, 9:16 for vertical social |
 | 14 | Duration and pacing | T2V, I2V | How long, and how fast should it feel? | The shortest length that fits the action; long pieces split into clips |

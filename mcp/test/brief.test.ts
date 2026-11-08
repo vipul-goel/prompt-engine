@@ -72,12 +72,43 @@ describe('the method brief', () => {
     expect(brief).toMatch(/intro, notes_label and notes_hint/);
   });
 
+  it('sends critique and what-is-missing requests to the brief, which gives them the question round', () => {
+    // The method gives these requests the normal flow (the core's section 3, and SKILL.md's
+    // description and When to use it; D2). Over MCP, the server's own text is what sends a host to
+    // the brief, so the instructions and enhance_prompt's description name them, in the same words.
+    expect(UNIVERSAL_METHOD).toMatch(/A request to critique a prompt or find what's missing gets the same flow/);
+    const trigger = /when the user asks to (.+?), or starts a message with "prompt-engine:"/;
+    const [instructions, tool] = [INSTRUCTIONS, TOOL_DESCRIPTIONS.enhance_prompt].map((t) => t.match(trigger)?.[1]);
+    expect(tool).toBe(instructions);
+    expect(instructions).toMatch(/^improve, critique, enhance, rewrite or write a prompt \([^()]*\), asks what a prompt is missing$/);
+  });
+
   it('offers Save to file only with a tool that saves files, and never overwrites', () => {
     // A host without a tool that saves files on the user's computer leaves the option out of the
     // menu; where one exists, the Save rule checks the path first and picks a new name instead.
     expect(brief).toMatch(/Add 3\) Save to file only if you have a tool that saves files on the user's computer/);
     expect(brief).toMatch(/check whether `prompts\/<short-name>\.md`, or the path the user gives, exists/);
     expect(brief).toMatch(/adding -2, -3… to the name instead of overwriting/);
+  });
+
+  it("says where a critique's gap line goes when ask_user asks the questions", () => {
+    // The core opens a critique's questions with one line naming the biggest gaps, and the server's
+    // steps replace its instruction to send the questions in your own message. So the line is the
+    // form's intro, and it opens the reply when the questions come back as text.
+    expect(UNIVERSAL_METHOD).toMatch(/A request to critique a prompt or find what's missing gets the same flow: open the questions with one line naming the biggest gaps\./);
+    const questions = buildReference('questions');
+    for (const [name, text] of [['brief', brief], ['questions', questions]]) {
+      expect(text, name).toMatch(/For a request to critique a prompt or find what's missing, pass the one line naming the biggest gaps as intro\./);
+    }
+    expect(brief).toMatch(/returns the questions as text: show them to the user in their language, after that gap line for a critique, then stop and wait/);
+    expect(questions).toMatch(/returns the questions in Format B: send them as your whole reply, opened by that gap line for a critique, and wait\./);
+  });
+
+  it('asks at most two questions about an already-strong prompt, as the skill does', () => {
+    // SKILL.md and output-format.md's Already strong rule set the cap. The core, which the brief
+    // embeds, doesn't state it, so the server's step 2 does.
+    expect(REFERENCES['output-format']!.text).toMatch(/\*\*Already strong\.\*\*[^\n]*Ask at most two questions/);
+    expect(brief).toMatch(/1–8 questions \(at most 2 if the prompt is already strong\)/);
   });
 
   it('says what each form outcome means: closed asks in the chat, declined uses the ★ answers', () => {

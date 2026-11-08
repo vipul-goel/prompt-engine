@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: video-veo-quick
 expected_outcome: |
-  Quick mode, media rule for Veo: a shot stated as one continuous shot, or timed segments with one camera move each; sound lines; settings (16:9, 8 s) in a separate block, and prose that doesn't repeat the duration, in the short version too; no on-screen text; a negative prompt block; the What next? menu offers Done ★, not Run it now.
+  Quick mode, media rule for Veo: a shot stated as one continuous shot, or timed segments with one camera move each; sound lines; settings (16:9, 8 s) in a separate block, and prose that doesn't repeat the duration, in the short version too; no on-screen text; a negative prompt block; the What next? menu offers Done ★ (Fill placeholders ★ while a placeholder other than a secret is open), not Run it now.

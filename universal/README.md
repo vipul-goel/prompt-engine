@@ -4,8 +4,8 @@ These files let you use Prompt Engine in apps that don't support Agent Skills, s
 
 | File | What it is | Size |
 |---|---|---|
-| [`prompt-engine.md`](prompt-engine.md) | The instructions. Works on its own. | about 6,000 characters |
-| [`prompt-engine-knowledge.md`](prompt-engine-knowledge.md) | Optional detailed checklists for coding, writing, research, image and video prompts | about 62,000 characters |
+| [`prompt-engine.md`](prompt-engine.md) | The instructions. Works on its own. | just under 7,500 characters |
+| [`prompt-engine-knowledge.md`](prompt-engine-knowledge.md) | Optional detailed checklists for coding, writing, research, image and video prompts | about 65,000 characters |
 
 ## Quickest: paste into any chat
 
@@ -51,4 +51,4 @@ Use the app's custom instructions or space or agent instructions field, and atta
   - "Run it now" carries out the prompt in the same chat.
   - "Save to file" only appears in tools that can write files.
 - **Privacy.** Prompt Engine is just instructions: your prompts go only to the AI app you're already using.
-- **Testing status.** The instructions are tested automatically with Claude (all tools disabled, two-turn conversations). Results in other apps may differ; see [docs/compatibility.md](../docs/compatibility.md).
+- **Testing status.** A conversation test checks these instructions on Claude through `claude -p`, with no tools or MCP servers loaded. It makes billed calls and is run by hand; [docs/compatibility.md](../docs/compatibility.md) has the date and result of the last run. Results in other apps may differ.
