@@ -708,8 +708,10 @@ const WHOLE_REQUEST = /The user['\u{2019}]s whole request\b[^"\u{201C}\n]*["\u{2
 const WHOLE_REQUEST_MARK = /The user['\u{2019}]s whole request\b/gu;
 // Text in straight or curly double quotes, on one line.
 const QUOTE = /"([^"\n]+)"|\u{201C}([^\u{201D}\n]+)\u{201D}/gu;
-// A rubric that judges the answers to a question round: it speaks of an answer or of the ★.
-const ANSWER_CHECK = /\banswer(?:s|ed)?\b|★/iu;
+// A rubric that judges the answers to a question round: it speaks of an answer, an option, a
+// recommendation, accepting or the ★. So "every recommended option the user accepted" counts as
+// well as "every answer" does.
+const ANSWER_CHECK = /\banswer(?:s|ed)?\b|★|\brecommend|\boptions?\b|\baccept/iu;
 // An option's answer as a rubric quotes it: the option's text before its ★ and the reason after
 // it, in normalizeQuote's form, without trailing punctuation or the · between options on one line.
 const answerKey = (text) => normalizeQuote(text.replace(/★[\s\S]*$/u, '')).replace(/[\s.,;:·•|]+$/u, '');

@@ -870,11 +870,21 @@ test('checkConversations wants a rubric that judges the answers of the round the
       '06-topic.md': judge('The post stays on the user\'s topic, "remote work".'),
       // Option 2b's answer without the period that ends it in the round.
       '07-period.md': judge('The answer "About 1,200 words" is used.'),
+      // Other words for the answers, without "answer" or the ★: a recommended option, what the user
+      // accepted.
+      '08-recommended-option.md': judge('The user replied "ok", which accepts every recommended option of the round. PASS if the prompt reflects each one.'),
+      '09-accepted.md': judge('PASS if the prompt reflects every default the user accepted.'),
+      '10-options.md': judge('PASS if the prompt follows the options the user kept.'),
+      // A rubric about the round's questions, not its answers, needs no quote either.
+      '11-no-more-questions.md': judge('The reply asks no further questions.'),
     }),
     // A recording that ends in an output: the answers were used already.
     ...recordedCase('output', [...recording, userRow('ok'), assistantRow('### Full prompt\n```text\nWrite the post.\n```\n\n### What next?\n1. Run it now ★')], 'Run it now', {
       '01-unquoted.md': judge('PASS if the prompt uses every answer the user accepted.'),
     }),
   });
-  assert.deepEqual(errors, [quotesNone('round/graders/03-paraphrased.md'), quotesNone('round/graders/04-unquoted.md'), quotesNone('round/graders/05-partial.md')]);
+  assert.deepEqual(errors, [
+    quotesNone('round/graders/03-paraphrased.md'), quotesNone('round/graders/04-unquoted.md'), quotesNone('round/graders/05-partial.md'),
+    quotesNone('round/graders/08-recommended-option.md'), quotesNone('round/graders/09-accepted.md'), quotesNone('round/graders/10-options.md'),
+  ]);
 });
