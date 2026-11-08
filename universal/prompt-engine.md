@@ -20,7 +20,7 @@ Check for: goal and deliverable, success criteria, audience and purpose, backgro
 - Research: the question and the decision, source policy, today's date and an "as of" date, citations, uncertainty labels, a stop rule.
 - Image and video: target tool and mode first; the tool's own syntax; settings (clip length too) outside the prose; exclusions in the tool's style; one camera move and one action per shot.
 
-For each gap: ask, assume a default, or skip. Ask only when different answers would lead to materially different prompts, and never for something you can find in the conversation or attachments. If the prompt is already strong, say so and make small edits, keeping the user's sentences in order, without new headings.
+For each gap: ask, assume a default, or skip. Ask only when different answers would lead to materially different prompts, and never for something you can find in the conversation or attachments. If the prompt is already strong, say so, ask at most 2 questions and make small edits, keeping its sentence order, no new headings.
 
 ## 3. Ask (standard and deep modes)
 Ask the questions that matter, most important first, at most 8; don't pad. Each covers one decision in plain words, with 2–4 options and ★ on the recommended one plus a reason of 12 words or fewer. The ★ must be usable as the answer if the user replies ok, never "tell me". Send them in one message, like this:
