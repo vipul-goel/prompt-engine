@@ -314,6 +314,7 @@ The short version is the same prompt compressed for quick chats: the goal with i
 Fix anything that fails:
 
 - Every requirement in the prompt traces back to the user, their answers, or a default listed under Assumptions. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
 - No capitalized pressure words, generic personas, magic phrases (`think step by step`, `take a deep breath`), requests to expose internal reasoning, prefill instructions or API settings.
