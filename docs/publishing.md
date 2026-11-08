@@ -1,6 +1,6 @@
 # Publishing
 
-This page is for maintainers. It covers where each part of Prompt Engine is published, the one-time setup, and how to cut a release. Facts about third-party services were checked on 2026-10-29. npm's trusted-publishing rules, whether the npm name was taken, the MCP Registry's release files, this repository's rulesets, Claude Code's and claude.com's plugin docs, and what a plugin install copies (with Claude Code 2.1.319) were checked on 2026-11-08. Services change, so recheck anything that fails.
+This page is for maintainers. It covers where each part of Prompt Engine is published, the one-time setup, and how to cut a release. Facts about third-party services were checked on 2026-10-29. npm's trusted-publishing rules, whether the npm name was taken, the MCP Registry's release files, this repository's rulesets, Claude Code's and claude.com's plugin docs, what a plugin install copies (with Claude Code 2.1.319), and GitHub's rule for idle scheduled workflows were checked on 2026-11-08. Services change, so recheck anything that fails.
 
 ## Where each part goes
 
@@ -117,3 +117,5 @@ The "Re-verify tool data" workflow runs once a week. When entries in `data/media
 2. Update the entry's fields, `status` and `sources`, and set `last_verified` to today.
 3. Run `node scripts/build.mjs` and commit the regenerated files.
 4. Close the issue once that commit is on `main`. The workflow never closes it; an issue left open gets the next round of stale entries, with a "Still stale" comment, instead of a new issue.
+
+GitHub turns off a public repository's scheduled workflows after 60 days without repository activity, and a turned-off workflow doesn't run until it's turned on again. The weekly runs and the 45-day window are set so that the issue opens before then. After a longer quiet spell, open Actions → Re-verify tool data. If GitHub has turned it off, select **Enable workflow**, then **Run workflow** (or run `gh workflow enable verify-data.yml`, then `gh workflow run verify-data.yml`).
