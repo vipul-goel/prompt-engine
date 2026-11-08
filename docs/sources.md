@@ -31,7 +31,8 @@ The design follows the platforms' own documentation and the prompting guidance b
 - Anthropic, per-model prompting pages, for example https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5
 - Claude Code best practices: https://code.claude.com/docs/en/best-practices
 - Anthropic release notes: the July 17, 2026 entry announces the retirement of the legacy Console Workbench and of the experimental API endpoints for generating, improving and templatizing prompts on August 17, 2026 (checked on 2026-11-08): https://platform.claude.com/docs/en/release-notes/overview#july-17-2026
-- OpenAI GPT-4.1 prompting guide: https://developers.openai.com/cookbook/examples/gpt4-1_prompting_guide. Newer OpenAI and Google guidance was seen only through search results.
+- OpenAI, prompting guides for GPT-4.1 and GPT-5 (read on 2026-11-08): https://developers.openai.com/cookbook/examples/gpt4-1_prompting_guide · https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_prompting_guide
+- Google, prompt design strategies for the Gemini API (read on 2026-11-08; formerly at ai.google.dev/gemini-api/docs/prompting-strategies): https://aistudio.google.com/docs/prompting-strategies
 
 ## Other agents (verified in shipped packages or the vendors' docs)
 - OpenAI Codex CLI 0.165.0, Gemini CLI 0.66.0, GitHub Copilot language server 1.564.0, Cline core 0.2.0 and Mistral Vibe 3.0.3: the skill folders and rules listed in [install.md](install.md) were read from each package's published docs or code on npm and PyPI.
