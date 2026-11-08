@@ -17,8 +17,11 @@ import { join } from 'node:path';
 export const FIXED_SESSION = '00000000-0000-4000-8000-000000000001';
 const KEEP_KEYS = ['type', 'uuid', 'parentUuid', 'isSidechain', 'message', 'toolUseResult', 'sourceToolAssistantUUID', 'isMeta', 'timestamp', 'version', 'userType'];
 
-// [kind, pattern]. Every pattern runs in linear time: the e-mail one starts only where a
-// local part can start and caps it at 64 characters.
+// [kind, pattern]. Every pattern runs in time linear in the line's length: the e-mail one starts
+// only where a local part can start and caps it at 64 characters, and the JWT one starts at the
+// start of a run of [\w-] characters, or right after a "-" with its first part capped at 1,000
+// characters. Without the cap, each eyJ in a long run such as eyJ-eyJ-… scanned to the run's end:
+// 200,000 such characters took 18 s in Node.
 export const PRIVATE_PATTERNS = [
   ['Anthropic or OpenAI-style key', /\bsk-[A-Za-z0-9_-]{20,}/g],
   ['Stripe key', /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/g],
@@ -29,9 +32,11 @@ export const PRIVATE_PATTERNS = [
   ['Google API key', /\bAIza[0-9A-Za-z_-]{35}/g],
   ['npm token', /\bnpm_[A-Za-z0-9]{36}\b/g],
   ['Hugging Face token', /\bhf_[A-Za-z0-9]{30,}/g],
-  ['JWT', /\beyJ[\w-]{10,}\.[\w-]{10,}\./g],
+  ['JWT', /(?:(?<![\w-])eyJ[\w-]{10,}|(?<=-)eyJ[\w-]{10,1000})\.[\w-]{10,}\./g],
   ['private key', /-----BEGIN [A-Z ]*PRIVATE KEY-----/g],
-  ['home folder path', /\/(?:Users|home)\/[^/\s"\\]+|[A-Za-z]:\\{1,2}Users\\{1,2}[^\\/\s"]+/g],
+  // A Windows path in any letter case and with either separator, since Windows ignores case;
+  // /Users and /home only as written, so that a URL path such as /users/42 passes.
+  ['home folder path', /\/(?:Users|home)\/[^/\s"\\]+|[A-Za-z]:(?:\\{1,2}|\/)[Uu][Ss][Ee][Rr][Ss](?:\\{1,2}|\/)[^\\/\s"]+/g],
   ['claude.ai session ID', /\bsession_[A-Za-z0-9]{20,}/g],
   ['e-mail address', /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]{1,64}@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.\p{L}{2,}/gu],
 ];
@@ -57,16 +62,18 @@ export function publicText(root) {
 }
 
 /**
- * Patterns for one machine: its home folder, at a path boundary, and its name (os.hostname()
- * and the part before the first dot) when that has 6 or more characters, so it doesn't match
- * ordinary words. The name is only looked for, never replaced: replacing a short one such as
- * "mac" would turn "macOS" into something else.
+ * Patterns for one machine: its home folder, at a path boundary (in any letter case for a
+ * Windows drive path, as sanitize() rewrites it), and its name (os.hostname() and the part
+ * before the first dot) when that has 6 or more characters, so it doesn't match ordinary words.
+ * The name is only looked for, never replaced: replacing a short one such as "mac" would turn
+ * "macOS" into something else.
  */
 export function machinePatterns({ home, host } = {}) {
   const extra = [];
   if (home) {
     const boundary = '(?![\\w-]|\\.\\w)';
-    extra.push(["this machine's home folder", new RegExp(`${esc(home)}${boundary}|${esc(JSON.stringify(home).slice(1, -1))}${boundary}`, 'g')]);
+    const flags = /^[A-Za-z]:[\\/]/.test(home) ? 'gi' : 'g';
+    extra.push(["this machine's home folder", new RegExp(`${esc(home)}${boundary}|${esc(JSON.stringify(home).slice(1, -1))}${boundary}`, flags)]);
   }
   for (const name of new Set([host, host?.split('.')[0]])) {
     if (name && name.length >= 6 && name.toLowerCase() !== 'localhost') extra.push(["this machine's name", new RegExp(esc(name), 'gi')]);

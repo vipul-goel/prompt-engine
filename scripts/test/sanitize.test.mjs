@@ -6,7 +6,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sanitize, scanText, publicText, FIXED_SESSION } from '../eval/sanitize.mjs';
@@ -60,6 +61,26 @@ test('a transcript with private data is refused, naming each line and kind but n
   for (const secret of [...Object.values(fake), '/Users/alice', 'jürgen']) assert.ok(!msg.includes(secret), secret);
 });
 
+test('publicText reads each eval case\'s prompt.md and the skill\'s Markdown files, and nothing else', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-public-'));
+  try {
+    const files = {
+      'evals/demo/prompt.md': 'in a prompt', 'evals/demo/graders/01.md': 'in a grader', 'evals/demo/history.jsonl': 'in a history',
+      'skills/prompt-engine/SKILL.md': 'in SKILL.md', 'skills/prompt-engine/references/x.md': 'in a reference',
+      'skills/prompt-engine/references/x.txt': 'in a text file', 'docs/notes.md': 'in the docs',
+    };
+    for (const [p, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, p)), { recursive: true });
+      writeFileSync(join(dir, p), text);
+    }
+    const text = publicText(dir);
+    for (const t of ['in a prompt', 'in SKILL.md', 'in a reference']) assert.ok(text.includes(t), t);
+    for (const t of ['in a grader', 'in a history', 'in a text file', 'in the docs']) assert.ok(!text.includes(t), t);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('package specs, public addresses, git remotes and the safety eval\'s fake key pass', () => {
   const key = readFileSync(join(repo, 'evals/secret-redaction-quick/prompt.md'), 'utf8').match(/\bsk-[\w-]{20,}/)?.[0];
   assert.ok(key, 'evals/secret-redaction-quick/prompt.md holds a fake key');
@@ -84,7 +105,8 @@ test('this machine\'s name and home folder are looked for, never replaced', () =
   const thinking = ev('assistant', 'a', null, [{ type: 'thinking', thinking: 'see /srv/people/al/notes', signature: 'c2ln' }]);
   assert.match(refusal(() => run(thinking, ctx)), /line 1: this machine's home folder/);
   // A name under 6 characters isn't looked for, so ordinary words that contain it pass unchanged.
-  assert.equal(JSON.parse(run(textEvent('write a macOS guide'), ctx)).message.content[0].text, 'write a macOS guide');
+  // No public text here: the repository's text contains "mac", which would allow the match anyway.
+  assert.equal(JSON.parse(sanitize(textEvent('write a macOS guide'), { ...ctx, allowText: '' })).message.content[0].text, 'write a macOS guide');
   // Nor is "localhost", which names no machine in particular.
   assert.equal(refusal(() => run(textEvent('serve it on localhost:3000'), { ...ctx, host: 'localhost.localdomain' })), '');
 });
@@ -109,6 +131,17 @@ test('thinking blocks are left as recorded, and one that holds a home path is re
   assert.equal(text.text, 'look in /plugin/skills');
   const home = ev('assistant', 'a', null, [{ type: 'thinking', thinking: `look in ${MAC.repo}/skills`, signature: 'c2ln' }]);
   assert.match(refusal(() => run(home)), /line 1: home folder path/);
+});
+
+test('Windows home folders are found in any letter case and with either separator, and /users URLs pass', () => {
+  for (const s of ['see c:\\users\\bob\\notes.txt', 'see C:\\Users\\bob\\notes.txt', 'see c:/users/bob/notes.txt', 'see D:\\\\USERS\\\\bob']) {
+    assert.deepEqual(scanText(s), ['line 1: home folder path'], s);
+  }
+  assert.deepEqual(scanText('GET /users/42, then /homepage and https://example.com/home'), []);
+  // A thinking block stays as recorded, so only the scan stands between it and the fixture.
+  const win = { repo: 'C:\\Users\\alice\\src\\prompt-engine', cwd: 'C:\\Users\\alice\\AppData\\Local\\Temp\\pe-history-abc', home: 'C:\\Users\\alice', host: 'ALICE-PC' };
+  const thinking = ev('assistant', 'a', null, [{ type: 'thinking', thinking: 'see c:\\users\\alice\\notes.txt', signature: 'c2ln' }]);
+  assert.match(refusal(() => run(thinking, win)), /line 1: this machine's home folder/);
 });
 
 test('Windows paths become /plugin and /workspace paths, which build.mjs then refreshes', () => {
@@ -141,9 +174,21 @@ test('the committed histories pass the scan', () => {
   for (const c of cases) assert.deepEqual(scanText(readFileSync(join(repo, 'evals', c, 'history.jsonl'), 'utf8'), { allowText }), [], c);
 });
 
-test('the scan stays fast on long runs without an @', () => {
+test('JWTs are found after a space, a quote, = or -, and with a header of a few thousand characters', () => {
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const jwt = (header) => `${b64(header)}.${b64({ sub: '42', iat: 1516239022 })}.${'s'.repeat(43)}`;
+  const short = jwt({ alg: 'HS256', typ: 'JWT' });
+  // A certificate chain in the header (x5c) makes it long.
+  const long = jwt({ alg: 'ES256', x5c: ['M'.repeat(1500), 'M'.repeat(1200), 'M'.repeat(800)] });
+  for (const s of [`Bearer ${short}`, `{"token":"${short}"}`, `token=${short}`, `x-${short}`, short, `token=${long}`]) {
+    assert.deepEqual(scanText(s), ['line 1: JWT'], s.slice(0, 20));
+  }
+});
+
+test('the scan stays fast on long runs without an @, and on long runs of eyJ-', () => {
   const t0 = performance.now();
   scanText('a'.repeat(200_000));
   scanText(`x@${'1.'.repeat(100_000)}`);
+  scanText('eyJ-'.repeat(50_000));
   assert.ok(performance.now() - t0 < 2_000, `${Math.round(performance.now() - t0)} ms`);
 });

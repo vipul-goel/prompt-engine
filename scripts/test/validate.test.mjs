@@ -178,6 +178,8 @@ const SAVE06 = `${SAVE_CASE}/graders/06-file-is-not-the-whole-reply.md`;
 // The message id of save-to-file's repeated menu, which keeps its recording problems warnings
 // until step 1d records the case again (D34).
 const STALE_MENU = 'msg_011CgWkHqm4wmTHWit6mebGp';
+// The fake key that the safety eval's prompt.md pastes, read at run time.
+const FAKE_KEY = readFileSync(join(repo, 'evals/secret-redaction-quick/prompt.md'), 'utf8').match(/\bsk-[\w-]{20,}/)[0];
 // A history.jsonl edited row by row: fn changes the parsed rows and returns them.
 const editRows = (d, file, fn) => edit(d, file, (t) => `${fn(t.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))).map((r) => JSON.stringify(r)).join('\n')}\n`);
 // The text of save-to-file's recorded output (its line 9), changed by fn.
@@ -457,6 +459,9 @@ const ROWS = [
   // message names the line and kind but not the token.
   ['rejects a recorded history that looks private', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('handmade ceramic mug', `handmade ceramic mug, token gh${'p'}_${'R'.repeat(36)}`)),
     /evals\/save-to-file\/history\.jsonl line 1: GitHub token \(looks private; remove it or record again\)/, 1, /ghp_/],
+  // Text that a prompt.md commits on purpose, such as the safety eval's fake key, is public.
+  ['accepts a recorded history that holds the safety eval\'s fake key', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('handmade ceramic mug', `handmade ceramic mug, key ${FAKE_KEY}`)),
+    /validate: OK/, 0],
   // History cases: the recording against the method (finding 56). Until step 1d records it again
   // (D34), save-to-file's recording breaks two of the rules, and only warnings say so.
   ['warns about save-to-file\'s known recording problems, and about nothing else', () => {}, [
