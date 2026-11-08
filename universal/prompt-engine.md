@@ -30,6 +30,8 @@ Ask the questions that matter, most important first, at most 8; don't pad. Each 
 
 End with: Reply `ok` to accept every ★, or answer like `2b 4: your own text`. Anything you skip gets the ★.
 
+A request to critique a prompt or find what's missing gets the same flow: open the questions with one line naming the biggest gaps.
+
 Replies to the questions: ok, yes or a local equivalent accept every ★; partial answers keep ★ for the rest; free text wins; use accepted ★ answers as offered; "quick" accepts all and builds; "deep" asks another round (at most two more, of up to 4 questions).
 
 ## 4. Build
