@@ -57,8 +57,9 @@ const has = (re) => (t) => re.test(t);
 // (findings 57 and 58).
 export const MENU = /What next\?(?=[\s\S]*Refine)[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★/i;
 const SCORE_TABLE = ['score table', has(/\|\s*Clear goal\s*\|[\s\S]*\|\s*Edge cases\s*\|/i)];
+const FULL_PROMPT = ['full prompt heading', has(/#+\s*Full prompt/i)];
 export const STRUCTURE = [
-  ['full prompt heading', has(/#+\s*Full prompt/i)],
+  FULL_PROMPT,
   ['short version heading', has(/#+\s*Short version/i)],
   ['what I added heading', has(/#+\s*What I added/i)],
   ['assumptions heading', has(/#+\s*Assumptions/i)],
@@ -91,11 +92,12 @@ export const DEEP_ROUND = [
   ['1-4 new questions', (t) => { const n = questionLines(t); return n >= 1 && n <= 4; }],
   ...QUESTIONS.filter(([n]) => n !== 'numbered questions'),
 ];
-// After `change 1: …`: the new detail is inside a fenced block (the prompt), not only echoed
-// in prose, and the score is shown again. No Full prompt heading check: the universal prompt
-// asks only for what changed and the new score.
+// After `change 1: …`: the updated full prompt under its heading, with the new detail inside a
+// fenced block, not only echoed in prose, and the score shown again. The core's Refine line asks
+// for the updated full prompt, what changed and the new score, as SKILL.md does (finding 5).
 const fenced = (t) => [...t.matchAll(/```[^\n]*\n([\s\S]*?)\n```/g)].map((m) => m[1]);
 export const CHANGED = [
+  FULL_PROMPT,
   SCORE_TABLE,
   ['change applied in the prompt', (t) => fenced(t).some((b) => /Product Hunt/i.test(b))],
 ];

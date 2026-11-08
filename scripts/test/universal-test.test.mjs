@@ -152,12 +152,14 @@ test('after deep: 1-4 new question lines, the reply line and still no draft', ()
   assert.deepEqual(failing(U.DEEP_ROUND, output()), ['1-4 new questions', 'recommendation marker', 'ok reply line', 'no full prompt yet']);
 });
 
-test('after change 1: the change is inside a fenced block, and the score is shown again', () => {
+test('after change 1: the full prompt again, with the change inside its fenced block, and the score', () => {
   const changed = 'Write a launch email for new users who found the app through its Product Hunt launch.';
   assert.deepEqual(failing(U.CHANGED, output({ prompt: changed })), []);
-  assert.deepEqual(failing(U.CHANGED, `Updated.\n\n\`\`\`\`text\nAudience: new users from the Product Hunt launch.\n\`\`\`json\n{}\n\`\`\`\n\`\`\`\`\n\n${SCORE}`), []);
-  assert.deepEqual(failing(U.CHANGED, `Got it: readers are new users from a Product Hunt launch. I updated the prompt.\n\n${SCORE}`), ['change applied in the prompt']);
-  assert.deepEqual(failing(U.CHANGED, `\`\`\`text\n${changed}\n\`\`\``), ['score table']);
+  assert.deepEqual(failing(U.CHANGED, `Updated.\n\n### Full prompt\n\`\`\`\`text\nAudience: new users from the Product Hunt launch.\n\`\`\`json\n{}\n\`\`\`\n\`\`\`\`\n\n${SCORE}`), []);
+  assert.deepEqual(failing(U.CHANGED, `Got it: readers are new users from a Product Hunt launch. I updated the prompt.\n\n${SCORE}`), ['full prompt heading', 'change applied in the prompt']);
+  assert.deepEqual(failing(U.CHANGED, `### Full prompt\n\`\`\`text\n${changed}\n\`\`\``), ['score table']);
+  // Only what changed, in a block of its own: the core asks for the updated full prompt.
+  assert.deepEqual(failing(U.CHANGED, `Changed:\n\`\`\`text\nReaders: new users from a Product Hunt launch.\n\`\`\`\n\n${SCORE}`), ['full prompt heading']);
 });
 
 test('ok or thanks at the menu: the prompt is ready, and no fenced block or score table follows', () => {
