@@ -217,6 +217,14 @@ describe('checklists and references', () => {
     expect(REFERENCES['output-format']!.text.match(pattern)?.[0].split('\n')).toHaveLength(1);
   });
 
+  it('serves the rule for menu rows that overlap, which has a paragraph of its own', () => {
+    // Joined to the Claude Code menu paragraph, it would be replaced along with it. Open
+    // placeholders come first, so the user never pastes or runs a prompt with a [[…]] in it.
+    const format = buildReference('output-format');
+    expect(format).toMatch(/^When several rows apply, use the first that fits: open placeholders [^.\n]*, then an image or video prompt [^.\n]*, then a prompt for another tool\./m);
+    expect(format).toMatch(/End the same message with the menu as a numbered list/);
+  });
+
   it('falls back to a note when a passage it adapts has changed or dialog wording is left', () => {
     const note = '> Over MCP, ask clarifying questions with the ask_user tool';
     expect(adaptReference('questions', '# Asking\n\n## Dialogs\nUse AskUserQuestion when you can.\n').startsWith(note)).toBe(true);

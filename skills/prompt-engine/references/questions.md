@@ -76,7 +76,7 @@ Translate everything, including the reply line, into the user's language.
 
 | Reply | Meaning |
 |---|---|
-| `ok`, `yes`, `sure`, 👍, or a local equivalent (sí, oui, ja, はい, 好的…) | Accept every ★ |
+| `ok`, `yes`, `sure`, 👍, or a local equivalent (sí, oui, ja, はい, 好的…) | Accept every ★ (at the "What next?" menu, only a clear pick counts) |
 | `2b`, `1a 3c`, `2: b` | Those answers; ★ for the rest |
 | `3: <text>` or a sentence | Use the text for that question; free text wins over options |
 | A new detail not tied to a question | Use it, and keep ★ for unanswered questions |

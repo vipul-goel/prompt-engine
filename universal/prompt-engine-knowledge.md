@@ -94,6 +94,8 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 | Image or video prompt and you can't generate media | Done ★ (with where to paste it) · Refine · Save to file |
 | You can't write files (chat apps) | Drop "Save to file" |
 
+When several rows apply, use the first that fits: open placeholders other than secrets, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
+
 In Claude Code, use AskUserQuestion with the question "What would you like to do next?", header "Next step", and the same options; put the save path in the "Save to file" description.
 
 ### Score anchors
@@ -203,7 +205,7 @@ Translate everything, including the reply line, into the user's language.
 
 | Reply | Meaning |
 |---|---|
-| `ok`, `yes`, `sure`, 👍, or a local equivalent (sí, oui, ja, はい, 好的…) | Accept every ★ |
+| `ok`, `yes`, `sure`, 👍, or a local equivalent (sí, oui, ja, はい, 好的…) | Accept every ★ (at the "What next?" menu, only a clear pick counts) |
 | `2b`, `1a 3c`, `2: b` | Those answers; ★ for the rest |
 | `3: <text>` or a sentence | Use the text for that question; free text wins over options |
 | A new detail not tied to a question | Use it, and keep ★ for unanswered questions |
