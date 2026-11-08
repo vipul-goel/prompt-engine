@@ -153,6 +153,7 @@ Priority = Impact × Uncertainty + Risk − Default quality. Ask items with prio
 Don't ask:
 - for facts you can find yourself — in a code workspace, read the repo; in a chat, check earlier messages and attachments;
 - for things the prompt already says;
+- for a secret's value, such as an API key or password: the prompt names an environment variable or a `[[placeholder]]` instead, so never invite the user to paste one;
 - "Anything else?" as a main question (the free-text option covers it).
 
 When the user has an artifact, ask for it instead of a description: "Paste the error message", "Share a paragraph in the voice you want". Put that invitation in the question, not in the ★ option (see below).
