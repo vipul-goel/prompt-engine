@@ -842,3 +842,39 @@ test('checkConversations lets a rubric quote what the user typed, even where an 
   }));
   assert.deepEqual(errors, [notPicked('topic/graders/02-angle.md', '1b', 'Argue for remote work')]);
 });
+
+test('checkConversations wants a rubric that judges the answers of the round the recording ends in to quote one', () => {
+  const round = [
+    'A few questions (★ = recommended):',
+    '',
+    '1. Who will read it?',
+    '   a) Employees',
+    '   b) Team managers ★ (they decide remote-work policy)',
+    '2. How long? a) About 600 words · b) About 1,200 words. ★ (room for examples) · c) 2,000+ words',
+    '',
+    REPLY_LINE,
+  ].join('\n');
+  const recording = [userRow('write a post about remote work'), assistantRow(round)];
+  const quotesNone = (f) => `evals/${f}: judges the answers to the question round the recording ends in, but quotes none of its options; quote each answer it checks word for word, in double quotes (repo rule)`;
+  const { errors } = histories({
+    ...recordedCase('round', recording, 'ok', {
+      '01-quoted.md': judge('The user replied "ok", which accepts these answers: "Team managers" and "About 1,200 words".'),
+      // Curly quotes, code marks and case don't matter, nor does the period after option 2b's answer;
+      // the ★ alone marks an answer check.
+      '02-star.md': judge('The prompt follows each ★: \u{201C}team **managers**\u{201D} and "About 1,200 words."'),
+      '03-paraphrased.md': judge('The user replied "ok", which accepts every recommended answer: managers, about 1,200 words.'),
+      '04-unquoted.md': judge('PASS if the prompt uses every answer the user accepted.'),
+      // A part of an option isn't its answer.
+      '05-partial.md': judge('The answers include "1,200 words".'),
+      // A rubric that doesn't judge the answers needs no quote.
+      '06-topic.md': judge('The post stays on the user\'s topic, "remote work".'),
+      // Option 2b's answer without the period that ends it in the round.
+      '07-period.md': judge('The answer "About 1,200 words" is used.'),
+    }),
+    // A recording that ends in an output: the answers were used already.
+    ...recordedCase('output', [...recording, userRow('ok'), assistantRow('### Full prompt\n```text\nWrite the post.\n```\n\n### What next?\n1. Run it now ★')], 'Run it now', {
+      '01-unquoted.md': judge('PASS if the prompt uses every answer the user accepted.'),
+    }),
+  });
+  assert.deepEqual(errors, [quotesNone('round/graders/03-paraphrased.md'), quotesNone('round/graders/04-unquoted.md'), quotesNone('round/graders/05-partial.md')]);
+});

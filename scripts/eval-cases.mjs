@@ -706,6 +706,13 @@ const criteriaOf = (g) => (g.data.type === 'llm' ? g.data.criteria ?? (g.body !=
 const ORIGINAL_PROMPT = /<original_prompt>([\s\S]*?)<\/original_prompt>/g;
 const WHOLE_REQUEST = /The user['\u{2019}]s whole request\b[^"\u{201C}\n]*["\u{201C}]([^"\u{201D}\n]+)["\u{201D}]/gu;
 const WHOLE_REQUEST_MARK = /The user['\u{2019}]s whole request\b/gu;
+// Text in straight or curly double quotes, on one line.
+const QUOTE = /"([^"\n]+)"|\u{201C}([^\u{201D}\n]+)\u{201D}/gu;
+// A rubric that judges the answers to a question round: it speaks of an answer or of the ★.
+const ANSWER_CHECK = /\banswer(?:s|ed)?\b|★/iu;
+// An option's answer as a rubric quotes it: the option's text before its ★ and the reason after
+// it, in normalizeQuote's form, without trailing punctuation or the · between options on one line.
+const answerKey = (text) => normalizeQuote(text.replace(/★[\s\S]*$/u, '')).replace(/[\s.,;:·•|]+$/u, '');
 
 // This repo's checks on each case's conversation, as described above. contract is
 // data/contract.json. The recording checks call warn instead of err for a case in
@@ -782,7 +789,7 @@ export function checkConversations(root, cases, { err, warn, contract }) {
     for (const g of c.graders) {
       const criteria = criteriaOf(g);
       if (typeof criteria !== 'string') continue;
-      for (const m of criteria.matchAll(/"([^"\n]+)"|\u{201C}([^\u{201D}\n]+)\u{201D}/gu)) {
+      for (const m of criteria.matchAll(QUOTE)) {
         const quote = m[1] ?? m[2];
         if (misquoted.has(`${g.file}\0${quote}`)) continue;
         const q = normalizeQuote(quote);
@@ -793,6 +800,17 @@ export function checkConversations(root, cases, { err, warn, contract }) {
         if (replied.includes(q)) continue;
         const hits = options.filter((o) => o.norm.includes(q));
         if (hits.length && !hits.some((o) => o.star || picks(reply, o))) err(`${g.file}: quotes option ${hits.map((o) => `${o.q}${o.letter}`).join(', ')} ("${quote}"), which is neither the ★ answer nor one the reply in prompt.md picks (repo rule)`);
+      }
+    }
+    // When the recording ends in a question round, a rubric that judges its answers quotes at
+    // least one option's answer word for word (finding 54): a rubric that restates the answers in
+    // its own words escapes the checks above, which is how answer 7 became "no SEO keyword".
+    if (last.includes(replyLine) && options.length) {
+      const answers = new Set(options.map((o) => answerKey(o.text)));
+      for (const g of c.graders) {
+        const criteria = criteriaOf(g);
+        if (typeof criteria !== 'string' || !ANSWER_CHECK.test(criteria)) continue;
+        if (![...criteria.matchAll(QUOTE)].some((m) => answers.has(answerKey(m[1] ?? m[2])))) err(`${g.file}: judges the answers to the question round the recording ends in, but quotes none of its options; quote each answer it checks word for word, in double quotes (repo rule)`);
       }
     }
 
