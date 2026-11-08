@@ -79,7 +79,7 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 
 When several rows apply, use the first that fits: open placeholders other than secrets, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
 
-In Claude Code, use AskUserQuestion with the question "What would you like to do next?", header "Next step", and the same options; put the save path in the "Save to file" description.
+In Claude Code, use AskUserQuestion with the question "What would you like to do next?" and the header "Next step", both in the user's language, and the same options; put the save path in the "Save to file" description.
 
 ## Score anchors
 
