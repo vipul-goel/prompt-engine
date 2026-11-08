@@ -101,19 +101,45 @@ The MCP tests fail if `check_prompt` skips a rule. These limits bound the work a
 
 The cases in `evals/` run with Claude Code's plugin eval runner, with and without the plugin. Each case folder holds `prompt.md`, `case.yaml` and `graders/*.md`; see Claude Code's [plugin eval docs](https://code.claude.com/docs/en/plugin-evals.md) for the format. `scripts/build.mjs` writes `graders/lint-prompt.md` and `graders/lint-prompt-i.md` for each case in its `LINT_GRADER_CASES`: add a new case whose reply holds an enhanced prompt there, and leave the `lint-prompt` names to those files.
 
+Each case pins the agent under test in its `prompt.md` (`model: claude-sonnet-5-5`), so don't pass `--model`: it would replace every pin. `node scripts/validate.mjs` checks the case files before any billed run: the keys and values that `claude plugin eval` reads in `case.yaml`, `prompt.md` and each grader's front matter, the files they name, and this repository's own rules, whose messages end in "(repo rule)", such as one pinned model for every case. It reads a small YAML subset and names the file and line of anything outside it. Three details follow from YAML:
+- a no-break or ideographic space at the edge of a value stays part of the value, so use plain spaces there;
+- lines of only spaces before or after the text of a `|` or `>` block can't be longer than the block's indentation, because YAML would read the extra spaces as text or refuse them;
+- a `case.yaml` that holds nothing but comments counts as no `case.yaml`, for `claude plugin eval` too.
+
+In a run with and without the plugin, `claude plugin eval` leaves the checks that the skill started (`tool_used` on Skill) out of the score unless they set `arm: both`, because without the plugin the skill can't start. It reports them as indicators, so a run in which the skill never started can still pass; the `jq` lines below check them, and work on any run's `aggregate-result.json`. The trigger cases' skill checks set `arm: both`, which the validator requires, so `trigger-natural-phrasing`, which expects the skill to start, fails its run without the plugin by design: it scores 0.5 when its other check passes. The three cases that resume a recorded conversation run with the plugin only.
+
 Evals make real model calls on your account and are billed. Start with a subset and a cost ceiling:
 
 ```bash
 claude plugin eval . --case 'image-*' --runs 1 --max-cost-usd 1 --no-publish --judge-model claude-haiku-5-5
 ```
 
-- **Cases that grant tools or run scaffold scripts.** The full suite needs `--allow-tools Write Edit --scaffold`. Read a case's `scaffold_script` before you run it.
-- **Follow-up cases.** These resume a recorded first turn. Record one with `node scripts/eval/record-history.mjs evals/<case>/history.jsonl "<first message>"`. Before the billed call, the script refuses a first message that looks private and checks that it can find Claude Code's transcript folder (`$CLAUDE_CONFIG_DIR` or `~/.claude`). It pre-approves Read only in the skill's folder, but Claude Code's documentation says the skill's own `allowed-tools: Read` pre-approves every read during the turn that invokes it, so other files can still end up in a recording. From the transcript, the script keeps only the conversation and rewrites the plugin, working and home folders and the session ID. It refuses to write a file that still contains what looks like a key, token, e-mail address, home path or this machine's name, but no scan recognises every secret or another machine's name. `node scripts/validate.mjs` runs the same scan, without the checks for this machine's home folder and name, on every committed `history.jsonl`. Read the file before you commit it anyway. Afterwards, `node scripts/build.mjs` keeps the skill text and reference reads inside the recording up to date. It doesn't change what the model said, so re-record when a recorded turn (a question round, an output or a menu) no longer matches the method, or when the build stops with "re-record it". `node scripts/validate.mjs` reports a recording whose last assistant turn is neither a question round nor a whole output with its What next? menu, that calls or searches for AskUserQuestion, or whose last assistant row didn't end its turn.
-- **Results.** They go to `evals/results/`, which is ignored by git. Run transcripts can include details of your account, so don't commit them.
-- **Universal prompt.** It has its own two-turn test: `node scripts/eval/universal-test.mjs`.
-- **Reading outputs side by side.** Run the evals with `--json result.json --keep-temp`, then `node scripts/eval/to-review.mjs result.json <workspace>/iteration-1`. This converts the results into the workspace layout used by the review viewer in Anthropic's skill-creator skill.
+For the full suite, write the results to a folder and check the indicators with `jq`, as the evals workflow does. The full suite cost about $2 on 2026-11-04.
 
-When you change the method, include the eval summary, with and without the skill, in your pull request.
+```bash
+out="evals/results/full-$(date +%Y%m%d-%H%M%S)"
+claude plugin eval . --runs 1 --max-cost-usd 5 --no-publish --judge-model claude-haiku-5-5 \
+  --allow-tools Write Edit --scaffold --output-dir "$out"
+jq -r '[.cases[].arms.with[]?.graders[]? | select(.name | test("-skill-fired$"))] | "Skill started in \(map(select(.passed)) | length) of \(length) runs"' "$out/aggregate-result.json"
+jq -r '.cases[] | .name as $n | .arms.with[]?.graders[]? | select(.withOnly and (.passed | not)) | "Indicator failed: \($n) (\(.name))"' "$out/aggregate-result.json"
+jq -e '[.cases[].arms.with[]?.graders[]? | select(.withOnly)] as $i | ($i | length) > 0 and ([$i[] | select(.passed | not)] | length) == 0' "$out/aggregate-result.json"
+```
+
+The last command prints `false` and exits 1 when an indicator failed, or when the results hold none; the one before it names each failed indicator.
+
+- **Cases that need write tools or a scaffold.** A case's `allowed_tools` can only enable read-only tools, such as Read and Grep. Write, Edit and other tools come only from `--allow-tools`, and that grant reaches every case in the run. The cases tagged `needs-write` need `--allow-tools Write Edit --scaffold`, and so does the full suite. Without the grant, `imperative-coding-no-action` and `injection-is-content-quick` fail their tools-granted check and `save-to-file` fails its saved-file checks; without `--scaffold`, `imperative-coding-no-action` fails its workspace checks, because the files they read aren't there. To re-run only these cases (together they cost about $0.35 in the 2026-11-04 run):
+
+  ```bash
+  claude plugin eval . --tag needs-write --allow-tools Write Edit --scaffold --runs 1 --max-cost-usd 1 --no-publish --judge-model claude-haiku-5-5
+  ```
+
+  The validator requires the `needs-write` tag on a case that lists a tool outside the read-only set or has a `scaffold_script`. Read a case's `scaffold_script` before you run it.
+- **Follow-up cases.** These resume a recorded first turn. Record one with `node scripts/eval/record-history.mjs evals/<case>/history.jsonl "<first message>"`. It records on `claude-sonnet-5-5` unless you pass `--model`, and the validator fails a history case recorded on a different model from the one the case pins. Before the billed call, the script refuses a first message that looks private and checks that it can find Claude Code's transcript folder (`$CLAUDE_CONFIG_DIR` or `~/.claude`). It pre-approves Read only in the skill's folder, but Claude Code's documentation says the skill's own `allowed-tools: Read` pre-approves every read during the turn that invokes it, so other files can still end up in a recording. From the transcript, the script keeps only the conversation and rewrites the plugin, working and home folders and the session ID. It refuses to write a file that still contains what looks like a key, token, e-mail address, home path or this machine's name, but no scan recognises every secret or another machine's name. `node scripts/validate.mjs` runs the same scan, without the checks for this machine's home folder and name, on every committed `history.jsonl`. Read the file before you commit it anyway. Afterwards, `node scripts/build.mjs` keeps the skill text and reference reads inside the recording up to date. It doesn't change what the model said, so re-record when a recorded turn (a question round, an output or a menu) no longer matches the method, or when the build stops with "re-record it". `node scripts/validate.mjs` reports a recording whose last assistant turn is neither a question round nor a whole output with its What next? menu, that calls or searches for AskUserQuestion, or whose last assistant row didn't end its turn. Each run of a follow-up case also appends the resumed session to `evals/<case>/<session-id>.jsonl` (`00000000-0000-4000-8000-000000000001.jsonl` for recordings made by `record-history.mjs`). Git ignores these files. You can delete them between runs.
+- **Results.** They go to `evals/results/`, which is ignored by git. Run transcripts can include details of your account, so don't commit them.
+- **Universal prompt.** It has its own conversation test, `node scripts/eval/universal-test.mjs`, which runs the prompt on Claude through `claude -p` with no tools or MCP servers loaded. It makes billed calls too.
+- **Reading outputs side by side.** Run `node scripts/eval/to-review.mjs <results folder>/aggregate-result.json <workspace>/iteration-1` on a run's results (a `--json` file works too); pass `--keep-temp` to the eval run to also get each run's tool calls. It writes the `eval-<case>/<arm>/run-<k>/` layout that skill-creator's `aggregate_benchmark.py` and `eval-viewer/generate_review.py` read, checked by reading their code in anthropics/skills at 3d59511 and in the claude.ai example skill-creator of 2026-10-28. Without `--keep-temp`, each reply comes from the evidence that an `llm` judge of the last message was shown, when the case has one. Without skill-creator, `report.html` in the results folder shows each run's graders and the evidence each `llm` judge was shown.
+
+When you change the method, include the eval summary, with and without the skill, and the skill-started count in your pull request.
 
 ## Pull requests
 
