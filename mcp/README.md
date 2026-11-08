@@ -1,8 +1,8 @@
 # Prompt Engine MCP server
 
-`prompt-engine-mcp` brings [Prompt Engine](https://github.com/vipul-goel/prompt-engine) to any MCP client. Prompt Engine turns a rough prompt into a detailed, LLM-ready prompt. It finds what's missing, asks you a few multiple-choice questions with a recommended answer for each, then writes the prompt and explains every addition.
+`prompt-engine-mcp` brings [Prompt Engine](https://github.com/vipul-goel/prompt-engine) to MCP clients. Prompt Engine turns a rough prompt into a detailed, LLM-ready prompt. It finds what's missing, asks you a few multiple-choice questions with a recommended answer for each, then writes the prompt and explains every addition.
 
-The model you already use does the writing. This server supplies the method, the domain checklists, a way to ask you questions and a deterministic lint. It never calls a model, needs no API key, makes no network calls and doesn't log prompts.
+The model you already use does the writing. This server supplies the method, the domain checklists, a way to ask you questions and a deterministic lint. It never calls a model or any other service, needs no API key and doesn't log prompts.
 
 - [Install](#install)
 - [Use it](#use-it)
@@ -166,8 +166,8 @@ One client can still hold all 128 request slots with slow uploads, or all 1,024 
 ## Privacy
 
 - **No prompt logging.** Over stdio, stdout carries only protocol messages. On stderr the server writes its start-up line (`--http` only), warnings about its own settings, and one line per error. It logs nothing for requests that succeed, and nothing for most refused ones: a foreign or unparseable `Host`, a foreign `Origin`, an unsupported method, a body that is too large or isn't JSON, a busy server, or headers that never arrive. Some refusals by the MCP SDK are logged as a fixed phrase with its reason code, such as `rejected a request (method-header-missing)`, and so are stdio messages that are JSON but not JSON-RPC, such as `ignored a message that is not valid JSON-RPC (invalid-message)`. Stdio lines that aren't JSON are dropped without a reply or a log line. No line quotes a request. Any other error, such as a socket failing or an upload cut off (`Error: aborted`), is logged as its type and message, with quoted text removed, control characters replaced by spaces, and cut to 200 characters. The Worker's own code logs only its two warnings about `ALLOWED_HOSTS` entries.
-- **No API key and no network calls.** It never calls a model or any other service.
-- **Your prompt stays with your model.** `enhance_prompt` never receives it. Only `check_prompt` sees a draft, and only when the model calls it.
+- **No API key and no outbound calls.** It never calls a model or any other service.
+- **What the server receives.** `enhance_prompt` never receives your prompt. Only `check_prompt` sees a draft, and only when the model calls it. `ask_user` receives the questions and, when your app shows a form, returns your answers and notes. On a server someone else hosts, those calls pass through their server.
 - Self-hosted and Workers deployments keep nothing between requests.
 
 ## Development and testing
