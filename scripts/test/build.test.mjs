@@ -71,9 +71,11 @@ const toCrlf = (file) => writeFileSync(file, readFileSync(file, 'utf8').replace(
 const textFiles = (dir, sub) => readdirSync(join(dir, sub), { recursive: true })
   .map((f) => join(dir, sub, f))
   .filter((f) => statSync(f).isFile() && /\.(md|json|jsonl|ts)$/.test(f));
-const HISTORIES = ['followup-ok-accepts-recommendations', 'followup-partial-answers', 'save-to-file'];
+// Every eval case that resumes a recorded conversation.
+const HISTORIES = readdirSync(join(repo, 'evals')).filter((c) => existsSync(join(repo, 'evals', c, 'history.jsonl')));
 
 test('a CRLF checkout builds as up to date, and a rebuild writes LF text without copying the frontmatter', () => {
+  assert.ok(HISTORIES.length >= 3, HISTORIES.join(', '));
   const dir = mkdtempSync(join(tmpdir(), 'pe-crlf-'));
   try {
     copyTo(dir);

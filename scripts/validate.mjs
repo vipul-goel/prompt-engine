@@ -357,7 +357,7 @@ for (const t of media.targets) {
 // request text that any case's rubric quotes against the case.
 const cases = checkEvalCases(root, err);
 checkSuiteRules(root, cases, err);
-checkConversations(root, cases, { err, warn, contract });
+checkConversations(root, cases, { err, contract });
 // A recorded history is public once committed: the recorder's scan runs on each one (D9).
 // No machine patterns here, since this machine's home folder and name say nothing about
 // the one that recorded the file. The messages name the line and kind, never the match,

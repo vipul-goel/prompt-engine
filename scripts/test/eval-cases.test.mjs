@@ -644,17 +644,16 @@ const recordedCase = (name, recording, reply, graders) => ({
 });
 const judge = (criteria) => `---\ntype: llm\n---\n\n${criteria}\n`;
 const savedFile = (pattern, extra = '', path = 'out/notes.md') => `---\ntype: regex\ntarget:\n  source: file\n  path: ${path}\npattern: '${pattern}'\n${extra}---\n`;
-// The errors and warnings of the three checks on a small tree.
+// The errors of the three checks on a small tree.
 function histories(files, contract = CONTRACT) {
   const dir = tree(files);
   try {
     const errors = [];
-    const warnings = [];
     const err = (m) => errors.push(m);
     const cases = checkEvalCases(dir, err);
     checkSuiteRules(dir, cases, err);
-    checkConversations(dir, cases, { err, warn: (m) => warnings.push(m), contract });
-    return { errors, warnings };
+    checkConversations(dir, cases, { err, contract });
+    return { errors };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -676,10 +675,9 @@ test('checkConversations reads options on lines of their own, on one shared line
     REPLY_LINE,
   ].join('\n');
   // "1: c" picks 1c and "3a" picks 3a; "12c" doesn't pick 2c.
-  const { errors, warnings } = histories(recordedCase('demo', [userRow('write a post'), assistantRow(round)], '1: c 3a 12c', {
+  const { errors } = histories(recordedCase('demo', [userRow('write a post'), assistantRow(round)], '1: c 3a 12c', {
     '01-answers.md': judge('The answers are "Team managers", "Job seekers", "About 600 words", "Inform", "Rank on Google" and "2,000+ words". The round asked "How long should it be?" and gave the example "4-day week".'),
   }));
-  assert.deepEqual(warnings, []);
   assert.deepEqual(errors, [
     notPicked('demo/graders/01-answers.md', '2a', 'About 600 words'),
     notPicked('demo/graders/01-answers.md', '3c', 'Rank on Google'),

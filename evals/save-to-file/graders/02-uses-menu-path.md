@@ -1,5 +1,5 @@
 ---
 type: file_exists
-path: prompts/etsy-ceramic-mug-description.md
+path: prompts/etsy-mug-description.md
 weight: 1
 ---

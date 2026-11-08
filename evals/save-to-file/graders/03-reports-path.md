@@ -1,5 +1,5 @@
 ---
 type: regex
-pattern: 'prompts/etsy-ceramic-mug-description\.md'
+pattern: 'prompts/etsy-mug-description\.md'
 weight: 1
 ---
