@@ -71,7 +71,7 @@ Follow `references/blueprint.md` and the domain pack. In short:
 
 ### 5. Present
 
-Use the structure in `references/output-format.md`, in this order and nothing else:
+Use the structure in `references/output-format.md`, in the user's language (headings, score rows, caveat line and menu included), in this order and nothing else:
 
 1. One line saying what you made and for which tool.
 2. **Full prompt** in a fenced block.
