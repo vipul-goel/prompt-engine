@@ -244,6 +244,21 @@ test('arguments that contain "ARGUMENTS:" survive intact', () => {
   assert.equal(refresh(once), once);
 });
 
+test('the old body\'s trailing white space is kept', () => {
+  const once = refresh(variant(`${HEAD}${OLD_BODY}\n\n`, undefined));
+  assert.equal(skillText(once), `${HEAD}${body}\n\n`);
+  assert.equal(refresh(once), once);
+});
+
+test('without arguments, an empty ARGUMENTS line is kept, and any other is refused', () => {
+  const once = refresh(variant(`${HEAD}${OLD_BODY}\n\n\nARGUMENTS: `, ''));
+  assert.equal(skillText(once), `${HEAD}${body}\n\n\nARGUMENTS: `);
+  assert.equal(refresh(once), once);
+  for (const line of ['ARGUMENTS:', 'ARGUMENTS: write a post']) {
+    assert.throws(() => refresh(variant(`${HEAD}${OLD_BODY}\n\n\n${line}`, '')), { message: 'no arguments were recorded, but the skill text ends with an ARGUMENTS line; re-record it' }, line);
+  }
+});
+
 test('an ARGUMENTS line that Claude Code escaped is kept as it is', () => {
   // Claude Code escapes some characters, such as a "!" after a space, in the line it appends.
   const once = refresh(variant(`${HEAD}${OLD_BODY}\n\n\nARGUMENTS: mon nouveau poste \\!`, 'mon nouveau poste !'));
@@ -267,7 +282,15 @@ test('a slash command with empty or no arguments is refreshed', () => {
   }
 });
 
-test("another skill's text is left alone", () => {
+test("another skill's text is left alone, and its Skill call sets no arguments", () => {
+  // The recording's only Skill call is for another skill: prompt-engine's text has no invocation.
+  const other = history('followup-ok-accepts-recommendations').split('\n').map((l) => {
+    if (!l.trim()) return l;
+    const r = JSON.parse(l);
+    for (const p of Array.isArray(r.message?.content) ? r.message.content : []) if (p.type === 'tool_use' && p.name === 'Skill') p.input = { skill: 'other', args: 'x' };
+    return JSON.stringify(r);
+  }).join('\n');
+  assert.throws(() => refresh(other), { message: 'skill text without a recorded prompt-engine invocation; re-record it' });
   for (const dir of ['/plugin/skills/other', '/home/u/.claude/skills/other']) {
     const other = JSON.stringify({ type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: `Base directory for this skill: ${dir}\n\n# Other\n\nDo it.\n` }] } });
     assert.equal(refresh(other), other, dir);
@@ -302,6 +325,32 @@ test('refreshes the Read result and Claude Code\'s copy of the file together', (
   assert.deepEqual(row.toolUseResult.file, { filePath: `/plugin/${REL}`, content: 'NEW\nTEXT\n', numLines: 3, startLine: 1, totalLines: 3 });
   assert.deepEqual(Object.keys(row.toolUseResult.file), ['filePath', 'content', 'numLines', 'startLine', 'totalLines']);
   assert.equal(refreshHistory(out, 'BODY', files({ [REL]: 'NEW\nTEXT\n' })), out);
+});
+
+test('refreshes Claude Code\'s copy of a file when only that copy is stale', () => {
+  // As in both follow-up histories before step 1c: the Read result was current, its copy was not.
+  const rel = 'skills/prompt-engine/references/output-format.md';
+  const h = history('followup-partial-answers');
+  const stale = h.split('\n').map((l) => {
+    if (!l.trim()) return l;
+    const r = JSON.parse(l);
+    if (r.toolUseResult?.file?.filePath === `/plugin/${rel}`) r.toolUseResult.file.content = 'STALE COPY';
+    return JSON.stringify(r);
+  }).join('\n');
+  assert.notEqual(stale, h);
+  assert.equal(refresh(stale), h);
+  const current = readText(rel);
+  const copy = h.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l)).find((r) => r.toolUseResult?.file?.filePath === `/plugin/${rel}`).toolUseResult.file;
+  assert.equal(copy.content, current);
+  assert.equal(copy.numLines, current.split('\n').length);
+  assert.equal(copy.totalLines, current.split('\n').length);
+});
+
+test('refuses a Read of a path with a ".." segment, which would copy a file from outside the plugin', () => {
+  for (const rel of ['../outside.txt', 'skills/../../outside.txt', 'skills\\..\\..\\outside.txt']) {
+    assert.throws(() => refreshHistory(jsonl(readUse({ file_path: `/plugin/${rel}` }), readResult('1\tOLD')), 'BODY', files({ [rel]: 'OUTSIDE SECRET' })),
+      { message: `reads ${rel}, outside the plugin; re-record it` }, rel);
+  }
 });
 
 test('refuses a Read it cannot refresh exactly: part of a file, a file that no longer exists, a result that is not text', () => {

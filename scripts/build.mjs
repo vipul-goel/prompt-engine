@@ -145,8 +145,10 @@ const numberLines = (text) => text.split('\n').map((l, i) => `${i + 1}\t${l}`).j
 // Code's own copy of it (toolUseResult.file); a failed Read (is_error) stays as recorded.
 // A recording this can't refresh exactly throws, so it is recorded again instead of being
 // patched by guesswork: skill text without a recorded invocation, arguments without their
-// ARGUMENTS line, a plugin path that wasn't rewritten, a Read with offset or limit (D12:
-// Claude Code's partial-read format isn't verified), or a Read of a file that no longer exists.
+// ARGUMENTS line (or an ARGUMENTS line other than an empty one without them), a plugin path that
+// wasn't rewritten, a Read with offset or limit (D12: Claude Code's partial-read format isn't
+// verified), a Read of a file that no longer exists, or one of a path with a ".." segment, which
+// would copy a file from outside the plugin into the history.
 export function refreshHistory(jsonl, skillBody, readPluginFile) {
   const reads = new Map(); // Read tool_use id -> { rel, partial }
   let args = null; // the arguments of the latest prompt-engine invocation; null before the first one
@@ -168,6 +170,7 @@ export function refreshHistory(jsonl, skillBody, readPluginFile) {
         if (m) reads.set(part.id, { rel: m[1], partial: part.input.offset !== undefined || part.input.limit !== undefined });
       } else if (part.type === 'tool_result' && reads.has(part.tool_use_id) && part.is_error !== true) {
         const { rel, partial } = reads.get(part.tool_use_id);
+        if (rel.split(/[\\/]/).includes('..')) throw new Error(`reads ${rel}, outside the plugin; re-record it`);
         if (partial) throw new Error(`reads part of ${rel} (offset/limit); re-record it`);
         const current = readPluginFile(rel);
         if (current === undefined) throw new Error(`reads ${rel}, which no longer exists; re-record it`);
@@ -186,14 +189,16 @@ export function refreshHistory(jsonl, skillBody, readPluginFile) {
         // "<head><SKILL.md body>\n" and, when there are arguments, "\n\nARGUMENTS: <args>". Cut at
         // that line when it holds exactly the recorded arguments (which may themselves contain
         // "\n\nARGUMENTS: "); otherwise at the last such line, since Claude Code escapes some
-        // characters in it, such as "!". With no arguments, Claude Code appends no line.
+        // characters in it, such as "!". With no arguments, Claude Code appends no line (read in
+        // 2.1.314-2.1.317's code). An empty ARGUMENTS line is kept as recorded and any other one is
+        // refused, so a later version that writes one can't have it dropped without a word.
         const exact = `\n\nARGUMENTS: ${args}`;
         let cut = part.text.length;
-        if (args && part.text.endsWith(exact)) cut -= exact.length;
+        if (part.text.endsWith(exact)) cut -= exact.length;
         else if (args) {
           cut = part.text.lastIndexOf('\n\nARGUMENTS: ');
           if (cut < SKILL_TEXT_HEAD.length) throw new Error('arguments were recorded, but the skill text has no ARGUMENTS line; re-record it');
-        }
+        } else if (/\n\nARGUMENTS:[^\n]*$/.test(part.text)) throw new Error('no arguments were recorded, but the skill text ends with an ARGUMENTS line; re-record it');
         const old = part.text.slice(SKILL_TEXT_HEAD.length, cut);
         const text = `${SKILL_TEXT_HEAD}${skillBody}${old.match(/\s*$/)[0]}${part.text.slice(cut)}`;
         if (text !== part.text) { part.text = text; changed = true; }
