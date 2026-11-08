@@ -244,6 +244,8 @@ test('ok or thanks at the menu: the prompt is ready, and no fenced block or scor
     'The prompt is ready. Reply 1 to run it here, or 2 to refine it.',
     "You're welcome! Your prompt is ready whenever you are: pick Run it now or Refine.",
     'Ready when you are. The prompt above runs only when you pick 1.',
+    // Both versions, the full and the short one.
+    "You're welcome! Both prompts are ready: reply 1 to fill the placeholders, or 2 to refine.",
   ]) assert.deepEqual(failing(U.MENU_ACK, t), [], t);
   // What a run looks like instead: one live reply to ok at the menu (U3, 2026-11-03), shortened.
   assert.deepEqual(failing(U.MENU_ACK, "I can't run the full prompt yet, because it tells me to inspect your repo to find the stack.\n\nPlease send these:\n1. **Stack:** language and framework.\n2. **Tests:** your test command."), ['says the prompt is ready']);

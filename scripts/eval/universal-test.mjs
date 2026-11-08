@@ -121,12 +121,13 @@ export const CHANGED = [
   ['change applied in the prompt', (t) => fenced(t).some((b) => /Product Hunt/i.test(b))],
 ];
 // After a bare ok or thanks at the "What next?" menu (finding 3, D1): only a clear pick runs
-// anything, so the reply says the prompt is ready, on a line that names the prompt, and holds
-// no fenced block (such as code or the prompt again) and no score table. Running the prompt
-// instead would write the code or the email, or ask for what the run needs, as one live reply
-// to ok did ("I can't run the full prompt yet…").
+// anything, so the reply says the prompt is ready, on a line that names the prompt (or both
+// prompts, the full and the short version), and holds no fenced block (such as code or the
+// prompt again) and no score table. Running the prompt instead would write the code or the
+// email, or ask for what the run needs, as one live reply to ok did ("I can't run the full
+// prompt yet…").
 export const MENU_ACK = [
-  ['says the prompt is ready', has(/\bprompt\b[^\n]*\bready\b|\bready\b[^\n]*\bprompt\b/i)],
+  ['says the prompt is ready', has(/\bprompts?\b[^\n]*\bready\b|\bready\b[^\n]*\bprompts?\b/i)],
   ['no fenced block or score table', (t) => !/```|\|\s*(\*\*)?Clear goal(\*\*)?\s*\|/i.test(t)],
 ];
 
