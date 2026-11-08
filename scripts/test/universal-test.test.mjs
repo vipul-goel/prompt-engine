@@ -160,14 +160,30 @@ test('after change 1: the change is inside a fenced block, and the score is show
   assert.deepEqual(failing(U.CHANGED, `\`\`\`text\n${changed}\n\`\`\``), ['score table']);
 });
 
-test('cases: six cases, with ok, an override, deep and change 1 as second turns', () => {
-  assert.deepEqual(U.CASES.map((c) => c.name), ['coding-standard-then-ok', 'writing-standard-then-override', 'writing-standard-then-deep', 'writing-quick', 'writing-quick-then-change', 'midjourney-quick']);
+test('ok or thanks at the menu: the prompt is ready, and no fenced block or score table follows', () => {
+  for (const t of [
+    'The prompt is ready. Reply 1 to run it here, or 2 to refine it.',
+    "You're welcome! Your prompt is ready whenever you are: pick Run it now or Refine.",
+    'Ready when you are. The prompt above runs only when you pick 1.',
+  ]) assert.deepEqual(failing(U.MENU_ACK, t), [], t);
+  // What a run looks like instead: one live reply to ok at the menu (U3, 2026-11-03), shortened.
+  assert.deepEqual(failing(U.MENU_ACK, "I can't run the full prompt yet, because it tells me to inspect your repo to find the stack.\n\nPlease send these:\n1. **Stack:** language and framework.\n2. **Tests:** your test command."), ['says the prompt is ready']);
+  assert.deepEqual(failing(U.MENU_ACK, 'Here is the launch email, ready to send.\n\nSubject: Meet Flowly\n\nHi there, ...'), ['says the prompt is ready']);
+  assert.deepEqual(failing(U.MENU_ACK, 'The prompt is ready, so here is the code:\n```python\ndef login(): ...\n```'), ['no fenced block or score table']);
+  assert.deepEqual(failing(U.MENU_ACK, `Your prompt is ready.\n\n### Score\n${SCORE}`), ['no fenced block or score table']);
+  assert.deepEqual(failing(U.MENU_ACK, output()), ['says the prompt is ready', 'no fenced block or score table']);
+});
+
+test('cases: six cases; ok, an override, deep and change 1 after the first turn, then ok or thanks at the menu', () => {
+  assert.deepEqual(U.CASES.map((c) => c.name), ['coding-standard-then-ok', 'writing-standard-then-override', 'writing-standard-then-deep', 'writing-quick-then-thanks', 'writing-quick-then-change', 'midjourney-quick']);
   for (const c of U.CASES) assert.equal(c.checks.length, c.turns.length, c.name);
-  assert.deepEqual(U.CASES.filter((c) => c.turns.length === 2).map((c) => [c.turns[1], c.checks[1]]), [
-    ['ok', U.ACCEPTED],
-    ['1a 3: under 800 words', U.ACCEPTED],
-    ['deep', U.DEEP_ROUND],
-    ['change 1: readers are new users from a Product Hunt launch', U.CHANGED],
+  assert.deepEqual(U.CASES.flatMap((c) => c.turns.slice(1).map((t, i) => [c.name, t, c.checks[i + 1]])), [
+    ['coding-standard-then-ok', 'ok', U.ACCEPTED],
+    ['coding-standard-then-ok', 'ok', U.MENU_ACK],
+    ['writing-standard-then-override', '1a 3: under 800 words', U.ACCEPTED],
+    ['writing-standard-then-deep', 'deep', U.DEEP_ROUND],
+    ['writing-quick-then-thanks', 'thanks', U.MENU_ACK],
+    ['writing-quick-then-change', 'change 1: readers are new users from a Product Hunt launch', U.CHANGED],
   ]);
 });
 
@@ -199,7 +215,8 @@ test('readTurn: refuses output without an init event with both lists, without a 
 
 // The fake `claude`, written out as its own script, so it can use only what it defines. It
 // refuses a call without the isolation flags, logs each message, and prints stream-json
-// events with a reply that suits the message.
+// events with a reply that suits the message. An ok that follows a follow-up (in the log) is
+// an ok at the menu.
 function fakeClaude() {
   const fs = require('node:fs');
   const env = process.env;
@@ -214,6 +231,8 @@ function fakeClaude() {
   const msg = val('-p');
   const first = msg.startsWith('prompt-engine:');
   if (first ? a.includes('--resume') : val('--resume') !== 'session-1') refuse(`wrong --resume for "${msg}"`);
+  const before = fs.existsSync(env.FAKE_LOG) ? fs.readFileSync(env.FAKE_LOG, 'utf8').split('\n').filter(Boolean) : [];
+  const atMenu = msg === 'thanks' || (msg === 'ok' && before.length > 0 && !before.at(-1).startsWith('prompt-engine:'));
   fs.appendFileSync(env.FAKE_LOG, `${msg}\n`);
 
   const menu = msg.includes('Midjourney') ? '1) Done ★ (paste it into Midjourney)\n2) Refine' : '1) Run it now ★\n2) Refine';
@@ -227,6 +246,7 @@ function fakeClaude() {
   let text;
   if (msg === 'deep') text = questions('Include examples', 'Include data');
   else if (msg.startsWith('change 1:')) text = output('Write a launch email for new users from the Product Hunt launch.', '[you]');
+  else if (atMenu) text = 'The prompt is ready. Reply 1 to run it here, or 2 to refine it.';
   else if (!first) text = output('Write it for team managers.', '[your answer]');
   else if (msg.includes('quick:')) text = output(msg.includes('Midjourney') ? 'A cozy cabin in the snow at night --ar 3:2' : 'Write a launch email.', '[best practice]');
   else text = questions('Who reads it', 'How long is it') + (env.FAKE_DRAFT ? '\n\n```text\nA draft.\n```' : '');
@@ -276,10 +296,10 @@ const skip = process.platform === 'win32';
 test('runs every turn of every case with the isolation flags, and passes well-formed replies', { skip }, () => {
   const r = runScript();
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /total cost \$0\.10; 0 failed check\(s\)/);
+  assert.match(r.out, /total cost \$0\.12; 0 failed check\(s\)/);
   assert.deepEqual(r.calls, U.CASES.flatMap((c) => c.turns));
-  assert.equal(r.out.match(/: no tools or MCP servers loaded \(fake-model\)/g).length, 10);
-  assert.equal(r.files.length, 10);
+  assert.equal(r.out.match(/: no tools or MCP servers loaded \(fake-model\)/g).length, 12);
+  assert.equal(r.files.length, 12);
 });
 
 test('stops at the first turn that loads an MCP server', { skip }, () => {
@@ -301,7 +321,7 @@ test('checks every turn: a tool that loads on a later turn also stops the run', 
 test('a failed check fails the run without stopping it', { skip }, () => {
   const r = runScript({ env: { FAKE_DRAFT: '1' } });
   assert.equal(r.code, 1, r.out);
-  assert.equal(r.calls.length, 10);
+  assert.equal(r.calls.length, 12);
   assert.equal(r.out.match(/FAIL {2}\S+ turn 1: no full prompt yet/g).length, 3);
   assert.match(r.out, /; 3 failed check\(s\)/);
 });
@@ -319,7 +339,7 @@ test('runs when started through a symlink in a folder with spaces, and not when 
     symlinkSync(script, link);
     const viaLink = runScript({ args: [link, '--out', join(dir, 'out')] });
     assert.equal(viaLink.code, 0, viaLink.out);
-    assert.equal(viaLink.calls.length, 10);
+    assert.equal(viaLink.calls.length, 12);
     const imported = runScript({ args: ['--input-type=module', '-e', `await import(${JSON.stringify(pathToFileURL(script).href)});`] });
     assert.equal(imported.code, 0, imported.out);
     assert.deepEqual(imported.calls, []);

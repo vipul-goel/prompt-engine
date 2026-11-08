@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// Two-turn behavior test for the universal copy-paste prompt. Runs
-// universal/prompt-engine.md as the only system prompt in `claude -p`, with no tools
-// and no MCP servers (like a chatbot with custom instructions), then replies the way a
-// user would: ok, an override, deep, or change 1 on an assumption. --tools "" turns off
-// the built-in tools; --safe-mode, --strict-mcp-config and --disallowedTools "mcp__*"
-// keep your own CLAUDE.md, hooks, plugins and MCP servers out. A turn whose init event
-// lists any tool or MCP server fails, and the run stops. Claude Code still adds some
-// context of its own, such as whether the folder is a git repository. Real, billed
-// model calls: about $0.05-0.15 per case on Sonnet.
+// Behavior test for the universal copy-paste prompt, in conversations of up to three
+// turns. Runs universal/prompt-engine.md as the only system prompt in `claude -p`, with
+// no tools and no MCP servers (like a chatbot with custom instructions), then replies the
+// way a user would: ok, an override, deep, or change 1 on an assumption, and ok or thanks
+// at the "What next?" menu. --tools "" turns off the built-in tools; --safe-mode,
+// --strict-mcp-config and --disallowedTools "mcp__*" keep your own CLAUDE.md, hooks,
+// plugins and MCP servers out. A turn whose init event lists any tool or MCP server
+// fails, and the run stops. Claude Code still adds some context of its own, such as
+// whether the folder is a git repository. Real, billed model calls: about $0.05-0.15 per
+// case on Sonnet.
 //
 //   node scripts/eval/universal-test.mjs [--model claude-sonnet-5-5] [--out <dir>]
 //
@@ -98,12 +99,21 @@ export const CHANGED = [
   SCORE_TABLE,
   ['change applied in the prompt', (t) => fenced(t).some((b) => /Product Hunt/i.test(b))],
 ];
+// After a bare ok or thanks at the "What next?" menu (finding 3, D1): only a clear pick runs
+// anything, so the reply says the prompt is ready, on a line that names the prompt, and holds
+// no fenced block (such as code or the prompt again) and no score table. Running the prompt
+// instead would write the code or the email, or ask for what the run needs, as one live reply
+// to ok did ("I can't run the full prompt yet…").
+export const MENU_ACK = [
+  ['says the prompt is ready', has(/\bprompt\b[^\n]*\bready\b|\bready\b[^\n]*\bprompt\b/i)],
+  ['no fenced block or score table', (t) => !/```|\|\s*Clear goal\s*\|/i.test(t)],
+];
 
 export const CASES = [
-  { name: 'coding-standard-then-ok', turns: ['prompt-engine: add login to my app', 'ok'], checks: [QUESTIONS, ACCEPTED] },
+  { name: 'coding-standard-then-ok', turns: ['prompt-engine: add login to my app', 'ok', 'ok'], checks: [QUESTIONS, ACCEPTED, MENU_ACK] },
   { name: 'writing-standard-then-override', turns: ['prompt-engine: write a blog post about remote work', '1a 3: under 800 words'], checks: [QUESTIONS, ACCEPTED] },
   { name: 'writing-standard-then-deep', turns: ['prompt-engine: write a blog post about remote work', 'deep'], checks: [QUESTIONS, DEEP_ROUND] },
-  { name: 'writing-quick', turns: ['prompt-engine: quick: write a launch email for my productivity app'], checks: [STRUCTURE] },
+  { name: 'writing-quick-then-thanks', turns: ['prompt-engine: quick: write a launch email for my productivity app', 'thanks'], checks: [STRUCTURE, MENU_ACK] },
   { name: 'writing-quick-then-change', turns: ['prompt-engine: quick: write a launch email for my productivity app', 'change 1: readers are new users from a Product Hunt launch'], checks: [STRUCTURE, CHANGED] },
   { name: 'midjourney-quick', turns: ['prompt-engine: quick: a Midjourney prompt for a cozy cabin in the snow at night'],
     checks: [[...STRUCTURE.filter(([n]) => n !== 'short version heading'), ['--ar parameter', has(/--ar\s+\d+:\d+/)], DONE_NOT_RUN]] },
