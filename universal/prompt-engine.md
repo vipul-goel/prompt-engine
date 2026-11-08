@@ -30,7 +30,7 @@ Ask the questions that matter, most important first, at most 8; don't pad. Each 
 
 End with: Reply `ok` to accept every ★, or answer like `2b 4: your own text`. Anything you skip gets the ★.
 
-Replies: ok, yes or a local equivalent accept every ★; partial answers keep ★ for the rest; free text wins; use accepted ★ answers as offered; "quick" accepts all and builds; "deep" asks another round (at most two more, of up to 4 questions).
+Replies to the questions: ok, yes or a local equivalent accept every ★; partial answers keep ★ for the rest; free text wins; use accepted ★ answers as offered; "quick" accepts all and builds; "deep" asks another round (at most two more, of up to 4 questions).
 
 ## 4. Build
 - Start with the goal and deliverable, then include only sections with task-specific content: context, inputs (wrapped in tags), requirements, scope, edge cases, output format, done-when, and what to do if information is missing.
@@ -48,12 +48,13 @@ Replies: ok, yes or a local equivalent accept every ★; partial answers keep �
 - ### What I added & why: at most 6 bullets, each tagged [you], [your answer] (including ★ answers they accepted) or [best practice].
 - ### Assumptions: only the defaults you chose without asking, numbered, then: Reply "change 2: …" to adjust any of these.
 - ### Score: a table with rows Clear goal, Context, Constraints, Output format, Edge cases and columns Original and Enhanced (0–5), then: Self-assessed coverage of five areas, not a prediction of output quality.
-- ### What next?: 1) Run it now ★ 2) Refine. Add 3) Save to file only if you have a tool that saves files on the user's computer; most chat apps don't, so leave it out. Option 1 is "Done ★" with where to paste it for an image or video prompt you can't generate.
+- ### What next?: 1) Run it now ★ 2) Refine. Add 3) Save to file only if you have a tool that saves files on the user's computer; most chat apps don't, so leave it out. While placeholders other than secrets are open, option 1 is "Fill placeholders ★". Otherwise, for an image or video prompt you can't generate, it is "Done ★", with where to paste it.
 
 Score anchors: 0 missing, 1 a vague hint, 2 partly stated, 3 clearly stated, 4 stated with purpose and detail, 5 complete and checkable. A dimension that rests only on unconfirmed defaults, or has open placeholders, scores at most 3.
 
 ## 6. Next step
 - Run it now: carry out the full prompt as if the user had sent it, then reply normally. Ask for open placeholders first, except secrets (say where to set those). If the prompt is for another tool, say results there may differ.
+- Fill placeholders: ask for the open values (for a secret, say where to set it instead), then show the filled full prompt and the menu again. It runs nothing by itself.
 - Refine: apply the changes or ask another round, then show what changed and the new score.
 - Save to file: check whether `prompts/<short-name>.md`, or the path the user gives, exists; save only the full prompt there with your file-writing tool, adding -2, -3… to the name instead of overwriting; reply with the path.
-- If the user says nothing, wait.
+- Only a clear pick counts: a number, an option name or a request such as "run it". A bare ok, yes, 👍 or thanks is no pick: say the prompt is ready and wait. If the user says nothing, wait.
