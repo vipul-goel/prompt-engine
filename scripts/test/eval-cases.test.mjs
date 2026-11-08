@@ -6,11 +6,12 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { parseYaml, frontmatter, checkEvalCases, checkSuiteRules } from '../eval-cases.mjs';
+import { parseYaml, frontmatter, checkEvalCases, checkSuiteRules, checkConversations } from '../eval-cases.mjs';
 
 // ---------- the YAML subset ----------
 const READS = [
@@ -470,5 +471,136 @@ test('checkSuiteRules backs a check that passes with zero calls with a tools-gra
     unbacked('other-tool', '01-no-writes.md'),
     'evals/unlisted/graders/01-no-writes.md: list Write in allowed_tools, so that the progress output names it as not granted when --allow-tools leaves it out (repo rule)',
     unbacked('with-only', '01-no-writes.md'),
+  ]);
+});
+
+// ---------- checkConversations: the history cases ----------
+const CONTRACT = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'contract.json'), 'utf8'));
+const REPLY_LINE = 'Reply `ok` to accept every ★, or answer like `2b 3: get managers to pilot a 4-day week`. Anything you skip gets the ★.';
+const userRow = (content, extra = {}) => ({ type: 'user', message: { role: 'user', content }, ...extra });
+const assistantRow = (content, stop = 'end_turn') => ({
+  type: 'assistant',
+  message: { id: 'msg_1', role: 'assistant', model: MODEL, content: typeof content === 'string' ? [{ type: 'text', text: content }] : content, stop_reason: stop },
+});
+const toolUse = (name, input) => ({ type: 'tool_use', id: `toolu_${name}`, name, input });
+const toolResult = (text) => userRow([{ type: 'tool_result', tool_use_id: 'toolu_x', content: text }]);
+// A history case on a small tree: the recording's rows (a string is written as it is), the reply
+// in prompt.md and the graders.
+const recordedCase = (name, recording, reply, graders) => ({
+  [`evals/${name}/case.yaml`]: `schema_version: "1.1"\nname: ${name}\ncontext:\n  history_file: history.jsonl\n`,
+  [`evals/${name}/history.jsonl`]: `${recording.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n')}\n`,
+  [`evals/${name}/prompt.md`]: `---\nmodel: ${MODEL}\n---\n\n${reply}\n`,
+  ...Object.fromEntries(Object.entries(graders).map(([f, text]) => [`evals/${name}/graders/${f}`, text])),
+});
+const judge = (criteria) => `---\ntype: llm\n---\n\n${criteria}\n`;
+const savedFile = (pattern, extra = '', path = 'out/notes.md') => `---\ntype: regex\ntarget:\n  source: file\n  path: ${path}\npattern: '${pattern}'\n${extra}---\n`;
+// The errors and warnings of the three checks on a small tree.
+function histories(files) {
+  const dir = tree(files);
+  try {
+    const errors = [];
+    const warnings = [];
+    const err = (m) => errors.push(m);
+    const cases = checkEvalCases(dir, err);
+    checkSuiteRules(dir, cases, err);
+    checkConversations(dir, cases, { err, warn: (m) => warnings.push(m), contract: CONTRACT });
+    return { errors, warnings };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+const notPicked = (file, option, quote) => `evals/${file}: quotes option ${option} ("${quote}"), which is neither the ★ answer nor one the reply in prompt.md picks (repo rule)`;
+
+test('checkConversations reads options on lines of their own, on one shared line and on the question\'s line', () => {
+  const round = [
+    'A few quick questions so the prompt fits what you need (★ = recommended):',
+    '',
+    '1. Who will read it?',
+    '   a) Employees  b) Team managers ★ (they decide remote-work policy)  c) Job seekers',
+    '**2.** How long should it be? a) About 600 words  b) About 1,200 words ★ (room for examples)  c) 2,000+ words',
+    '### 3. What\'s the main goal?',
+    '   a) Inform',
+    '   b) Persuade ★ (managers need a reason to act)',
+    '   c) Rank on Google',
+    '',
+    REPLY_LINE,
+  ].join('\n');
+  // "1: c" picks 1c and "3a" picks 3a; "12c" doesn't pick 2c.
+  const { errors, warnings } = histories(recordedCase('demo', [userRow('write a post'), assistantRow(round)], '1: c 3a 12c', {
+    '01-answers.md': judge('The answers are "Team managers", "Job seekers", "About 600 words", "Inform", "Rank on Google" and "2,000+ words". The round asked "How long should it be?" and gave the example "4-day week".'),
+  }));
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(errors, [
+    notPicked('demo/graders/01-answers.md', '2a', 'About 600 words'),
+    notPicked('demo/graders/01-answers.md', '3c', 'Rank on Google'),
+    notPicked('demo/graders/01-answers.md', '2c', '2,000+ words'),
+  ]);
+});
+
+test('checkConversations looks quotes up in what the model wrote, what the user typed and the reply, in one form', () => {
+  const round = `Questions (★ = recommended):\n\n1. Afterwards?\n   a) Come away with 3\u{2013}5 ideas they can **use** this week ★\n   b) Be informed\n2. Facts?\n   a) Use \`[[placeholders]]\`  where needed ★\n   b) Use real figures\n\n${REPLY_LINE}`;
+  const recording = [
+    userRow('Use prompt-engine on: write the **launch** notes \u{2014} fast'),
+    assistantRow([toolUse('Skill', { skill: 'prompt-engine' })], 'tool_use'),
+    toolResult('TOOL RESULT TEXT'),
+    userRow([{ type: 'text', text: 'Base directory for this skill: /plugin/skills/prompt-engine\n\nSKILL TEXT' }], { isMeta: true }),
+    assistantRow(round),
+  ];
+  const { errors } = histories(recordedCase('demo', recording, 'ok', {
+    '01-quotes.md': judge('Quotes: \u{201C}come away with 3-5 ideas they can use   this week\u{201D}, "use [[placeholders]] where needed", "write the launch notes - fast", "ok", "SKILL TEXT", "TOOL RESULT TEXT" and \u{201C}said nowhere\u{201D}.'),
+  }));
+  const missing = (q) => `evals/demo/graders/01-quotes.md: quotes "${q}", which isn't in the recorded conversation or prompt.md; in a history case's rubric, double quotes mark verbatim text (repo rule)`;
+  assert.deepEqual(errors, [missing('SKILL TEXT'), missing('TOOL RESULT TEXT'), missing('said nowhere')]);
+});
+
+test('checkConversations names recording lines as the file numbers them, and checks how the recording ends', () => {
+  const recording = [
+    userRow('write the notes'),
+    '',
+    'not JSON',
+    assistantRow([toolUse('ToolSearch', { query: 'select:Read' })], 'tool_use'),
+    toolResult('found'),
+    assistantRow([toolUse('AskUserQuestion', { questions: [] })], 'tool_use'),
+    toolResult('no such tool'),
+    assistantRow([toolUse('ToolSearch', { query: 'select:AskUserQuestion', max_results: 1 })], 'tool_use'),
+    toolResult('No matching deferred tools found'),
+    assistantRow('Pick one by number:\n\n1. Run it now ★', 'tool_use'),
+  ];
+  const output = '### Full prompt\n```text\nWrite the notes.\n```\n\n### What next?\n1. Run it now ★';
+  const { errors } = histories({
+    ...recordedCase('cut', recording, 'ok', { '01-x.md': REGEX }),
+    ...recordedCase('round', [userRow('write the notes'), assistantRow(`1. Who?\n   a) Me ★\n\n${REPLY_LINE}`)], 'ok', { '01-x.md': REGEX }),
+    ...recordedCase('output', [userRow('write the notes'), assistantRow(output)], '3', { '01-x.md': REGEX }),
+  });
+  const searched = (n) => `evals/cut/history.jsonl: line ${n} calls AskUserQuestion or searches for it; eval runs have no dialog tool, and SKILL.md says to use the text format straight away, so record it again (repo rule)`;
+  assert.deepEqual(errors, [
+    searched(6),
+    searched(8),
+    `evals/cut/history.jsonl: the last recorded assistant text is neither a question round (with "${CONTRACT.required.replyLine[0]}") nor an output with its Full prompt and What next? headings in one message; record it again (repo rule)`,
+    'evals/cut/history.jsonl: line 10, the last assistant row, has stop_reason tool_use, not end_turn, so the recorded turn didn\'t end; record it again (repo rule)',
+  ]);
+});
+
+test('checkConversations checks regexes on the menu\'s save path against the recorded Full prompt, closed by a fence as long as its opener', () => {
+  const output = [
+    '### Full prompt', '````markdown', '# Goal', 'Write the notes.', '```text', 'an example block', '```', '# Output', 'Plain text.', '````',
+    '', '### Short version', '```text', 'Write the notes quickly.', '```',
+    '', '### What next?', '1. Run it now ★', '2. Refine: reply `deep` for more questions', '3. Save to file: `out/notes.md`',
+  ].join('\n');
+  const { errors } = histories({
+    ...recordedCase('saved', [userRow('write the notes'), assistantRow(output)], '3', {
+      '01-sections.md': savedFile('Goal[\\s\\S]*Output[\\s\\S]*Plain text'),
+      '02-too-loose.md': savedFile('notes'),
+      '03-not-the-reply.md': savedFile('example block', 'match: not_contains\n'),
+      '04-count.md': savedFile('zzz', 'match: count:2\n'),
+      '05-other-path.md': savedFile('zzz', '', 'out/other.md'),
+    }),
+    // The menu names no path in backticks.
+    ...recordedCase('no-path', [userRow('write the notes'), assistantRow(output.replace(': `out/notes.md`', ''))], '3', { '01-sections.md': savedFile('Goal') }),
+  });
+  assert.deepEqual(errors, [
+    'evals/no-path: 01-sections.md read a saved file, but the recording shows no output whose What next? menu names a save path to check them against (repo rule)',
+    'evals/saved/graders/02-too-loose.md: pattern also matches the recorded Short version, so it can\'t tell the two apart (repo rule)',
+    'evals/saved/graders/03-not-the-reply.md: not_contains pattern matches the recorded Full prompt, so a correct save would fail; derive it again from history.jsonl (repo rule)',
   ]);
 });

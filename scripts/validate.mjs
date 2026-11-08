@@ -2,10 +2,10 @@
 // Validates the repository: Agent Skill format and portability rules, the shared
 // output contract, size budgets, plugin-root hygiene, data files, manifests,
 // eval cases (the keys, values and referenced files of case.yaml, prompt.md and
-// graders/*.md and this repo's rules for how the cases run and score, see
-// scripts/eval-cases.mjs, and the recorder's private-data scan of every committed
-// history.jsonl) and generated-file freshness. Zero dependencies
-// (Node >= 22.19).
+// graders/*.md, this repo's rules for how the cases run and score, and the history
+// cases' recordings and what their graders quote from them, see scripts/eval-cases.mjs,
+// and the recorder's private-data scan of every committed history.jsonl) and
+// generated-file freshness. Zero dependencies (Node >= 22.19).
 //
 //   node scripts/validate.mjs        # exit 1 on any error; warnings are printed
 //
@@ -21,7 +21,7 @@ import { readFileSync, readdirSync, statSync, lstatSync, existsSync, openSync, r
 import { execFileSync } from 'node:child_process';
 import { join, relative, basename } from 'node:path';
 import { buildAll, root, normalize, OS_JUNK, KNOWLEDGE_ORDER } from './build.mjs';
-import { checkEvalCases, checkSuiteRules } from './eval-cases.mjs';
+import { checkEvalCases, checkSuiteRules, checkConversations } from './eval-cases.mjs';
 import { scanText, publicText } from './eval/sanitize.mjs';
 
 const errors = [];
@@ -329,9 +329,11 @@ for (const t of media.targets) {
 // ---------- eval cases ----------
 // scripts/eval-cases.mjs checks each case's case.yaml, prompt.md and graders/*.md, and returns
 // every case folder it found, including those whose files didn't parse. checkSuiteRules then
-// applies this repo's rules for how the cases run and score.
+// applies this repo's rules for how the cases run and score, and checkConversations checks each
+// history case's recording against the method and its graders against the recording.
 const cases = checkEvalCases(root, err);
 checkSuiteRules(root, cases, err);
+checkConversations(root, cases, { err, warn, contract });
 // A recorded history is public once committed: the recorder's scan runs on each one (D9).
 // No machine patterns here, since this machine's home folder and name say nothing about
 // the one that recorded the file. The messages name the line and kind, never the match,

@@ -154,6 +154,26 @@ const grader = (type, extra = '', body = '') => `---\ntype: ${type}\n${extra}wei
 const SESSION = '12345678-1234-4123-8123-123456789abc.jsonl';
 const SPANISH = 'evals/spanish-quick';
 const VEO = 'evals/video-veo-quick/graders';
+// History cases (findings 54-56): the two follow-up cases resume copies of one recording, which
+// ends in a question round; save-to-file's recording ends in an output and a repeated menu.
+const OK_CASE = 'evals/followup-ok-accepts-recommendations';
+const PARTIAL_CASE = 'evals/followup-partial-answers';
+const SAVE_CASE = 'evals/save-to-file';
+const OK6 = `${OK_CASE}/graders/06-accepted-not-assumed.md`;
+const PARTIAL6 = `${PARTIAL_CASE}/graders/06-accepted-not-assumed.md`;
+const SAVE05 = `${SAVE_CASE}/graders/05-file-is-the-full-prompt.md`;
+const SAVE06 = `${SAVE_CASE}/graders/06-file-is-not-the-whole-reply.md`;
+// The message id of save-to-file's repeated menu, which keeps its recording problems warnings
+// until step 1d records the case again (D34).
+const STALE_MENU = 'msg_011CgWkHqm4wmTHWit6mebGp';
+// A history.jsonl edited row by row: fn changes the parsed rows and returns them.
+const editRows = (d, file, fn) => edit(d, file, (t) => `${fn(t.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))).map((r) => JSON.stringify(r)).join('\n')}\n`);
+// The text of save-to-file's recorded output (its line 9), changed by fn.
+const editOutput = (d, fn) => editRows(d, `${SAVE_CASE}/history.jsonl`, (rows) => {
+  const part = rows[8].message.content[0];
+  part.text = fn(part.text);
+  return rows;
+});
 // Every case.yaml, prompt.md and grader of the copy, with CRLF line endings.
 const crlfEvalFiles = (d) => {
   for (const c of readdirSync(join(d, 'evals'), { withFileTypes: true })) {
@@ -411,6 +431,68 @@ const ROWS = [
   // message names the line and kind but not the token.
   ['rejects a recorded history that looks private', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('handmade ceramic mug', `handmade ceramic mug, token gh${'p'}_${'R'.repeat(36)}`)),
     /evals\/save-to-file\/history\.jsonl line 1: GitHub token \(looks private; remove it or record again\)/, 1, /ghp_/],
+  // History cases: the recording against the method (finding 56). Until step 1d records it again
+  // (D34), save-to-file's recording breaks two of the rules, and only warnings say so.
+  ['warns about save-to-file\'s known recording problems, and about nothing else', () => {}, [
+    /^warning: evals\/save-to-file\/history\.jsonl: line 10 calls AskUserQuestion or searches for it; .* \(known; step 1d re-records this case, D34\)$/m,
+    /^warning: evals\/save-to-file\/history\.jsonl: the last recorded assistant text is neither a question round .* \(known; step 1d re-records this case, D34\)$/m,
+  ], 0, [/^warning: (?!evals\/save-to-file\/history\.jsonl: (?:line 10 calls|the last recorded assistant text))/m, /(?:^warning: .*\n){3}/m]],
+  ['rejects save-to-file\'s recording problems once its known message is gone', (d) => editRows(d, `${SAVE_CASE}/history.jsonl`, (rows) => {
+    for (const r of rows) if (r.message?.id === STALE_MENU) r.message.id = 'msg_recorded_again';
+    return rows;
+  }), [
+    /^error: evals\/save-to-file\/history\.jsonl: line 10 calls AskUserQuestion or searches for it; eval runs have no dialog tool, and SKILL\.md says to use the text format straight away, so record it again \(repo rule\)$/m,
+    /^error: evals\/save-to-file\/history\.jsonl: the last recorded assistant text is neither a question round \(with "Reply `ok` to accept every ★"\) nor an output with its Full prompt and What next\? headings in one message; record it again \(repo rule\)$/m,
+  ], 1, /^warning:/m],
+  // Cut by hand after the output, the recording ends on a row that waits for a tool result.
+  ['rejects a recording that stops in the middle of a turn', (d) => edit(d, `${SAVE_CASE}/history.jsonl`, (t) => `${t.split('\n').slice(0, 9).join('\n')}\n`),
+    /^error: evals\/save-to-file\/history\.jsonl: line 9, the last assistant row, has stop_reason tool_use, not end_turn, so the recorded turn didn't end; record it again \(repo rule\)\n\n1 error\(s\)$/m],
+  ['rejects a recorded search for AskUserQuestion', (d) => editRows(d, `${OK_CASE}/history.jsonl`, (rows) => {
+    const search = structuredClone(rows[4]);
+    search.message.content = [{ type: 'tool_use', id: 'toolu_search', name: 'ToolSearch', input: { query: 'select:AskUserQuestion', max_results: 1 } }];
+    rows.splice(5, 0, search);
+    return rows;
+  }), /^error: evals\/followup-ok-accepts-recommendations\/history\.jsonl: line 6 calls AskUserQuestion or searches for it;/m],
+  ['rejects a recording whose last assistant text is neither a question round nor an output', (d) => editRows(d, `${OK_CASE}/history.jsonl`, (rows) => {
+    const menu = structuredClone(rows.at(-1));
+    menu.message.content = [{ type: 'text', text: 'Pick one by number:\n\n1. **Run it now** ★\n2. **Refine**' }];
+    return [...rows, menu];
+  }), /^error: evals\/followup-ok-accepts-recommendations\/history\.jsonl: the last recorded assistant text is neither a question round .* nor an output with its Full prompt and What next\? headings in one message; record it again \(repo rule\)\n\n1 error\(s\)$/m],
+  ['rejects a recording whose last assistant row did not end its turn', (d) => editRows(d, `${OK_CASE}/history.jsonl`, (rows) => { rows.at(-1).message.stop_reason = 'max_tokens'; return rows; }),
+    /^error: evals\/followup-ok-accepts-recommendations\/history\.jsonl: line 15, the last assistant row, has stop_reason max_tokens, not end_turn,/m],
+  ['rejects a contract without the headings the history checks look for', (d) => editJson(d, 'data/contract.json', (j) => { j.required.headings = j.required.headings.map((h) => (h === 'What next?' ? 'Next steps' : h)); }),
+    /^error: data\/contract\.json: required lacks the heading "What next\?", which the history checks in scripts\/eval-cases\.mjs look for; change the two together$/m],
+  // What a history case's rubrics quote (finding 54): text from the recording or prompt.md, and of
+  // the recorded round's options only a ★ answer or one the reply picks.
+  ['rejects a quote in a history case\'s rubric that is not in the recording', (d) => edit(d, OK6, (t) => t.replace('"None. Write for the reader first"', '"None. Write for readers first"')),
+    /^error: evals\/followup-ok-accepts-recommendations\/graders\/06-accepted-not-assumed\.md: quotes "None\. Write for readers first", which isn't in the recorded conversation or prompt\.md; in a history case's rubric, double quotes mark verbatim text \(repo rule\)$/m],
+  ['rejects a quoted option that is not the ★ answer when the reply accepts every ★', (d) => edit(d, OK6, (t) => t.replace('"Balanced look at benefits and challenges"', '"Argue for remote work"')),
+    /^error: evals\/followup-ok-accepts-recommendations\/graders\/06-accepted-not-assumed\.md: quotes option 2b \("Argue for remote work"\), which is neither the ★ answer nor one the reply in prompt\.md picks \(repo rule\)$/m],
+  ['rejects a quoted option that the reply did not pick', (d) => edit(d, PARTIAL6, (t) => t.replace('"About 1,500\u{2013}2,000 words, in-depth"', '"Under 600 words, short and punchy"')),
+    /^error: evals\/followup-partial-answers\/graders\/06-accepted-not-assumed\.md: quotes option 4c \("Under 600 words, short and punchy"\)/m],
+  ['accepts a quote that differs from the recording only in dashes and code marks', (d) => edit(d, OK6, (t) => t.replace('3\u{2013}5 ideas', '3-5 ideas').replace('`[[placeholders]]`', '[[placeholders]]')), /validate: OK/, 0],
+  ['does not check the quotes of a case without a recording', (d) => edit(d, 'evals/writing-quick-launch-email/graders/11-no-invention.md', (t) => `${t}\nFor example "foo bar baz".\n`), /validate: OK/, 0],
+  // A regex grader on the file that the recorded menu offers to save must tell the recorded Full
+  // prompt from the Short version (finding 55).
+  ['rejects a saved-file regex that does not match the recorded Full prompt', (d) => edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe')),
+    /^error: evals\/save-to-file\/graders\/05-file-is-the-full-prompt\.md: pattern doesn't match the recorded Full prompt, so a correct save would fail; derive it again from history\.jsonl \(repo rule\)$/m],
+  ['rejects a saved-file regex that also matches the recorded Short version', (d) => edit(d, SAVE05, (t) => t.replace(/^pattern: .*$/m, "pattern: 'Etsy'")),
+    /^error: evals\/save-to-file\/graders\/05-file-is-the-full-prompt\.md: pattern also matches the recorded Short version, so it can't tell the two apart \(repo rule\)\n\n1 error\(s\)$/m],
+  ['rejects a not_contains saved-file regex that matches the recorded Full prompt', (d) => edit(d, SAVE06, (t) => t.replace(/^pattern: .*$/m, "pattern: 'Goal'")),
+    /^error: evals\/save-to-file\/graders\/06-file-is-not-the-whole-reply\.md: not_contains pattern matches the recorded Full prompt, so a correct save would fail; derive it again from history\.jsonl \(repo rule\)$/m],
+  ['rejects a saved-file regex in a history case whose recording offers no save path', (d) => put(d, `${OK_CASE}/graders/09-file.md`, read(d, SAVE05)),
+    /^error: evals\/followup-ok-accepts-recommendations: 09-file\.md read a saved file, but the recording shows no output whose What next\? menu names a save path to check them against \(repo rule\)$/m],
+  ['rejects saved-file regexes when the recorded Full prompt is not fenced', (d) => editOutput(d, (t) => t.replace('### Full prompt\n```text\n', '### Full prompt\n').replace('(US spelling).\n```\n', '(US spelling).\n')), [
+    /^error: evals\/save-to-file\/graders\/05-file-is-the-full-prompt\.md: reads the saved file, but the recorded output has no fenced Full prompt to check it against \(repo rule\)$/m,
+    /^error: evals\/save-to-file\/graders\/06-file-is-not-the-whole-reply\.md: reads the saved file, but the recorded output has no fenced Full prompt/m,
+  ]],
+  ['does not check a saved-file regex on another path', (d) => edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe').replace('path: prompts/etsy-ceramic-mug-description.md', 'path: prompts/other.md')), /validate: OK/, 0],
+  // A scaffold can put other text at the save path, such as a file the save must not overwrite.
+  ['does not check saved-file regexes in a case with a scaffold_script', (d) => {
+    edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe'));
+    edit(d, `${SAVE_CASE}/case.yaml`, (t) => t.replace('  history_file: history.jsonl', '  history_file: history.jsonl\n  scaffold_script: place-files.sh'));
+    put(d, `${SAVE_CASE}/place-files.sh`, '#!/bin/sh\n');
+  }, /validate: OK/, 0],
   // ---- generated files
   ['rejects a stale generated file', (d) => edit(d, `${REF}/media-targets.md`, (t) => `${t}\nhand edit\n`), /references\/media-targets\.md: stale; run node scripts\/build\.mjs/],
   // The eval lint graders are generated from data/lint-rules.json (finding 59, D36). build.mjs

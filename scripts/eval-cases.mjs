@@ -3,7 +3,9 @@
 // eval drops an unknown case.yaml key and skips a grader file without front matter, both without
 // a message; a missing baseline_file or a pattern that doesn't compile fails only after the
 // billed agent run; and `claude plugin validate` doesn't read evals/. checkSuiteRules adds this
-// repo's rules for how the cases run and score. scripts/validate.mjs runs both. Zero dependencies.
+// repo's rules for how the cases run and score, and checkConversations its rules for the history
+// cases' recordings and the graders that depend on them. scripts/validate.mjs runs all three.
+// Zero dependencies.
 //
 // The rules follow claude plugin eval's code (read in versions 2.1.312, 2.1.317, 2.1.318 and
 // 2.1.319) and code.claude.com/docs/en/plugin-evals. Messages that end in "(repo rule)" are
@@ -518,18 +520,36 @@ function requiresGrant(g, tool) {
     && typeof p === 'string' && p.includes('"tools"') && p.includes(`"${tool}"`);
 }
 
-// The models of a recording's assistant messages. Claude Code writes <synthetic> as the model of
-// a message it makes itself (read in 2.1.319's code), so a value in angle brackets doesn't count.
-// A line that isn't JSON is skipped: scripts/build.mjs fails on it.
-function recordedModels(file) {
-  const models = new Set();
-  for (const line of normalize(readFileSync(file, 'utf8')).split('\n')) {
+// A recorded conversation (a history case's history.jsonl) as the rules read it. Each line is one
+// row; a line that isn't a JSON object is skipped, since scripts/build.mjs fails on it. Returns:
+// - models: the models of the assistant messages. Claude Code writes <synthetic> as the model of
+//   a message it makes itself (read in 2.1.319's code), so a value in angle brackets doesn't count;
+// - assistantTexts: the text parts of the assistant messages, in order;
+// - userTexts: what the user typed, from user rows that Claude Code didn't mark isMeta (it marks
+//   the skill text it injects), without tool results;
+// - dialogLines: the lines that call AskUserQuestion, or ToolSearch with an input that names it;
+// - last: the last assistant row, as { line, row };
+// - messageIds: the ids of the recorded API messages.
+function readRecording(file) {
+  const rows = [];
+  normalize(readFileSync(file, 'utf8')).split('\n').forEach((text, i) => {
     let row;
-    try { row = JSON.parse(line); } catch { continue; }
-    const m = row?.type === 'assistant' ? row.message?.model : undefined;
-    if (typeof m === 'string' && !m.startsWith('<')) models.add(m);
-  }
-  return models;
+    try { row = JSON.parse(text); } catch { return; }
+    if (isMapping(row)) rows.push({ line: i + 1, row });
+  });
+  const parts = (row) => (Array.isArray(row.message?.content) ? row.message.content.filter(isMapping) : []);
+  const texts = (row) => parts(row).filter((p) => p.type === 'text' && typeof p.text === 'string').map((p) => p.text);
+  const assistant = rows.filter(({ row }) => row.type === 'assistant');
+  const dialog = (p) => p.type === 'tool_use' && (p.name === 'AskUserQuestion' || (p.name === 'ToolSearch' && JSON.stringify(p.input ?? null).includes('AskUserQuestion')));
+  return {
+    models: new Set(assistant.map(({ row }) => row.message?.model).filter((m) => typeof m === 'string' && !m.startsWith('<'))),
+    assistantTexts: assistant.flatMap(({ row }) => texts(row)),
+    userTexts: rows.filter(({ row }) => row.type === 'user' && !row.isMeta)
+      .flatMap(({ row }) => (typeof row.message?.content === 'string' ? [row.message.content] : texts(row))),
+    dialogLines: assistant.filter(({ row }) => parts(row).some(dialog)).map(({ line }) => line),
+    last: assistant.at(-1),
+    messageIds: new Set(rows.map(({ row }) => row.message?.id).filter((id) => typeof id === 'string')),
+  };
 }
 
 // This repo's rules for how the cases run and score, which claude plugin eval doesn't require.
@@ -561,7 +581,7 @@ export function checkSuiteRules(root, cases, err) {
       // a mix of the two.
       const history = join(root, c.dir, 'history.jsonl');
       if (s.history === 'history.jsonl' && isPlainFile(history)) {
-        for (const m of recordedModels(history)) {
+        for (const m of readRecording(history).models) {
           if (m !== s.model) err(`${c.dir}/history.jsonl: recorded on ${m}, but ${s.modelFile} pins ${s.model}; record it again on ${s.model} (repo rule)`);
         }
       }
@@ -589,5 +609,147 @@ export function checkSuiteRules(root, cases, err) {
     const list = [...byModel].sort(([a, x], [b, y]) => y.length - x.length || (a < b ? -1 : 1))
       .map(([m, names], i) => `${m} in ${i === 0 && names.length > 1 ? `${names.length} cases` : names.join(', ')}`);
     err(`evals: cases pin different models (${list.join('; ')}); pin one agent model in every case (repo rule)`);
+  }
+}
+
+// ---------- history cases ----------
+// A history case resumes a conversation recorded with scripts/eval/record-history.mjs
+// (context.history_file). scripts/build.mjs keeps the skill text and the reference reads in the
+// recording current, but never what the model said, and the case's graders were written against
+// that recording. checkConversations keeps the three in step (findings 54, 55 and 56). It reads
+// English recordings: one in another language needs its translated reply line and headings here
+// (D3).
+const FULL = 'Full prompt';
+const SHORT = 'Short version';
+const NEXT = 'What next?';
+const SAVE = 'Save to file';
+
+// Until step 1d records it again (D34), save-to-file's recording holds the old skill's search for
+// AskUserQuestion and a repeated menu (lines 10-12). The recording checks only warn about it while
+// the repeated menu's message is in it, so a copy cut by hand loses the exemption. Delete the entry
+// in the commit that records the case again.
+const KNOWN_STALE_RECORDINGS = { 'save-to-file': 'msg_011CgWkHqm4wmTHWit6mebGp' };
+
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// A heading as the method writes it: "### Full prompt".
+const headingRe = (h) => new RegExp(`#+[ \\t]*${esc(h)}`);
+// The text of the fenced block right after a heading, closed by a fence as long as its opener;
+// null when no fenced block follows the heading.
+const fencedAfter = (text, h) => text.match(new RegExp(`#+[ \\t]*${esc(h)}[^\\n]*\\n\\s*(\`{3,})[^\\n]*\\n([\\s\\S]*?)\\n\\1[ \\t]*(?:\\n|$)`))?.[2] ?? null;
+// Quoted text and the text it is looked up in, in one form: NFKC, dashes as -, no ` or * (code
+// and emphasis marks), curly quotes straight, each run of white space as one space, lowercase.
+const normalizeQuote = (s) => s.normalize('NFKC').replace(/[\u{2010}-\u{2015}\u{2212}]/gu, '-').replace(/[`*]/g, '')
+  .replace(/[\u{2018}\u{2019}]/gu, "'").replace(/[\u{201C}\u{201D}]/gu, '"').replace(/\s+/g, ' ').trim().toLowerCase();
+
+// The options of a question round in the text format, as [{ q, letter, text, star }]. A line that
+// starts with a number (after an optional heading mark or **) starts question q. On that line and
+// the ones after it, "x) " at the start or after a space starts option x, so the options read
+// whether each has a line of its own or they share one.
+function roundOptions(round) {
+  const options = [];
+  let q = null;
+  for (const line of round.split('\n')) {
+    const m = line.match(/^\s*(?:#+\s*|\*\*)?(\d+)[.)]/);
+    if (m) q = m[1];
+    if (q === null) continue;
+    const parts = (m ? line.slice(m[0].length) : line).split(/(?:^|\s)([a-z])\)\s/);
+    for (let i = 1; i < parts.length; i += 2) options.push({ q, letter: parts[i], text: parts[i + 1], star: parts[i + 1].includes('★') });
+  }
+  return options;
+}
+// Whether a reply picks option q+letter, written as "2c" or "2: c".
+const picks = (reply, { q, letter }) => new RegExp(`(?:^|[^0-9a-z])${q}\\s*:?\\s*${letter}\\b`, 'i').test(reply);
+// The prompt a case sends: prompt.md's body, else execution.prompt in case.yaml.
+const promptOf = (c) => c.prompt?.body || (isMapping(c.caseYaml?.execution) && typeof c.caseYaml.execution.prompt === 'string' ? c.caseYaml.execution.prompt.trim() : '');
+
+// This repo's checks for the history cases, as described above. contract is data/contract.json.
+// The recording checks call warn instead of err for a case in KNOWN_STALE_RECORDINGS. A case with a
+// file that didn't read is skipped.
+export function checkConversations(root, cases, { err, warn, contract }) {
+  const required = contract?.required ?? {};
+  const replyLine = Array.isArray(required.replyLine) ? required.replyLine[0] : undefined;
+  const missing = [FULL, SHORT, NEXT].filter((h) => !(required.headings ?? []).includes(h)).map((h) => `the heading "${h}"`);
+  if (!(required.menu ?? []).includes(SAVE)) missing.push(`the menu entry "${SAVE}"`);
+  if (typeof replyLine !== 'string' || replyLine === '') missing.push('a replyLine');
+  if (missing.length) {
+    err(`data/contract.json: required lacks ${missing.join(', ')}, which the history checks in scripts/eval-cases.mjs look for; change the two together`);
+    return;
+  }
+  const full = headingRe(FULL);
+  const next = headingRe(NEXT);
+  const savePathRe = new RegExp(`${esc(NEXT)}[\\s\\S]*?${esc(SAVE)}[^\\n]*?\`([^\`\\n]+)\``);
+  for (const c of cases) {
+    const s = settings(c);
+    const file = join(root, c.dir, 'history.jsonl');
+    if (unread(root, c) || s.history !== 'history.jsonl' || !isPlainFile(file)) continue;
+    const rec = readRecording(file);
+    const where = `${c.dir}/history.jsonl`;
+    const stale = Object.hasOwn(KNOWN_STALE_RECORDINGS, c.name) && rec.messageIds.has(KNOWN_STALE_RECORDINGS[c.name]);
+    const report = stale ? (m) => warn(`${m} (known; step 1d re-records this case, D34)`) : err;
+
+    // The recording against the method (finding 56). Eval runs have no AskUserQuestion, and
+    // SKILL.md says to use the text format straight away then, not to search for the tool. A turn
+    // ends with one message, a question round or the output with its menu, and the last assistant
+    // row ends its turn: Claude Code's session-resume code compares that row's stop_reason with
+    // end_turn to tell a finished turn from an interrupted one (read in its 2.1.318 and 2.1.319
+    // code; what an eval run does with an interrupted turn wasn't tried).
+    for (const line of rec.dialogLines) report(`${where}: line ${line} calls AskUserQuestion or searches for it; eval runs have no dialog tool, and SKILL.md says to use the text format straight away, so record it again (repo rule)`);
+    const last = rec.assistantTexts.at(-1) ?? '';
+    if (!last.includes(replyLine) && !(full.test(last) && next.test(last))) report(`${where}: the last recorded assistant text is neither a question round (with "${replyLine}") nor an output with its ${FULL} and ${NEXT} headings in one message; record it again (repo rule)`);
+    const stop = rec.last?.row.message?.stop_reason;
+    if (rec.last && stop !== 'end_turn') report(`${where}: line ${rec.last.line}, the last assistant row, has stop_reason ${stop ?? '(none)'}, not end_turn, so the recorded turn didn't end; record it again (repo rule)`);
+
+    // What the rubrics quote (finding 54). In a history case, double quotes in an llm grader mark
+    // text from the recorded conversation (what the model wrote and what the user typed) or from
+    // prompt.md, compared in normalizeQuote's form. A quoted option of the last recorded question
+    // round must be its ★ answer or one the reply in prompt.md picks.
+    const reply = promptOf(c);
+    const said = normalizeQuote([...rec.assistantTexts, ...rec.userTexts, reply].join('\n'));
+    const replied = normalizeQuote(reply);
+    const round = rec.assistantTexts.findLast((t) => t.includes(replyLine));
+    const options = round ? roundOptions(round).map((o) => ({ ...o, norm: normalizeQuote(o.text) })) : [];
+    for (const g of c.graders) {
+      const criteria = g.data.criteria ?? (g.body !== '' ? g.body : undefined);
+      if (g.data.type !== 'llm' || typeof criteria !== 'string') continue;
+      for (const m of criteria.matchAll(/"([^"\n]+)"|\u{201C}([^\u{201D}\n]+)\u{201D}/gu)) {
+        const quote = m[1] ?? m[2];
+        const q = normalizeQuote(quote);
+        if (!said.includes(q)) {
+          err(`${g.file}: quotes "${quote}", which isn't in the recorded conversation or prompt.md; in a history case's rubric, double quotes mark verbatim text (repo rule)`);
+          continue;
+        }
+        if (replied.includes(q)) continue;
+        const hits = options.filter((o) => o.norm.includes(q));
+        if (hits.length && !hits.some((o) => o.star || picks(reply, o))) err(`${g.file}: quotes option ${hits.map((o) => `${o.q}${o.letter}`).join(', ')} ("${quote}"), which is neither the ★ answer nor one the reply in prompt.md picks (repo rule)`);
+      }
+    }
+
+    // A regex grader on the file that the recorded menu offers to save (finding 55) must tell the
+    // recorded Full prompt from the Short version: a contains pattern matches the Full prompt and
+    // not the Short version, and a not_contains pattern doesn't match the Full prompt (count:N
+    // isn't checked). A case with a scaffold_script is skipped, since the scaffold can put other
+    // text at that path; so are graders on other paths.
+    if (s.scaffold != null) continue;
+    const output = rec.assistantTexts.findLast((t) => full.test(t));
+    const savePath = output?.match(savePathRe)?.[1];
+    const fileGraders = c.graders.filter((g) => g.data.type === 'regex' && isMapping(g.data.target) && g.data.target.source === 'file');
+    if (fileGraders.length && savePath === undefined) err(`${c.dir}: ${fileGraders.map((g) => `${g.name}.md`).join(', ')} read a saved file, but the recording shows no output whose ${NEXT} menu names a save path to check them against (repo rule)`);
+    for (const g of fileGraders) {
+      if (savePath === undefined || g.data.target.path !== savePath) continue;
+      const fullPrompt = fencedAfter(output, FULL);
+      if (fullPrompt === null) {
+        err(`${g.file}: reads the saved file, but the recorded output has no fenced ${FULL} to check it against (repo rule)`);
+        continue;
+      }
+      const pattern = g.data.pattern ?? (g.body !== '' ? g.body : undefined);
+      const flags = g.data.flags ?? '';
+      if (typeof pattern !== 'string' || typeof flags !== 'string' || compileError(pattern, flags)) continue; // checkGrader reports it
+      const matches = (text) => new RegExp(pattern, flags).test(text);
+      const match = g.data.match ?? 'contains';
+      const shortVersion = fencedAfter(output, SHORT);
+      if (match === 'not_contains' && matches(fullPrompt)) err(`${g.file}: not_contains pattern matches the recorded ${FULL}, so a correct save would fail; derive it again from history.jsonl (repo rule)`);
+      if (match === 'contains' && !matches(fullPrompt)) err(`${g.file}: pattern doesn't match the recorded ${FULL}, so a correct save would fail; derive it again from history.jsonl (repo rule)`);
+      if (match === 'contains' && shortVersion !== null && matches(shortVersion)) err(`${g.file}: pattern also matches the recorded ${SHORT}, so it can't tell the two apart (repo rule)`);
+    }
   }
 }
