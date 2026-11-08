@@ -22,13 +22,6 @@ Don't use it for ordinary requests such as "write me a cold email" — just do t
 
 ## Workflow
 
-1. **Intake** — find the rough prompt, the mode, the language and the target.
-2. **Diagnose** — read the references, find the gaps, decide what to ask.
-3. **Ask** — one round of multiple-choice questions (skipped in quick mode).
-4. **Build** — write the full prompt and a short version.
-5. **Present** — in the fixed format from `references/output-format.md`.
-6. **Next step** — run, refine or save, only after the user picks.
-
 ### 1. Intake
 
 - **Rough prompt.** It is the text after the command or trigger phrase. In Claude Code, text typed after `/prompt-engine` arrives on a line that starts with `ARGUMENTS:`. If the user points to an earlier message or a file, use that. If there is no prompt at all, ask for it in one short line.
