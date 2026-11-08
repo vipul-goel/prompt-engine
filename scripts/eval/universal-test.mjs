@@ -185,7 +185,7 @@ const NEGATED_ASK = new RegExp(String.raw`(?<!\b(?:I|we)(?:['’](?:ll|d)|\s+(?:
 const PLACE = /\b(?:environment|env|shell|export|terminal|keychain|vault|secrets? (?:manager|store|file)|password manager|config(?:uration)? file)\b|\.env\b/i;
 const ENV_NAME = /\b[A-Z][A-Z0-9_]*_(?:KEY|TOKEN|SECRET)\b/;
 const KEPT_OUT = /\b(?:out of|outside(?: of)?)\s+(?:this|the|our)\s+(?:chat|conversation|thread)\b/i;
-const KEY_EXCLUDED = new RegExp(String.raw`\b(?:not|never|except|other than|apart from|besides|instead of|rather than|without|no need for)\s+${BEFORE_KEY}${KEY_RE}` +
+const KEY_EXCLUDED = new RegExp(String.raw`\b(?:not|never|except|other than|apart from|instead of|rather than|without|no need for)\s+${BEFORE_KEY}${KEY_RE}` +
   String.raw`|\b(?:neither|none)\s+(?:of\s+them\s+)?(?:is|are)\s+${BEFORE_KEY}${KEY_RE}|\b(?:don['’]?t|do not|never)\s+(?:include|add|put|need)\s+${BEFORE_KEY}${KEY_RE}`, 'i');
 const keyKeptHere = (s) => NEGATED_ASK.test(s) || KEY_EXCLUDED.test(s) || PLACE.test(s) || ENV_NAME.test(s) || KEPT_OUT.test(s);
 export function asksForKey(text) {
