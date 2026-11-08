@@ -27,7 +27,8 @@ jobs:
           node -e '
             const d = require("./data/media-targets.json");
             const limit = Date.now() - 45 * 864e5;
-            // A missing or impossible date (NaN) counts as stale.
+            // NaN counts as stale: a missing date, or one Date.parse cannot read (month 13, day 32).
+            // A day past the end of a month rolls over instead: 2026-02-30 reads as 2026-03-02.
             const stale = d.targets.filter(t => !(Date.parse(t.last_verified) >= limit))
               .map(t => `- ${t.name} (last checked ${t.last_verified}, status ${t.status})`);
             require("fs").writeFileSync("stale.md", stale.join("\n"));

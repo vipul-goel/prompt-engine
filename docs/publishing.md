@@ -99,3 +99,4 @@ The "Re-verify tool data" workflow runs once a week. When entries in `data/media
 1. Check each listed tool against the vendor's current docs.
 2. Update the entry's fields, `status` and `sources`, and set `last_verified` to today.
 3. Run `node scripts/build.mjs` and commit the regenerated files.
+4. Close the issue once that commit is on `main`. The workflow never closes it; an issue left open gets the next round of stale entries, with a "Still stale" comment, instead of a new issue.
