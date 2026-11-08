@@ -106,6 +106,12 @@ const editJson = (dir, file, fn) => {
 };
 const put = (dir, file, text) => { mkdirSync(dirname(join(dir, file)), { recursive: true }); writeFileSync(join(dir, file), text); };
 const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Runs the copy's own build, for a row that edits method text and expects validate to pass: the
+// generated files that copy the text would be stale otherwise.
+const rebuild = (dir) => {
+  const r = spawnSync(process.execPath, [join(dir, 'scripts', 'build.mjs')], { env: { ...gitEnv(), PE_ROOT: dir }, encoding: 'utf8' });
+  assert.equal(r.status, 0, `build failed:\n${r.stdout}${r.stderr}`);
+};
 
 const SKILL = 'skills/prompt-engine/SKILL.md';
 const REF = 'skills/prompt-engine/references';
@@ -256,6 +262,16 @@ const ROWS = [
     new RegExp(`error: data/lint-rules\\.json ${SELF_CHECK_RULE}: bad pattern \\([\\s\\S]*\\n\\d+ error\\(s\\)`)],
   ['rejects capitalized pressure words in SKILL.md', (d) => edit(d, SKILL, (t) => `${t}\nYou MUST do this.\n`), /SKILL\.md: "MUST" \(pressure-words\)/],
   ['rejects a request to expose reasoning in the universal prompt', (d) => edit(d, CORE, (t) => `${t}\nThink step by step before answering.\n`), /universal\/prompt-engine\.md: "Think step by step" \(visible-reasoning-request\)/],
+  // The references are linted too, with `code spans` skipped: there they name a pattern, often to
+  // warn against it (finding 17, D11). Double-quoted text and fenced example prompts still count.
+  ['rejects capitalized pressure words in a reference file', (d) => edit(d, `${REF}/questions.md`, (t) => `${t}\nYou MUST ask at least three questions.\n`), /questions\.md: "MUST" \(pressure-words\)/],
+  ['accepts pressure words and reasoning requests named in code spans in a reference file', (d) => {
+    edit(d, `${REF}/questions.md`, (t) => `${t}\nDon't write \`MUST\` or \`think step by step\` into a prompt.\n`);
+    rebuild(d);
+  }, /validate: OK/, 0],
+  ['rejects a double-quoted pressure word in SKILL.md', (d) => edit(d, SKILL, (t) => `${t}\nAvoid "MUST" in prompts.\n`), /SKILL\.md: "MUST" \(pressure-words\)/],
+  ['rejects capitalized pressure words in a fenced example prompt in a reference file', (d) => edit(d, `${REF}/writing.md`, (t) => t.replace('\n# Facts\n', '\n# Facts\nYou MUST use only the facts above.\n')),
+    /writing\.md: "MUST" \(pressure-words\)/],
   // ---- size budgets (finding 42)
   ['rejects a SKILL.md body over the character budget', (d) => edit(d, SKILL, (t) => `${t}\n${filler(BUDGETS.skillBodyMaxChars - chars(bodyOf(t)) + 100)}\n`),
     new RegExp(`SKILL\\.md: body is \\d+ chars \\(max ${BUDGETS.skillBodyMaxChars}\\)`)],

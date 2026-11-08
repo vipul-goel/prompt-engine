@@ -164,8 +164,10 @@ for (const f of skillFiles) {
   for (const [re, label] of SUBSTITUTIONS) if (re.test(t)) err(`${f}: contains ${label}, which Claude Code substitutes in skill text`);
 }
 
-// Instruction text the models read directly: lint rules marked selfCheck in
-// data/lint-rules.json (pressure words, requests to expose reasoning) must not occur.
+// Instruction text the models read directly: every Markdown file in the skill folder (SKILL.md and
+// the references, which the skill reads as instructions and build.mjs copies into the knowledge
+// file and the MCP server's content) and the universal core. Lint rules marked selfCheck in
+// data/lint-rules.json (pressure words, requests to expose reasoning) must not occur in them.
 const lint = JSON.parse(read('data/lint-rules.json'));
 // A rule whose pattern doesn't compile is reported here and skipped below, so a broken
 // self-check rule can't stop validation before the error list is printed.
@@ -173,9 +175,12 @@ const compiles = (r) => {
   try { new RegExp(r.pattern, r.flags); return true; } catch (e) { err(`data/lint-rules.json ${r.id}: bad pattern (${e.message})`); return false; }
 };
 const selfCheckRules = lint.rules.filter(compiles).filter((r) => r.selfCheck);
-const INSTRUCTION_FILES = [SKILL, 'universal/prompt-engine.md'];
+const INSTRUCTION_FILES = [...skillFiles.filter((f) => f.endsWith('.md')), 'universal/prompt-engine.md'];
+// Text in `code spans` names a pattern, often to warn against it; it is not an instruction.
+// Double-quoted text and fenced example prompts are still checked (D11).
+const unquoted = (t) => t.replace(/`[^`\n]*`/g, ' ');
 for (const f of INSTRUCTION_FILES) {
-  const t = read(f);
+  const t = unquoted(read(f));
   for (const r of selfCheckRules) {
     const m = t.match(new RegExp(r.pattern, r.flags));
     if (m) err(`${f}: "${m[0]}" (${r.id}): ${r.message}`);

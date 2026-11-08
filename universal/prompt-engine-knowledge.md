@@ -273,7 +273,7 @@ Use the sections that carry task-specific content and drop the rest. A two-line 
 
 - **Explain the why, briefly.** A one-clause reason ("…, because readers skim on mobile") helps the model apply a rule sensibly in cases you didn't foresee. Skip reasons for self-evident format details, and don't stack justifications.
 - **Say what to do, not only what to avoid.** "Write in flowing paragraphs" works better than "Don't use bullet points". When you do ban something, name the specific pattern.
-- **Use plain emphasis.** Write important rules plainly with a reason. Capitalized pressure words (MUST, NEVER, CRITICAL) make current models over-apply the rule everywhere. Reserve "always" and "never" for true invariants.
+- **Use plain emphasis.** Write important rules plainly with a reason. Capitalized pressure words (`MUST`, `NEVER`, `CRITICAL`) make current models over-apply the rule everywhere. Reserve "always" and "never" for true invariants.
 - **Be explicit about scope.** Current models follow instructions literally: if you want the full-featured version, say so; if you want only the requested change, say that.
 - **Write defaults as defaults.** "Assume the readers are team managers unless told otherwise" is honest; "The audience is team managers" turns your guess into a requirement the model will enforce.
 - **Use placeholders for facts only the user has.** Write `[[company name]]`, `[[launch date]]` or `[[pricing]]` rather than inventing them, and list every placeholder under "Fill before running".
@@ -316,7 +316,7 @@ Fix anything that fails:
 - Every requirement in the prompt traces back to the user, their answers, or a default listed under Assumptions. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
-- No capitalized pressure words, generic personas, magic phrases ("think step by step", "take a deep breath"), requests to expose internal reasoning, prefill instructions or API settings.
+- No capitalized pressure words, generic personas, magic phrases (`think step by step`, `take a deep breath`), requests to expose internal reasoning, prefill instructions or API settings.
 - Scope is explicit, and the output format and length are stated.
 - Every placeholder is listed under "Fill before running", and no template leftovers remain (such as an empty `{{variable}}`).
 - The full prompt is as long as the task needs and no longer, and the short version fits its budget.
