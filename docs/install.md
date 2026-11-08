@@ -5,7 +5,7 @@ Pick the option for the app you use. Installing the same thing in two places mak
 - [Claude Code](#claude-code)
 - [Claude.ai, Claude Desktop and the Claude mobile apps](#claudeai-claude-desktop-and-the-claude-mobile-apps)
 - [Claude API and Claude Agent SDK](#claude-api-and-claude-agent-sdk)
-- [Codex, Gemini CLI, GitHub Copilot and other agents that read SKILL.md](#other-agents-that-read-skillmd)
+- [Codex, Gemini CLI, GitHub Copilot, Cursor and other agents that read SKILL.md](#other-agents-that-read-skillmd)
 - [ChatGPT, Gemini and other chatbots](#chatgpt-gemini-and-other-chatbots)
 - [MCP clients](#mcp-clients)
 
@@ -87,10 +87,15 @@ Add `-a <agent>` to pick an agent, or `-g` to install for your user rather than 
 |---|---|---|---|
 | OpenAI Codex | `~/.agents/skills/` (user) or `.agents/skills/` (repo) | `$prompt-engine`, or name it in your message | Verified in Codex's shipped code |
 | Gemini CLI | `~/.gemini/skills/` or `~/.agents/skills/` | Ask for it; Gemini activates skills itself after you approve | Verified in Gemini CLI's bundled docs |
-| GitHub Copilot (VS Code, CLI) | `~/.copilot/skills/`, `.github/skills/`, `.claude/skills/` or `.agents/skills/` | `/prompt-engine` | Verified in Copilot's shipped code |
-| Cline | `~/.cline/skills/` or `.agents/skills/` | `/prompt-engine` | Verified in Cline's shipped code |
-| OpenCode, Goose, Mistral Vibe | `.agents/skills/` (see each tool's docs) | Ask for it, or `/prompt-engine` where supported | Verified in each project's docs |
-| Cursor, Kiro, Zed, Devin Desktop (formerly Windsurf) | See the tool's docs; `npx skills add` knows the paths | Varies | Not verified here (secondary sources only) |
+| GitHub Copilot (VS Code, CLI) | `~/.copilot/skills/` or `~/.agents/skills/` (user); `.github/skills/`, `.claude/skills/` or `.agents/skills/` (repo) | `/prompt-engine` | Verified in GitHub's docs and Copilot's shipped code |
+| Cursor | `~/.agents/skills/` or `~/.cursor/skills/` (user); `.agents/skills/` or `.cursor/skills/` (repo) | `/prompt-engine` in Agent chat, or ask for it | Verified in Cursor's docs |
+| Cline | `~/.cline/skills/` or `~/.agents/skills/` (user); `.cline/skills/` or `.agents/skills/` (repo) | `/prompt-engine` | Verified in Cline's code (release v4.1.26); its docs list only the `.cline`, `.clinerules` and `.claude` folders |
+| OpenCode | `~/.agents/skills/` (user) or `.agents/skills/` (repo) | Ask for it | Verified in OpenCode's docs |
+| Goose | `~/.agents/skills/` (user) or `.agents/skills/` (repo) | Ask for it, or `/skills prompt-engine` in the CLI | Verified in Goose's docs |
+| Mistral Vibe | `~/.agents/skills/` (user) or `.agents/skills/` (repo, read only in folders you trust) | `/prompt-engine`, or ask for it | Verified in Mistral Vibe's README (3.1.0) |
+| Zed | `~/.agents/skills/` (user) or `.agents/skills/` (repo, read only in projects you trust) | `/prompt-engine`, or ask for it | Verified in Zed's docs |
+| Devin Desktop (formerly Windsurf) | `~/.config/devin/skills/` or `~/.agents/skills/` (user); `.devin/skills/` or `.agents/skills/` (repo) | `/prompt-engine`, or ask for it | Verified in Devin's docs |
+| Kiro | `~/.kiro/skills/` (user) or `.kiro/skills/` (repo); its docs don't list `.agents/skills/` | `/prompt-engine`, or ask for it | Verified in Kiro's docs |
 
 Codex and GitHub Copilot can also add this repository as a plugin marketplace, because they read `.claude-plugin/marketplace.json`. That path is untested.
 

@@ -1,6 +1,6 @@
 # Sources
 
-The design follows the platforms' own documentation and the prompting guidance below, checked on 2026-10-29. Image and video tool sources and their individual verification status live in [`data/media-targets.json`](../data/media-targets.json).
+The design follows the platforms' own documentation and the prompting guidance below, checked on 2026-10-29 unless a line gives another date. Image and video tool sources and their individual verification status live in [`data/media-targets.json`](../data/media-targets.json).
 
 ## Agent Skills and Claude surfaces
 - Agent Skills specification: https://github.com/agentskills/agentskills (docs/specification.mdx)
@@ -31,6 +31,8 @@ The design follows the platforms' own documentation and the prompting guidance b
 - Anthropic release notes (retirement of the Console prompt tools, Aug 2026): https://platform.claude.com/docs/en/release-notes/overview
 - OpenAI GPT-4.1 prompting guide: https://developers.openai.com/cookbook/examples/gpt4-1_prompting_guide. Newer OpenAI and Google guidance was seen only through search results.
 
-## Other agents (verified in shipped packages)
+## Other agents (verified in shipped packages or the vendors' docs)
 - OpenAI Codex CLI 0.165.0, Gemini CLI 0.66.0, GitHub Copilot language server 1.564.0, Cline core 0.2.0 and Mistral Vibe 3.0.3: the skill folders and rules listed in [install.md](install.md) were read from each package's published docs or code on npm and PyPI.
+- Skill folders in the vendors' docs, checked on 2026-11-08: Cursor https://cursor.com/docs/skills · GitHub Copilot https://docs.github.com/en/copilot/concepts/customizations/agent-skills · VS Code https://code.visualstudio.com/docs/agent-customization/agent-skills · OpenAI Codex https://learn.chatgpt.com/docs/build-skills (formerly developers.openai.com/codex/skills) · Gemini CLI https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/skills.md · Cline https://docs.cline.bot/customization/skills · OpenCode https://opencode.ai/docs/skills · Goose https://goose-docs.ai/docs/guides/context-engineering/using-skills · Mistral Vibe 3.1.0's README https://pypi.org/project/mistral-vibe/3.1.0/ · Zed https://zed.dev/docs/ai/skills · Devin Desktop https://docs.devin.ai/desktop/devin-local/customizations (formerly docs.windsurf.com/windsurf/cascade/skills) · Kiro https://kiro.dev/docs/skills
+- Cline's code at release v4.1.26, for the `.agents/skills/` folders its docs don't list (checked on 2026-11-08): https://github.com/cline/cline/blob/v4.1.26/apps/vscode/src/core/storage/skill-directories.ts
 - Cross-tool installer: the `skills` package on npm (1.7.4).

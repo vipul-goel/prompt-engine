@@ -2,7 +2,7 @@
 
 **Turn a rough prompt into a detailed, explained, LLM-ready prompt by answering a few multiple-choice questions.**
 
-You type what you'd normally type into an AI tool. Prompt Engine finds what's missing — goal, audience, context, constraints, format, edge cases — and asks you a few questions, each with a recommended answer. Then it writes a prompt that gives the reason behind each instruction. It works in Claude, Claude Code, ChatGPT, Gemini, Codex, GitHub Copilot, Cursor and any MCP client.
+You type what you'd normally type into an AI tool. Prompt Engine finds what's missing — goal, audience, context, constraints, format, edge cases — and asks you a few questions, each with a recommended answer. Then it writes a prompt that gives the reason behind each instruction. It's tested in Claude Code and made for Claude.ai, ChatGPT, Gemini, Codex, GitHub Copilot, Cursor and MCP clients; [docs/compatibility.md](docs/compatibility.md) shows how far each one has been checked.
 
 ```text
 You:   /prompt-engine write a blog post about remote work
@@ -40,7 +40,7 @@ You:   ok
 |---|---|
 | **Claude Code** | `/plugin marketplace add vipul-goel/prompt-engine`, then `/plugin install prompt-engine@vipul-goel`. On Claude Code 2.1.275 or later, this one line does both: `/plugin install prompt-engine --marketplace vipul-goel/prompt-engine` |
 | **Claude.ai** (web, desktop, mobile) | Customize → Plugins → Add → Add marketplace → `https://github.com/vipul-goel/prompt-engine`. Or upload `prompt-engine.zip` from the [latest release](https://github.com/vipul-goel/prompt-engine/releases) under Customize → Skills. Skills need **Code execution and file creation** turned on in Settings. |
-| **Codex, Gemini CLI, GitHub Copilot, Cursor, Cline, OpenCode, Goose and other agents that read SKILL.md** | `npx skills add vipul-goel/prompt-engine`, or copy the [`skills/prompt-engine`](skills/prompt-engine) folder into `~/.agents/skills/` |
+| **Codex, Gemini CLI, GitHub Copilot, Cursor, Cline, OpenCode, Goose and other agents that read SKILL.md** | `npx skills add vipul-goel/prompt-engine`, or copy the [`skills/prompt-engine`](skills/prompt-engine) folder into `~/.agents/skills/`, which every agent named here reads ([other folders](docs/install.md#other-agents-that-read-skillmd)) |
 | **ChatGPT, Gemini, Microsoft Copilot, Perplexity or any other chatbot** | Paste [`universal/prompt-engine.md`](universal/prompt-engine.md) into a chat, a custom GPT, a Gem or a project. [Setup notes](universal/README.md) |
 | **MCP clients** (Claude Desktop, Claude Code, Cursor, VS Code, Zed…) | `npx -y prompt-engine-mcp` as a local MCP server, or the one-click `.mcpb` file for Claude Desktop from the releases page. [MCP server guide](mcp/README.md) |
 | **Claude API or Agent SDK** | Upload the skill folder with the Skills API, or place it in `.claude/skills/`. See [docs/install.md](docs/install.md) |

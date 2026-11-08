@@ -1,6 +1,6 @@
 # Compatibility and test status
 
-Last updated: 2026-10-29. Status labels:
+Last updated: 2026-11-08. Status labels:
 - **✓ tested**: exercised by this repository's automation or by hand during development;
 - **✓ docs**: confirmed in the vendor's own documentation or shipped code, not tested here;
 - **~ secondary**: seen only through search results or third-party tools;
@@ -21,8 +21,7 @@ Platforms change quickly. Recheck the secondary and unverified rows before relyi
 | OpenAI Codex CLI 0.165 | SKILL.md | ✓ docs | Run with `$prompt-engine`. Reading `.claude-plugin` marketplaces is in Codex's code but untested here. |
 | Gemini CLI 0.66 | SKILL.md | ✓ docs | Skills are activated by the model after you approve; there is no `/skill` command. |
 | GitHub Copilot (VS Code, CLI) | SKILL.md | ✓ docs | `/prompt-engine` runs the skill. |
-| Cline, OpenCode, Goose, Mistral Vibe | SKILL.md | ✓ docs | |
-| Cursor, Kiro, Zed, Devin Desktop (formerly Windsurf) | SKILL.md | ~ secondary | Paths come from cross-tool installers, not the vendors' docs. |
+| Cursor, Cline, OpenCode, Goose, Mistral Vibe, Zed, Devin Desktop (formerly Windsurf), Kiro | SKILL.md | ✓ docs | Skill folders checked on 2026-11-08 in each vendor's docs, and for Cline's `.agents/skills/` folders, which its docs don't list, in its code. Kiro's docs list only its own `.kiro/skills/` folders. See [install.md](install.md#other-agents-that-read-skillmd). |
 | ChatGPT, Gemini app, Microsoft Copilot, Perplexity, Grok, Le Chat | Universal prompt | ✓ tested (Claude, tools disabled) / ? in those apps | The two-turn behavior test runs on Claude with all tools disabled. Instruction limits are confirmed only for Microsoft 365 Copilot agents (8,000 characters). A manual check in ChatGPT and Gemini is pending. |
 | Cross-agent installer (`npx skills add`, skills 1.7.4) | Copies `skills/prompt-engine` into each agent's folder | ✓ tested | Finds and lists the skill from a clone of this repository. Installing into each agent's folder wasn't tested here. |
 | MCP clients | `prompt-engine-mcp` | see [mcp/README.md](../mcp/README.md) | Questions appear as forms where the client supports MCP elicitation (per vendor docs: Claude Code, VS Code, Cursor, Codex); other clients get a numbered list. |
