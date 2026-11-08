@@ -17,14 +17,14 @@ One method ships in four formats, so most changes start in one place and flow ou
 
 - **Node.js 22.19 or later.** That's the oldest version the project supports, and the MCP server's checks need it: `npm run test:inspector` runs the MCP Inspector, which stops with an error on older versions. The scripts in `scripts/` use only Node built-ins, so there's nothing to install at the repository root. `scripts/release.mjs` also needs the `zip` and `unzip` commands, and npm for the full release.
 - **No `package.json` at the root.** The root is also the Claude Code plugin root, and Claude Code runs `npm ci` when someone installs a plugin that has a `package.json` and a lockfile. The validator enforces this, along with the other files a plugin root must not contain.
-- **Everything committed ships.** The plugin's source is the repository root (`"source": "./"` in `.claude-plugin/marketplace.json`), so every file committed to `main` reaches every Claude Code user who installs it from GitHub, twice: in the marketplace clone and in the plugin cache. Keep maintainer notes and large files off `main`. The validator warns about tracked files that Anthropic's plugin directory would hold for a reviewer: more than 512 of them, or a file that isn't an image or font and is 256 KiB or larger, or binary.
+- **Everything committed ships.** The plugin's source is the repository root (`"source": "./"` in `.claude-plugin/marketplace.json`), so every file committed to `main` reaches every Claude Code user who installs it from GitHub, twice: in the marketplace clone and in the plugin cache. Keep handoff notes, review records and large files off `main`. The validator warns about tracked files that Anthropic's plugin directory would hold for a reviewer: more than 512 of them, or a file that isn't an image or font and is 256 KiB or larger, or binary.
 - **No memory files where the skill reads.** Claude Code can load memory files such as `CLAUDE.md` from a folder below a session's working directory once it reads a file there. So in a session started in a folder that holds the plugin cache, the skill's reads of its references can load such files from the plugin; [Known limits](docs/compatibility.md#known-limits) records a run that showed it. Besides a root `CLAUDE.md`, the validator refuses a tracked `AGENTS.md` or `CLAUDE.local.md` at the root, and a `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md` or `.claude` in `skills/`, `skills/prompt-engine/` or its `references/` folder, tracked or not, because the skill zip is built from the folder on disk.
 - **For the MCP server:** `cd mcp && npm ci`.
 - **[Claude Code](https://code.claude.com/docs)** for `claude plugin validate` and the behavior evals.
 
 ## Checks
 
-Run these before opening a pull request. CI runs them too, with the script checks on both Linux and Windows. It also builds the skill zip, runs `claude plugin validate` with `--profile directory` added, and packs the MCP server as an npm package and as a `.mcpb` bundle and starts each.
+Run these before opening a pull request. CI runs them too, with the script checks on both Linux and Windows. It also builds the skill zip and runs `claude plugin validate` with `--profile directory` added.
 
 ```bash
 node scripts/build.mjs --check && node scripts/validate.mjs && node --test scripts/test/*.test.mjs
@@ -40,6 +40,8 @@ If you changed `mcp/`:
 cd mcp && npm test && npm run test:inspector
 ```
 
+CI also runs `npm run test:pack`, which packs the build that `npm test` leaves in `dist/`, installs the package from its tarball and starts it (the install needs the npm registry), and `npm run pack:mcpb`, which packs the `.mcpb` bundle and starts its server. Run them too when your change touches what the packages contain, their dependencies or how they start.
+
 The validator explains each failure. The most common ones:
 - **Generated file is stale.** Run `node scripts/build.mjs`.
 - **Contract item missing.** Every heading, score dimension and marker in `data/contract.json` must appear in `SKILL.md`, `references/output-format.md` and the universal core. A heading counts only as a `##` to `####` heading followed by a colon or the end of its line, or as a **bold** label that starts a list item, so `### Score anchors` doesn't count as the `Score` heading. If you rename one, rename it everywhere.
@@ -49,7 +51,7 @@ The validator explains each failure. The most common ones:
 
 These apply to `SKILL.md`, the references and the universal prompt, and to the prompts they produce.
 
-- **Give the reason, not emphasis.** Explain why an instruction matters rather than writing it in capitals. The validator flags capitalized pressure words such as MUST or NEVER and requests to show the model's reasoning, which current Claude models may refuse.
+- **Give the reason, not emphasis.** Explain why an instruction matters rather than writing it in capitals. In `SKILL.md`, the references and the universal prompt, the validator flags capitalized pressure words such as `MUST` or `NEVER` and requests to show the model's reasoning, which current Claude models may refuse. To name one of these patterns, for example to warn against it, put it in backticks: the check skips code spans, but not double-quoted text or fenced example prompts.
 - **Stay portable.**
   - Frontmatter may only use `name`, `description`, `license`, `allowed-tools` and `metadata`, because Claude.ai and the Skills API reject other keys. Write each value as a single-line `"double-quoted string"` without `"` or `\` inside, or as one bare word, so that strict YAML parsers and Claude Code read it the same way. Save `SKILL.md` as UTF-8 without a byte-order mark, which some skill validators refuse.
   - The description must be one line, without `<` or `>`, within the cap in `data/contract.json`.
@@ -114,6 +116,8 @@ Evals make real model calls on your account and are billed. Start with a subset 
 claude plugin eval . --case 'image-*' --runs 1 --max-cost-usd 1 --no-publish --judge-model claude-haiku-5-5
 ```
 
+`--runs 1` runs each case once per arm, instead of the `runs` the case sets, 3 by default. `--judge-model claude-haiku-5-5` pins the judge, which is otherwise the model Claude Code uses for background tasks, so that scores from different runs come from the same judge. `--no-publish` keeps the HTML report on your machine; without it, Claude Code also publishes the report as a private artifact when your claude.ai account can.
+
 For the full suite, write the results to a folder and check the indicators with `jq`, as the evals workflow does. The full suite cost about $2 on 2026-11-04.
 
 ```bash
@@ -150,6 +154,6 @@ When you change the method, include the eval summary, with and without the skill
 
 ## Reporting problems
 
-Open an issue with the rough prompt, the app and model you used, what you expected and what happened. If you use the Claude Code plugin, add the `version`, `installedAt` and `lastUpdated` that `claude plugin list --json` shows for `prompt-engine@vipul-goel`: the version number stays the same until the next release, so the dates tell which copy you have. Remove anything private first.
+Open an issue with the rough prompt, the app and model you used, what you expected and what happened. If you use the Claude Code plugin, add the `version`, `installedAt` and `lastUpdated` that `claude plugin list --json` shows for `prompt-engine@vipul-goel`: the version number stays the same until the next release, so the dates help narrow down which copy you have. Remove anything private first.
 
 If you find a way that Prompt Engine could leak data or act without the user choosing to, don't post the details publicly. Use the repository's private vulnerability reporting (Security tab) if it's enabled, or open an issue asking for a private contact.
