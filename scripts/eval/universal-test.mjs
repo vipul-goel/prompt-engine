@@ -59,9 +59,9 @@ const OPTION = String.raw`(^|\s)(\d[.)]|[-*•])[ \t]*\**`;
 export const MENU = new RegExp(String.raw`What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★`, 'i');
 // A Fill before running section, up to the next line that starts with #, that lists a placeholder
 // that isn't a secret's. A placeholder is a secret's when key, token, secret or password ends it,
-// also after _, or when it says api key anywhere, as in secret-redaction-quick's 09, so
-// [[key feature]] is not one. writing-quick-launch-email's 08 and the media 05 graders hold the
-// same text.
+// also after _, or when it says api key anywhere: the rule of secret-redaction-quick's 09, plus
+// password, which SKILL.md counts as a secret. So [[key feature]] is not one.
+// writing-quick-launch-email's 08 and the media 05 graders hold the same text.
 export const FILL_OPEN = String.raw`(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\]`;
 const fillOpen = new RegExp(FILL_OPEN, 'i');
 const STARRED_NOT_FILL = new RegExp(String.raw`What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)\**[ \t]*★`, 'i');
