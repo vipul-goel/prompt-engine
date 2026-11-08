@@ -1,18 +1,21 @@
 # Publishing
 
-This page is for maintainers. It covers where each part of Prompt Engine is published, the one-time setup, and how to cut a release. Facts about third-party services were checked on 2026-10-29. npm's trusted-publishing rules, whether the npm name was taken, the MCP Registry's release files and this repository's rulesets were checked on 2026-11-08. Services change, so recheck anything that fails.
+This page is for maintainers. It covers where each part of Prompt Engine is published, the one-time setup, and how to cut a release. Facts about third-party services were checked on 2026-10-29. npm's trusted-publishing rules, whether the npm name was taken, the MCP Registry's release files, this repository's rulesets, Claude Code's and claude.com's plugin docs, and what a plugin install copies (with Claude Code 2.1.319) were checked on 2026-11-08. Services change, so recheck anything that fails.
 
 ## Where each part goes
 
 | Channel | What users get | How it's published | Needs |
 |---|---|---|---|
-| Claude Code and Claude.ai plugin marketplace | The plugin (this repository is the marketplace) | Merging to `main`. Users get the new version when `version` in `.claude-plugin/plugin.json` changes | Nothing |
+| Claude Code plugin marketplace | The plugin (this repository is the marketplace) | Merging to `main`. A new install (`prompt-engine@vipul-goel`) gets `main` as it is then, under the version in `.claude-plugin/plugin.json`. An existing install changes only when that version changes and the user updates; see [How users receive it](#how-users-receive-it) | Nothing |
+| Claude.ai and Cowork (marketplace added there) | The same plugin, which also loads in Claude Code as `prompt-engine@synced` | Merging to `main`. Users select **Check for updates** on the marketplace, or rely on **Sync automatically** where it's on. Whether a commit without a version change reaches them isn't documented and wasn't tested here | Nothing |
 | `npx skills add vipul-goel/prompt-engine`, manual copies | `skills/prompt-engine/` | Merging to `main` | Nothing |
 | GitHub release | `prompt-engine.zip` (skill upload), `prompt-engine.mcpb` (Claude Desktop), the universal files and `SHA256SUMS` | The Release workflow, when you push a `v*` tag | Nothing beyond the workflow's built-in token |
 | npm | `prompt-engine-mcp` | The Release workflow, through npm's trusted publishing (GitHub OIDC) | A first version published by hand, then a trusted publisher on npmjs.com |
 | MCP Registry | `io.github.vipul-goel/prompt-engine` | The Release workflow, through GitHub OIDC | That version already on npm |
 | Anthropic's directory (optional) | A listing on claude.ai, in Cowork and in Claude Code | A submission in the developer portal | A paid Claude plan |
 | Hosted MCP server (optional) | A remote MCP URL | Your own deploy | A Cloudflare account or any Node host |
+
+The plugin's source is the repository root (`"source": "./"` in `.claude-plugin/marketplace.json`), so every file committed to `main` reaches every Claude Code user who installs it from GitHub, twice: in the marketplace clone and in the plugin cache. Keep maintainer notes and large files off `main`.
 
 ## One-time setup
 
@@ -79,7 +82,8 @@ This page is for maintainers. It covers where each part of Prompt Engine is publ
 
 ### How users receive it
 
-- **Claude Code:** `claude plugin update prompt-engine@vipul-goel`, or automatically if they turned on auto-update for the marketplace (it's off by default for third-party marketplaces). Because `plugin.json` sets `version`, pushing commits without bumping it does not reach installed copies.
+- **Claude Code:** `claude plugin update prompt-engine@vipul-goel`, or automatically if they turned on auto-update for the marketplace (it's off by default for third-party marketplaces). Because `plugin.json` sets `version`, pushing commits without bumping it does not reach installed copies, while new installs get those commits under the old number.
+- **Claude.ai and Cowork (marketplace added there):** according to claude.com's plugin docs, users select **Check for updates** on the marketplace in Customize → Plugins, or rely on **Sync automatically** where it's on; it's offered for marketplaces added from github.com. Claude Code downloads the account's copy, `prompt-engine@synced`, in the background each time it starts, when it's signed in with that account (Claude Code 2.1.273 or later). Whether a commit without a version change reaches these users isn't documented. Not tested here.
 - **Claude.ai skill uploads and copied folders:** users replace the old copy themselves.
 - **`npx skills add`:** users run the install command again.
 - **MCP:** `npx -y prompt-engine-mcp` runs whatever npm resolves; users who pinned a version change it themselves. Claude Desktop users install the new `.mcpb`.
