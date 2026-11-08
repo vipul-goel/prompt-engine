@@ -4,7 +4,7 @@ This file describes how to write the full prompt: which sections to use, how to 
 
 ## Skeleton
 
-Use the sections that carry task-specific content and drop the rest. A two-line task doesn't need nine headings, and empty boilerplate sections dilute the instructions that matter.
+Use the sections that carry task-specific content and drop the rest. A two-line task doesn't need nine headings, and empty boilerplate sections dilute the instructions that matter. Write the headings in the prompt's language: a prompt in German has `# Ziel`, `# Kontext` and `# Ausgabe`, not `# Goal`.
 
 ```text
 # Goal

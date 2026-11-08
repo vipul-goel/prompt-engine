@@ -17,9 +17,11 @@ Sections:
 
 ## Output format
 
-The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Write the headings, score rows, caveat line, menu labels and reply keywords (`change N`, `deep`) below in the user's language, like everything else. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language. Add nothing before the first line and nothing after the menu.
+The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Add nothing before the first line and nothing after the menu.
 
 ### Template
+
+The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★` and `modifier 2 : …`. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
 
 ````markdown
 <One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it. For a strong prompt: "Your prompt is already strong — small edits below.">
@@ -225,7 +227,7 @@ This file describes how to write the full prompt: which sections to use, how to 
 
 ### Skeleton
 
-Use the sections that carry task-specific content and drop the rest. A two-line task doesn't need nine headings, and empty boilerplate sections dilute the instructions that matter.
+Use the sections that carry task-specific content and drop the rest. A two-line task doesn't need nine headings, and empty boilerplate sections dilute the instructions that matter. Write the headings in the prompt's language: a prompt in German has `# Ziel`, `# Kontext` and `# Ausgabe`, not `# Goal`.
 
 ```text
 # Goal
