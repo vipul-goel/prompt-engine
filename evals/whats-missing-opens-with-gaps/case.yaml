@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: whats-missing-opens-with-gaps
 expected_outcome: |
-  Asked what's missing from a prompt, in standard mode, the skill runs the normal question round: one line naming the prompt's biggest gaps (none of them something the prompt already gives), then numbered multiple-choice questions with recommended answers. No score and no improved prompt yet.
+  Asked what's missing from a prompt, in standard mode, the skill runs the normal question round: one line naming the prompt's biggest gaps (none of them something the prompt already gives), then numbered multiple-choice questions with the recommended option marked ★ and the line on replying `ok`. No score and no improved prompt yet.
