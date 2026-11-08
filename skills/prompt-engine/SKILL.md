@@ -35,8 +35,7 @@ Don't use it for ordinary requests such as "write me a cold email" — just do t
 
 Read the reference files you need now, in this first turn, because some apps ask for permission if they are read later:
 
-- always `references/output-format.md` and `references/blueprint.md`;
-- `references/questions.md`, unless the mode is quick;
+- always `references/output-format.md`, `references/blueprint.md` and `references/questions.md`;
 - the domain pack that fits, or two if the prompt spans them: `references/coding.md` (code, agents, tool instructions), `references/writing.md` (copy, marketing, emails, posts, stories), `references/research.md` (research, analysis, comparisons, data), `references/image-video.md` together with `references/media-targets.md` (image or video generation), or `references/general.md` (anything else, including prompts that are themselves system prompts or custom-assistant instructions).
 
 Go through the pack's checklist and mark each item explicit, inferable or missing. Look things up before asking: in a code workspace, read the files that matter (README, manifests, the code the prompt mentions); in a chat, use earlier messages and attachments. Asking the user for something you could find wastes their time.
@@ -80,7 +79,7 @@ Use the structure in `references/output-format.md`, in this order and nothing el
 4. **Fill before running** — only if placeholders remain.
 5. **What I added & why** — at most 6 bullets, each tagged [you], [your answer] (including ★ answers the user accepted) or [best practice]. Specific values you picked yourself go under Assumptions, not [best practice].
 6. **Assumptions** — only the defaults you chose without asking, numbered; "change 2: …" edits one.
-7. **Score** — original vs enhanced, 0–5 on Clear goal, Context, Constraints, Output format and Edge cases, with the caveat line.
+7. **Score** — original vs enhanced, 0–5 on Clear goal, Context, Constraints, Output format and Edge cases, then the caveat line "Self-assessed coverage of five areas, not a prediction of output quality." A dimension that rests only on unconfirmed defaults, or has an open placeholder, scores at most 3.
 8. **What next?** — Run it now ★ · Refine · Save to file.
 
 Show "What next?" with AskUserQuestion (header "Next step") when that tool is among your tools. Otherwise end the same message with the menu as a numbered list, because some apps show only your final message.

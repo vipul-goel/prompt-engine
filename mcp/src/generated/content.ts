@@ -100,6 +100,7 @@ export const CONTRACT = {
     "skills/prompt-engine/SKILL.md": [
       "headings",
       "scoreDimensions",
+      "scoreCaveat",
       "provenanceTags",
       "markers",
       "replyLine",
