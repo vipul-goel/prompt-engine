@@ -72,6 +72,17 @@ describe('the method brief', () => {
     expect(brief).toMatch(/intro, notes_label and notes_hint/);
   });
 
+  it('sends critique and what-is-missing requests to the brief, which gives them the question round', () => {
+    // The method gives these requests the normal flow (the core's section 3, and SKILL.md's
+    // description and When to use it; D2). Over MCP, the server's own text is what sends a host to
+    // the brief, so the instructions and enhance_prompt's description name them, in the same words.
+    expect(UNIVERSAL_METHOD).toMatch(/A request to critique a prompt or find what's missing gets the same flow/);
+    const trigger = /when the user asks to (.+?), or starts a message with "prompt-engine:"/;
+    const [instructions, tool] = [INSTRUCTIONS, TOOL_DESCRIPTIONS.enhance_prompt].map((t) => t.match(trigger)?.[1]);
+    expect(tool).toBe(instructions);
+    expect(instructions).toMatch(/^improve, critique, enhance, rewrite or write a prompt \([^()]*\), asks what a prompt is missing$/);
+  });
+
   it('offers Save to file only with a tool that saves files, and never overwrites', () => {
     // A host without a tool that saves files on the user's computer leaves the option out of the
     // menu; where one exists, the Save rule checks the path first and picks a new name instead.
