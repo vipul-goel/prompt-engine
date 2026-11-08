@@ -53,7 +53,7 @@ Use the sections that carry task-specific content and drop the rest. A two-line 
 
 - **Explain the why, briefly.** A one-clause reason ("…, because readers skim on mobile") helps the model apply a rule sensibly in cases you didn't foresee. Skip reasons for self-evident format details, and don't stack justifications.
 - **Say what to do, not only what to avoid.** "Write in flowing paragraphs" works better than "Don't use bullet points". When you do ban something, name the specific pattern.
-- **Use plain emphasis.** Write important rules plainly with a reason. Capitalized pressure words (MUST, NEVER, CRITICAL) make current models over-apply the rule everywhere. Reserve "always" and "never" for true invariants.
+- **Use plain emphasis.** Write important rules plainly with a reason. Capitalized pressure words (`MUST`, `NEVER`, `CRITICAL`) can make current models over-apply the rule, even where it doesn't fit. Reserve "always" and "never" for true invariants.
 - **Be explicit about scope.** Current models follow instructions literally: if you want the full-featured version, say so; if you want only the requested change, say that.
 - **Write defaults as defaults.** "Assume the readers are team managers unless told otherwise" is honest; "The audience is team managers" turns your guess into a requirement the model will enforce.
 - **Use placeholders for facts only the user has.** Write `[[company name]]`, `[[launch date]]` or `[[pricing]]` rather than inventing them, and list every placeholder under "Fill before running".
@@ -65,15 +65,15 @@ Use the sections that carry task-specific content and drop the rest. A two-line 
 
 ## Adapting to the target model
 
-The method is the same for every model; only delimiters, placement and a few lines change. If you don't know the target, use the universal column. (Last checked against vendor guidance: 2026-10-29; model behavior changes, so recheck these notes when vendors publish new guidance.)
+The method is the same for every model; only delimiters, placement and a few lines change. If you don't know the target, use the universal column. (The Claude, GPT and Gemini columns were checked against Anthropic's, OpenAI's and Google's prompting guidance on 2026-11-08, except what is marked as the method's own inference. Model behavior changes, so recheck these notes when vendors publish new guidance.)
 
 | | Claude | GPT | Gemini | Universal (unknown, or a custom assistant) |
 |---|---|---|---|---|
 | Structure | XML tags for sections and inputs (`<context>`, `<instructions>`, `<documents>`, `<output_format>`, `<examples>`) | Markdown headings; XML for documents | One style used consistently: Markdown or XML | Markdown headings with XML-wrapped inputs |
 | Placement | Long documents first, question last | Instructions first; repeat key instructions after long context | Critical constraints and format first; the question last | Goal first, inputs, instructions, task restated |
-| Clarifying behavior | Check in only when readings differ materially | Tell it to state assumptions and continue rather than ask | Invite questions only in interactive use | Follow the user's choice |
+| Clarifying behavior | Check in only when readings differ materially | Tell it to state assumptions and continue rather than ask | Invite questions only in interactive use (the method's own inference; Google's guide doesn't say) | Follow the user's choice |
 | Length | State it explicitly | State it explicitly | Ask explicitly for detail when you want it | State it explicitly |
-| Verification | A concrete check rather than a generic "double-check" | Completion criteria and stop rules | A validation step is fine | Concrete criteria |
+| Verification | A concrete check rather than a generic "double-check"; for Claude Opus 5, leave out added verification steps and re-check instructions: it verifies its own work, and they cause over-verification. Coding prompts still name the test command to run and report (the method's own inference from Claude Code's guidance) | Completion criteria and stop rules | A validation step is fine | Concrete criteria |
 
 **Coding agents** (Claude Code, Codex, Cursor, Copilot and similar):
 - name the files or areas involved;
@@ -93,11 +93,12 @@ The short version is the same prompt compressed for quick chats: the goal with i
 
 Fix anything that fails:
 
-- Every requirement in the prompt traces back to the user, their answers, or a labelled default. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
-- No capitalized pressure words, generic personas, magic phrases ("think step by step", "take a deep breath"), requests to expose internal reasoning, prefill instructions or API settings.
+- No capitalized pressure words, generic personas, magic phrases (`think step by step`, `take a deep breath`), requests to expose internal reasoning, prefill instructions or API settings.
 - Scope is explicit, and the output format and length are stated.
 - Every placeholder is listed under "Fill before running", and no template leftovers remain (such as an empty `{{variable}}`).
 - The full prompt is as long as the task needs and no longer, and the short version fits its budget.
-- The prompt is in the user's language, or the language the user asked for, and it says which language to respond in.
+- The prompt is in the user's language, or the language the user asked for, and, unless it is an image or video prompt, it says which language to respond in.

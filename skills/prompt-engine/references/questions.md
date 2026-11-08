@@ -24,9 +24,10 @@ Priority = Impact × Uncertainty + Risk − Default quality. Ask items with prio
 Don't ask:
 - for facts you can find yourself — in a code workspace, read the repo; in a chat, check earlier messages and attachments;
 - for things the prompt already says;
+- for a secret's value, such as an API key or password: the prompt names an environment variable or a `[[placeholder]]` instead, so never invite the user to paste one;
 - "Anything else?" as a main question (the free-text option covers it).
 
-When the user has an artifact, ask for it instead of a description: "Paste the error message", "Share a paragraph in the voice you want".
+When the user has an artifact, ask for it instead of a description: "Paste the error message", "Share a paragraph in the voice you want". Put that invitation in the question, not in the ★ option (see below).
 
 ## Order and wording
 
@@ -35,7 +36,8 @@ Order questions by what they unlock: goal and deliverable → audience and use �
 Each question:
 - covers one decision; questions that depend on each other go in the same round, in order;
 - uses plain words and fits on one line;
-- offers 2–4 concrete, mutually exclusive options, recommended option first;
+- offers 2–4 concrete, mutually exclusive options, one of them recommended;
+- stars an option the prompt can use as it stands, because `ok` and skipped questions take the ★. Never star "Tell me" or "Paste it": when you can't get the information yourself (a stack you can't see, an error message, a writing sample), star a fallback such as "Have the agent find it in the project" or "Leave a [[placeholder]]", and say in the question that they can type or paste the real thing instead;
 - gives a reason of at most 12 words for the recommendation;
 - is written in the user's language.
 
@@ -76,7 +78,7 @@ Translate everything, including the reply line, into the user's language.
 
 | Reply | Meaning |
 |---|---|
-| `ok`, `yes`, `sure`, 👍, or a local equivalent (sí, oui, ja, はい, 好的…) | Accept every ★ |
+| `ok`, `yes`, `sure`, 👍, or a local equivalent (sí, oui, ja, はい, 好的…) | Accept every ★ (at the "What next?" menu, only a clear pick counts) |
 | `2b`, `1a 3c`, `2: b` | Those answers; ★ for the rest |
 | `3: <text>` or a sentence | Use the text for that question; free text wins over options |
 | A new detail not tied to a question | Use it, and keep ★ for unanswered questions |

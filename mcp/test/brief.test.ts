@@ -72,6 +72,14 @@ describe('the method brief', () => {
     expect(brief).toMatch(/intro, notes_label and notes_hint/);
   });
 
+  it('offers Save to file only with a tool that saves files, and never overwrites', () => {
+    // A host without a tool that saves files on the user's computer leaves the option out of the
+    // menu; where one exists, the Save rule checks the path first and picks a new name instead.
+    expect(brief).toMatch(/Add 3\) Save to file only if you have a tool that saves files on the user's computer/);
+    expect(brief).toMatch(/check whether `prompts\/<short-name>\.md`, or the path the user gives, exists/);
+    expect(brief).toMatch(/adding -2, -3… to the name instead of overwriting/);
+  });
+
   it('says what each form outcome means: closed asks in the chat, declined uses the ★ answers', () => {
     expect(brief).toMatch(/closes the form without answering, it returns the questions as text/);
     expect(brief).toMatch(/declines the form, it returns the ★ answers: list them under Assumptions/);
@@ -217,6 +225,14 @@ describe('checklists and references', () => {
     expect(REFERENCES['output-format']!.text.match(pattern)?.[0].split('\n')).toHaveLength(1);
   });
 
+  it('serves the rule for menu rows that overlap, which has a paragraph of its own', () => {
+    // Joined to the Claude Code menu paragraph, it would be replaced along with it. Open
+    // placeholders come first, so the user never pastes or runs a prompt with a [[…]] in it.
+    const format = buildReference('output-format');
+    expect(format).toMatch(/^When several rows apply, use the first that fits: open placeholders [^.\n]*, then an image or video prompt [^.\n]*, then a prompt for another tool\./m);
+    expect(format).toMatch(/End the same message with the menu as a numbered list/);
+  });
+
   it('falls back to a note when a passage it adapts has changed or dialog wording is left', () => {
     const note = '> Over MCP, ask clarifying questions with the ask_user tool';
     expect(adaptReference('questions', '# Asking\n\n## Dialogs\nUse AskUserQuestion when you can.\n').startsWith(note)).toBe(true);
@@ -254,6 +270,10 @@ describe('checklists and references', () => {
 });
 
 describe('budgets and self-lint', () => {
+  // As in scripts/validate.mjs, text in `code spans` is skipped, because it names a pattern, often
+  // to warn against it (D11). Double-quoted text is still checked.
+  const unquoted = (t: string) => t.replace(/`[^`\n]*`/g, ' ');
+
   it('keeps the server instructions under 3,500 characters', () => {
     expect(INSTRUCTIONS.length).toBeGreaterThan(200);
     expect(INSTRUCTIONS.length).toBeLessThan(3_500);
@@ -267,11 +287,30 @@ describe('budgets and self-lint', () => {
     }
   });
 
-  it('applies the self-check lint rules to the text the server adds', () => {
+  // The brief embeds the universal core, which validate.mjs lints with code spans skipped, so a
+  // pattern the core names in backticks passes both suites.
+  it('applies the self-check lint rules to the text the server adds, skipping code spans', () => {
     const own = [INSTRUCTIONS, ...Object.values(TOOL_DESCRIPTIONS), buildBrief({ mode: 'standard' })];
     for (const rule of LINT_RULES.filter((r) => r.selfCheck)) {
       const re = new RegExp(rule.pattern, rule.flags);
-      for (const text of own) expect(text.match(re)?.[0], rule.id).toBeUndefined();
+      for (const text of own) expect(unquoted(text).match(re)?.[0], rule.id).toBeUndefined();
+    }
+  });
+
+  // The references and checklists as served: the source files plus the text the server writes into
+  // them (the ask_user Format A and the menu sentence), and the note it puts before a reference
+  // whose adaptation misses. No reference carries that note today, so the note is checked on its
+  // own: with nothing to adapt, adaptReference returns just the note.
+  it('applies the self-check lint rules to the references and checklists it serves, skipping code spans', () => {
+    const served: Array<[string, string]> = [
+      ...REFERENCE_RESOURCES.map((name): [string, string] => [name, buildReference(name)]),
+      ...DOMAINS.map((domain): [string, string] => [`checklists/${domain}`, buildChecklist(domain)]),
+      ['the note before an unadapted reference', adaptReference('questions', '')],
+    ];
+    expect(adaptReference('questions', '')).toMatch(/^> Over MCP, ask clarifying questions with the ask_user tool/);
+    for (const rule of LINT_RULES.filter((r) => r.selfCheck)) {
+      const re = new RegExp(rule.pattern, rule.flags);
+      for (const [name, text] of served) expect(unquoted(text).match(re)?.[0], `${rule.id} in ${name}`).toBeUndefined();
     }
   });
 });

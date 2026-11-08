@@ -1,11 +1,11 @@
 # Output format
 
-The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Use the headings below in the user's language. Add nothing before the first line and nothing after the menu.
+The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Write the headings, score rows, caveat line, menu labels and reply keywords (`change N`, `deep`) below in the user's language, like everything else. Add nothing before the first line and nothing after the menu.
 
 ## Template
 
 ````markdown
-<One line: what you made, for which tool, and the mode. For a strong prompt: "Your prompt is already strong — small edits below.">
+<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it. For a strong prompt: "Your prompt is already strong — small edits below.">
 
 ### Full prompt
 ```text
@@ -35,15 +35,15 @@ Reply "change 2: formal tone" to adjust any of these.
 | | Original | Enhanced |
 |---|---|---|
 | Clear goal | 1 | 5 |
-| Context | 0 | 4 |
+| Context | 0 | 3 |
 | Constraints | 0 | 3 |
-| Output format | 0 | 5 |
+| Output format | 0 | 3 |
 | Edge cases | 0 | 3 |
 
 Self-assessed coverage of five areas, not a prediction of output quality.
 
 ### What next?
-1. Run it now ★
+1. Fill placeholders ★ — reply with the missing values to see the filled prompt
 2. Refine — change any answer or assumption, or reply `deep` for more questions
 3. Save to file — `prompts/remote-work-blog.md`
 ````
@@ -54,16 +54,16 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 **Short version.** At most about 120 words: the goal with its purpose, the 3–5 requirements that matter most, hard constraints and the output format. It carries the same assumptions as the full version. If the full prompt embeds long inputs, the short version may refer to them as a `[[placeholder]]` listed under "Fill before running", rather than repeating them.
 
-**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there.
+**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable), never ask for its value.
 
 **What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. Tag every bullet:
 - **[you]** — something the user said, restated or made precise;
 - **[your answer]** — something from their answers to your questions, including ★ recommendations they accepted with `ok` or by skipping a question;
-- **[best practice]** — something the method adds, such as success criteria or an uncertainty rule.
+- **[best practice]** — a kind of rule or section the method adds, such as success criteria, exact counts or an uncertainty rule. The specific values you picked for it (three gulls, a 4:5 ratio, a 400-word limit) are defaults: list them under Assumptions, not here.
 
 Defaults you chose without asking don't go here; they are listed once, under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
 
-**Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. At most 8; merge minor ones. End with the "change N" line. If there are no assumptions, write "None."
+**Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. List each number (count, length, limit), name, setting or style choice you picked as its own item, in text prompts as in image and video prompts; merge small formatting picks, or small scene details, into one item. At most 8: if more qualify, merge related ones into one item rather than leave any out. End with the "change N" line. If there are no assumptions, write "None."
 
 **Score.** One row per dimension, original and enhanced, scored with the anchors below. Write `n/a` where a dimension doesn't apply to this kind of prompt, in both columns. Always include the caveat line.
 
@@ -72,12 +72,14 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 | Situation | Options |
 |---|---|
 | Normal | Run it now ★ · Refine · Save to file |
-| Placeholders still open | Fill placeholders ★ · Refine · Save to file |
-| The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
+| Placeholders other than secrets still open | Fill placeholders ★ · Refine · Save to file |
 | Image or video prompt and you can't generate media | Done ★ (with where to paste it) · Refine · Save to file |
+| The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
 | You can't write files (chat apps) | Drop "Save to file" |
 
-In Claude Code, use AskUserQuestion with the question "What would you like to do next?", header "Next step", and the same options; put the save path in the "Save to file" description.
+When several rows apply, use the first that fits: open placeholders other than secrets, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
+
+In Claude Code, use AskUserQuestion with the question "What would you like to do next?" and the header "Next step", both in the user's language, and the same options; put the save path in the "Save to file" description.
 
 ## Score anchors
 
@@ -101,7 +103,7 @@ For image and video prompts, read the dimensions as: Clear goal = subject, actio
 
 ## Variants
 
-- **Questions round.** When you are asking questions, the reply is only the questions (see `references/questions.md`). Don't show a draft prompt yet.
-- **Already strong.** First line says so. Keep the user's wording; list each edit under "What I added & why". Ask at most two questions, and only if they matter.
+- **Questions round.** When you are asking questions, the reply is only the questions (see `references/questions.md`); for a request to critique a prompt or find what's missing, open with one line naming the biggest gaps. Don't show a draft prompt yet.
+- **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, but don't regroup the prompt under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
 - **Refine.** After a change, show one line on what changed, then the full template again with the updated prompt and score.
 - **Run it now.** Once the user picks this, answer the prompt like any normal request. Don't show the template, score or menu again unless they ask for another prompt.

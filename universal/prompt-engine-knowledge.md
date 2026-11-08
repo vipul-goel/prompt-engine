@@ -17,12 +17,12 @@ Sections:
 
 ## Output format
 
-The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Use the headings below in the user's language. Add nothing before the first line and nothing after the menu.
+The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Write the headings, score rows, caveat line, menu labels and reply keywords (`change N`, `deep`) below in the user's language, like everything else. Add nothing before the first line and nothing after the menu.
 
 ### Template
 
 ````markdown
-<One line: what you made, for which tool, and the mode. For a strong prompt: "Your prompt is already strong — small edits below.">
+<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it. For a strong prompt: "Your prompt is already strong — small edits below.">
 
 ### Full prompt
 ```text
@@ -52,15 +52,15 @@ Reply "change 2: formal tone" to adjust any of these.
 | | Original | Enhanced |
 |---|---|---|
 | Clear goal | 1 | 5 |
-| Context | 0 | 4 |
+| Context | 0 | 3 |
 | Constraints | 0 | 3 |
-| Output format | 0 | 5 |
+| Output format | 0 | 3 |
 | Edge cases | 0 | 3 |
 
 Self-assessed coverage of five areas, not a prediction of output quality.
 
 ### What next?
-1. Run it now ★
+1. Fill placeholders ★ — reply with the missing values to see the filled prompt
 2. Refine — change any answer or assumption, or reply `deep` for more questions
 3. Save to file — `prompts/remote-work-blog.md`
 ````
@@ -71,16 +71,16 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 **Short version.** At most about 120 words: the goal with its purpose, the 3–5 requirements that matter most, hard constraints and the output format. It carries the same assumptions as the full version. If the full prompt embeds long inputs, the short version may refer to them as a `[[placeholder]]` listed under "Fill before running", rather than repeating them.
 
-**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there.
+**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable), never ask for its value.
 
 **What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. Tag every bullet:
 - **[you]** — something the user said, restated or made precise;
 - **[your answer]** — something from their answers to your questions, including ★ recommendations they accepted with `ok` or by skipping a question;
-- **[best practice]** — something the method adds, such as success criteria or an uncertainty rule.
+- **[best practice]** — a kind of rule or section the method adds, such as success criteria, exact counts or an uncertainty rule. The specific values you picked for it (three gulls, a 4:5 ratio, a 400-word limit) are defaults: list them under Assumptions, not here.
 
 Defaults you chose without asking don't go here; they are listed once, under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
 
-**Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. At most 8; merge minor ones. End with the "change N" line. If there are no assumptions, write "None."
+**Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. List each number (count, length, limit), name, setting or style choice you picked as its own item, in text prompts as in image and video prompts; merge small formatting picks, or small scene details, into one item. At most 8: if more qualify, merge related ones into one item rather than leave any out. End with the "change N" line. If there are no assumptions, write "None."
 
 **Score.** One row per dimension, original and enhanced, scored with the anchors below. Write `n/a` where a dimension doesn't apply to this kind of prompt, in both columns. Always include the caveat line.
 
@@ -89,12 +89,14 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 | Situation | Options |
 |---|---|
 | Normal | Run it now ★ · Refine · Save to file |
-| Placeholders still open | Fill placeholders ★ · Refine · Save to file |
-| The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
+| Placeholders other than secrets still open | Fill placeholders ★ · Refine · Save to file |
 | Image or video prompt and you can't generate media | Done ★ (with where to paste it) · Refine · Save to file |
+| The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
 | You can't write files (chat apps) | Drop "Save to file" |
 
-In Claude Code, use AskUserQuestion with the question "What would you like to do next?", header "Next step", and the same options; put the save path in the "Save to file" description.
+When several rows apply, use the first that fits: open placeholders other than secrets, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
+
+In Claude Code, use AskUserQuestion with the question "What would you like to do next?" and the header "Next step", both in the user's language, and the same options; put the save path in the "Save to file" description.
 
 ### Score anchors
 
@@ -118,8 +120,8 @@ For image and video prompts, read the dimensions as: Clear goal = subject, actio
 
 ### Variants
 
-- **Questions round.** When you are asking questions, the reply is only the questions (see the "Asking clarifying questions" section). Don't show a draft prompt yet.
-- **Already strong.** First line says so. Keep the user's wording; list each edit under "What I added & why". Ask at most two questions, and only if they matter.
+- **Questions round.** When you are asking questions, the reply is only the questions (see the "Asking clarifying questions" section); for a request to critique a prompt or find what's missing, open with one line naming the biggest gaps. Don't show a draft prompt yet.
+- **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, but don't regroup the prompt under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
 - **Refine.** After a change, show one line on what changed, then the full template again with the updated prompt and score.
 - **Run it now.** Once the user picks this, answer the prompt like any normal request. Don't show the template, score or menu again unless they ask for another prompt.
 
@@ -151,9 +153,10 @@ Priority = Impact × Uncertainty + Risk − Default quality. Ask items with prio
 Don't ask:
 - for facts you can find yourself — in a code workspace, read the repo; in a chat, check earlier messages and attachments;
 - for things the prompt already says;
+- for a secret's value, such as an API key or password: the prompt names an environment variable or a `[[placeholder]]` instead, so never invite the user to paste one;
 - "Anything else?" as a main question (the free-text option covers it).
 
-When the user has an artifact, ask for it instead of a description: "Paste the error message", "Share a paragraph in the voice you want".
+When the user has an artifact, ask for it instead of a description: "Paste the error message", "Share a paragraph in the voice you want". Put that invitation in the question, not in the ★ option (see below).
 
 ### Order and wording
 
@@ -162,7 +165,8 @@ Order questions by what they unlock: goal and deliverable → audience and use �
 Each question:
 - covers one decision; questions that depend on each other go in the same round, in order;
 - uses plain words and fits on one line;
-- offers 2–4 concrete, mutually exclusive options, recommended option first;
+- offers 2–4 concrete, mutually exclusive options, one of them recommended;
+- stars an option the prompt can use as it stands, because `ok` and skipped questions take the ★. Never star "Tell me" or "Paste it": when you can't get the information yourself (a stack you can't see, an error message, a writing sample), star a fallback such as "Have the agent find it in the project" or "Leave a [[placeholder]]", and say in the question that they can type or paste the real thing instead;
 - gives a reason of at most 12 words for the recommendation;
 - is written in the user's language.
 
@@ -203,7 +207,7 @@ Translate everything, including the reply line, into the user's language.
 
 | Reply | Meaning |
 |---|---|
-| `ok`, `yes`, `sure`, 👍, or a local equivalent (sí, oui, ja, はい, 好的…) | Accept every ★ |
+| `ok`, `yes`, `sure`, 👍, or a local equivalent (sí, oui, ja, はい, 好的…) | Accept every ★ (at the "What next?" menu, only a clear pick counts) |
 | `2b`, `1a 3c`, `2: b` | Those answers; ★ for the rest |
 | `3: <text>` or a sentence | Use the text for that question; free text wins over options |
 | A new detail not tied to a question | Use it, and keep ★ for unanswered questions |
@@ -270,7 +274,7 @@ Use the sections that carry task-specific content and drop the rest. A two-line 
 
 - **Explain the why, briefly.** A one-clause reason ("…, because readers skim on mobile") helps the model apply a rule sensibly in cases you didn't foresee. Skip reasons for self-evident format details, and don't stack justifications.
 - **Say what to do, not only what to avoid.** "Write in flowing paragraphs" works better than "Don't use bullet points". When you do ban something, name the specific pattern.
-- **Use plain emphasis.** Write important rules plainly with a reason. Capitalized pressure words (MUST, NEVER, CRITICAL) make current models over-apply the rule everywhere. Reserve "always" and "never" for true invariants.
+- **Use plain emphasis.** Write important rules plainly with a reason. Capitalized pressure words (`MUST`, `NEVER`, `CRITICAL`) can make current models over-apply the rule, even where it doesn't fit. Reserve "always" and "never" for true invariants.
 - **Be explicit about scope.** Current models follow instructions literally: if you want the full-featured version, say so; if you want only the requested change, say that.
 - **Write defaults as defaults.** "Assume the readers are team managers unless told otherwise" is honest; "The audience is team managers" turns your guess into a requirement the model will enforce.
 - **Use placeholders for facts only the user has.** Write `[[company name]]`, `[[launch date]]` or `[[pricing]]` rather than inventing them, and list every placeholder under "Fill before running".
@@ -282,15 +286,15 @@ Use the sections that carry task-specific content and drop the rest. A two-line 
 
 ### Adapting to the target model
 
-The method is the same for every model; only delimiters, placement and a few lines change. If you don't know the target, use the universal column. (Last checked against vendor guidance: 2026-10-29; model behavior changes, so recheck these notes when vendors publish new guidance.)
+The method is the same for every model; only delimiters, placement and a few lines change. If you don't know the target, use the universal column. (The Claude, GPT and Gemini columns were checked against Anthropic's, OpenAI's and Google's prompting guidance on 2026-11-08, except what is marked as the method's own inference. Model behavior changes, so recheck these notes when vendors publish new guidance.)
 
 | | Claude | GPT | Gemini | Universal (unknown, or a custom assistant) |
 |---|---|---|---|---|
 | Structure | XML tags for sections and inputs (`<context>`, `<instructions>`, `<documents>`, `<output_format>`, `<examples>`) | Markdown headings; XML for documents | One style used consistently: Markdown or XML | Markdown headings with XML-wrapped inputs |
 | Placement | Long documents first, question last | Instructions first; repeat key instructions after long context | Critical constraints and format first; the question last | Goal first, inputs, instructions, task restated |
-| Clarifying behavior | Check in only when readings differ materially | Tell it to state assumptions and continue rather than ask | Invite questions only in interactive use | Follow the user's choice |
+| Clarifying behavior | Check in only when readings differ materially | Tell it to state assumptions and continue rather than ask | Invite questions only in interactive use (the method's own inference; Google's guide doesn't say) | Follow the user's choice |
 | Length | State it explicitly | State it explicitly | Ask explicitly for detail when you want it | State it explicitly |
-| Verification | A concrete check rather than a generic "double-check" | Completion criteria and stop rules | A validation step is fine | Concrete criteria |
+| Verification | A concrete check rather than a generic "double-check"; for Claude Opus 5, leave out added verification steps and re-check instructions: it verifies its own work, and they cause over-verification. Coding prompts still name the test command to run and report (the method's own inference from Claude Code's guidance) | Completion criteria and stop rules | A validation step is fine | Concrete criteria |
 
 **Coding agents** (Claude Code, Codex, Cursor, Copilot and similar):
 - name the files or areas involved;
@@ -310,14 +314,15 @@ The short version is the same prompt compressed for quick chats: the goal with i
 
 Fix anything that fails:
 
-- Every requirement in the prompt traces back to the user, their answers, or a labelled default. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
-- No capitalized pressure words, generic personas, magic phrases ("think step by step", "take a deep breath"), requests to expose internal reasoning, prefill instructions or API settings.
+- No capitalized pressure words, generic personas, magic phrases (`think step by step`, `take a deep breath`), requests to expose internal reasoning, prefill instructions or API settings.
 - Scope is explicit, and the output format and length are stated.
 - Every placeholder is listed under "Fill before running", and no template leftovers remain (such as an empty `{{variable}}`).
 - The full prompt is as long as the task needs and no longer, and the short version fits its budget.
-- The prompt is in the user's language, or the language the user asked for, and it says which language to respond in.
+- The prompt is in the user's language, or the language the user asked for, and, unless it is an image or video prompt, it says which language to respond in.
 
 ---
 
@@ -578,7 +583,7 @@ Use this pack for prompts meant for image or video models: Midjourney, GPT Image
 Write the prompt in the target tool's own format, because these models read prompts differently from chat models:
 - no role, section headings, XML tags or "because" clauses inside the prompt — they become things to draw;
 - put explanations under "What I added & why", and settings where the tool expects them;
-- keep the user's subject, action, style words and layout intact, and add missing details only as labelled defaults.
+- keep the user's subject, action, style words and layout intact, and add missing details only as defaults listed under Assumptions.
 
 ### First: tool and mode
 
@@ -657,7 +662,7 @@ Negative: watermark, text, logo, blurry
 
 **E. Video paragraph with audio lines** (Veo and other video models with sound):
 ```text
-Medium close-up, slow dolly-in. An elderly lighthouse keeper sets a paint can down on the iron gallery at dawn and looks out to sea; wind tugs at his collar. Soft golden backlight, cool blue shadows, 35mm film look. He says quietly, "Another storm's coming." SFX: a gull cries overhead. Ambient noise: steady wind and distant surf.
+One continuous medium close-up, slow dolly-in. An elderly lighthouse keeper sets a paint can down on the iron gallery at dawn and looks out to sea; wind tugs at his collar. Soft golden backlight, cool blue shadows, 35mm film look. He says quietly, "Another storm's coming." SFX: a gull cries overhead. Ambient noise: steady wind and distant surf.
 ```
 
 **F. Timed shot list** (several shots in one clip):
@@ -672,7 +677,7 @@ Give each segment one action and one camera move, long enough for the action. Va
 
 **H. Edits: change plus keep list.** "Change only: the coat → a bright yellow oilskin. Keep exactly: face and identity, pose, ladder, framing, camera angle, lighting." Repeat the keep list on every turn.
 
-**Settings and exclusions.** For tools with separate fields, present them as separate blocks under "Full prompt": a `Negative prompt` block where the tool has that field, and a short `Settings` list (aspect ratio, duration, resolution, number of variations). Never write settings into the prose for those tools ("make it 4K"), because they're ignored there. Midjourney is the exception: its parameters belong at the end of the same line.
+**Settings and exclusions.** For tools with separate fields, present them as separate blocks under "Full prompt": a `Negative prompt` block where the tool has that field, and a short `Settings` list (aspect ratio, duration, resolution, number of variations). Never write settings into the prose for those tools ("make it 4K"), because they're ignored there; that includes repeating the clip length as pacing, so describe pacing against the whole clip. Segment timestamps in a timed shot list are part of the prompt, not settings. The short version keeps settings out of its prose too, and the same blocks serve both versions. Midjourney is the exception: its parameters belong at the end of the same line.
 
 **Identity block.** When a character or product recurs, write a short block (name, age range, build, face, hair, clothing, distinguishing marks) and tell the user to paste it unchanged into every prompt. Small wording changes alter the result.
 
@@ -694,7 +699,7 @@ Give each segment one action and one camera move, long enough for the action. Va
 
 ### Language
 
-How well each tool follows prompts in languages other than English varies, and vendors don't document it consistently. When the user writes in another language, ask which language the prompt should be in. In quick mode, keep their language and list it as an assumption they can change. Don't translate silently.
+How well each tool follows prompts in languages other than English varies, and vendors don't document it consistently. When the user writes in another language, ask which language the prompt should be in. In quick mode, keep their language and list it as an assumption they can change. Don't translate silently. Don't add a line saying which language to answer in.
 
 ---
 
