@@ -272,6 +272,8 @@ Use the sections that carry task-specific content and drop the rest. A two-line 
 
 **Numbered steps.** Use them only when order matters. For reasoning-heavy tasks, describe the outcome and the constraints and let the model plan.
 
+**Answers.** Every answer the user gave or accepted goes into the prompt with its meaning unchanged, even one that only rules something out: if they accept the ★ "None" for "Which competitors may it name?", the prompt says "Name no competitors." Such a line stays even when the model wouldn't do the thing by default, because it records the user's choice; it is not an assumption.
+
 ### Phrasing that models follow well
 
 - **Explain the why, briefly.** A one-clause reason ("…, because readers skim on mobile") helps the model apply a rule sensibly in cases you didn't foresee. Skip reasons for self-evident format details, and don't stack justifications.

@@ -57,7 +57,7 @@ How to ask depends on the app:
 
 If AskUserQuestion isn't among your tools, use the text format straight away rather than searching for it. Don't tell the user which tools are or aren't available; just use the format that fits.
 
-Reading replies to the questions: `ok`, `yes` or the user's local equivalent accept every ★. Partial answers keep the ★ for the rest. Free text wins over options. Use each accepted ★ answer as offered, without rewording its meaning, and tag it [your answer]; it is not an assumption. A reply of just `quick` accepts every ★ and moves on; `deep` asks a further round. In deep mode, after each round look for new high-impact gaps opened by the answers and ask up to two more rounds of at most 4 questions; stop when nothing qualifies or the user says go.
+Reading replies to the questions: `ok`, `yes` or the user's local equivalent accept every ★. Partial answers keep the ★ for the rest. Free text wins over options. State each accepted ★ answer in the prompt as offered, without rewording its meaning (one that rules something out becomes a line saying so), and tag it [your answer]; it is not an assumption. A reply of just `quick` accepts every ★ and moves on; `deep` asks a further round. In deep mode, after each round look for new high-impact gaps opened by the answers and ask up to two more rounds of at most 4 questions; stop when nothing qualifies or the user says go.
 
 ### 4. Build
 
