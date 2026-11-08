@@ -1,6 +1,6 @@
 {
   "$comment": "Steps 1a, 1b and 1c of the handoff plan in .claude/CLAUDE.md. Steps 1a and 1b reproduced and checked every repo-review finding on this branch and gave it a verdict; findings 1-45 come from repo-review-partial.json (step 1a), 46-80 from repo-review-1b.json (step 1b). Step 1c fixed the code parts: each finding's step_1c field lists its items, the commits that made them, the review findings on them, and what is left for later steps; the top-level step_1c holds the process, the checks on the merged branch and the follow-ups. Paths written as <repo>, <scratch> or <session-tmp> were on the owner's Mac during the session and are not kept.",
-  "step": "1a, 1b and 1c",
+  "step": "1a, 1b and 1c, then step 2",
   "verified_on": {
     "1a": "2026-11-03",
     "1b": "2026-11-04 to 2026-11-06"
@@ -1412,6 +1412,25 @@
       ]
     },
     "cost": "No billed model calls (see $comment for the $0.00 CLI probes). Two workflows: planning used about 4.0M subagent tokens (10 agents), implementation about 12.4M (34 agents: 15 implementers, 15 reviewers, 4 fixers)."
+  },
+  "step_2": {
+    "$comment": "Step 2 of the handoff plan, done after step 1c. It did the parts of findings 13, 16, 33, 34 and 45 that each finding's step_1c.left_for_later labels step 2, and D16's protection (findings 27, 32 and 33). .claude/CLAUDE.md step 2 has the details.",
+    "done_on": "2026-11-08",
+    "commits": {
+      "move": "d688458",
+      "windows_test_fix": "2c96538"
+    },
+    "pull_request": "vipul-goel/prompt-engine#1 (draft)",
+    "ci": "The first run (42467063481) passed 3 of 4 jobs; the Windows job failed one test whose assumption about the temp folder doesn't hold on Windows (the recorder refused correctly). The second run (42467496994) passed all four: 'Skill, plugin and universal prompt', 'Scripts on Windows', 'MCP server (Node 22)' (with the exact 22.19.0 step) and 'MCP server (Node 24)'.",
+    "rulesets": {
+      "Protect main (26793093)": "default branch: pull request required (0 approvals), the four CI checks required (GitHub Actions app 15368, not strict), force pushes and deletion blocked, no bypass.",
+      "Release tags (26793094)": "refs/tags/v*: creation, update and deletion restricted; repository admins bypass."
+    },
+    "still_open": [
+      "Finding 46: a live evals.yml dispatch (billed; needs the ANTHROPIC_API_KEY secret).",
+      "Finding 52: revisit a read-only Bash grant for the evals (D32), now that CI runs.",
+      "verify-data.yml's first scheduled run, from main after the merge; release.yml at step 5."
+    ]
   },
   "findings": [
     {
