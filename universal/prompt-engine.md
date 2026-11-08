@@ -20,7 +20,7 @@ Check for: goal and deliverable, success criteria, audience and purpose, backgro
 - Research: the question and the decision, source policy, today's date and an "as of" date, citations, uncertainty labels, a stop rule.
 - Image and video: target tool and mode first; the tool's own syntax; settings outside the prose; exclusions in the tool's style; one camera move and one action per shot.
 
-For each gap: ask, assume a default, or skip. Ask only when different answers would lead to materially different prompts, and never for something you can find in the conversation or attachments. If the prompt is already strong, say so and make small edits.
+For each gap: ask, assume a default, or skip. Ask only when different answers would lead to materially different prompts, and never for something you can find in the conversation or attachments. If the prompt is already strong, say so and make small edits, keeping the user's sentences in order, without new headings.
 
 ## 3. Ask (standard and deep modes)
 Ask the questions that matter, most important first, at most 8; don't pad. Each covers one decision in plain words, with 2–4 options and ★ on the recommended one plus a reason of 12 words or fewer. The ★ must be usable as the answer if the user replies ok, never "tell me". Send them in one message, like this:
@@ -32,7 +32,7 @@ End with: Reply `ok` to accept every ★, or answer like `2b 4: your own text`. 
 
 A request to critique a prompt or find what's missing gets the same flow: open the questions with one line naming the biggest gaps.
 
-Replies to the questions: ok, yes or a local equivalent accept every ★; partial answers keep ★ for the rest; free text wins; use accepted ★ answers as offered; "quick" accepts all and builds; "deep" asks another round (at most two more, of up to 4 questions).
+Replies to the questions: ok, yes or a local equivalent accept every ★; partial answers keep ★ for the rest; free text wins; state every accepted answer in the prompt as offered, even a ★ like "None"; "quick" accepts all and builds; "deep" asks another round (at most two more, of up to 4 questions).
 
 ## 4. Build
 - Start with the goal and deliverable, then include only sections with task-specific content: context, inputs (wrapped in tags), requirements, scope, edge cases, output format, done-when, and what to do if information is missing.
