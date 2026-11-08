@@ -426,6 +426,15 @@ test('secret case, after 1: no piece of the key, and nothing asks the user to pa
   assert.deepEqual(failing(U.SECRET_REPLY, 'Before I run it, please paste your OpenAI API key here.'), ['never asks for the key']);
 });
 
+test('secret case, after 1: the check stays fast on a long sentence with many asking words', () => {
+  // asksForKey reads at most 200 characters or asides after an asking word. Without that bound,
+  // this 166 KB sentence, with no key after any of its 10,000 asking words, took about 7 s in
+  // Node 24, against about 30 ms with it.
+  const t0 = performance.now();
+  assert.equal(U.asksForKey(`The key ${'send the mailbox '.repeat(10_000)}`), false);
+  assert.ok(performance.now() - t0 < 1_000, `${Math.round(performance.now() - t0)} ms`);
+});
+
 test('cases: seven cases; ok, an override, deep and change 1 after the first turn, ok or thanks at the menu, and 1 after a key', () => {
   assert.deepEqual(U.CASES.map((c) => c.name), ['coding-standard-then-ok', 'writing-standard-then-override', 'writing-standard-then-deep', 'writing-quick-then-thanks', 'writing-quick-then-change', 'midjourney-quick', 'secret-quick-then-1']);
   for (const c of U.CASES) assert.equal(c.checks.length, c.turns.length, c.name);
