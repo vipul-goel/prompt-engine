@@ -107,7 +107,7 @@ test('a CRLF checkout builds as up to date, and a rebuild writes LF text without
   }
 });
 
-test('a byte-order mark at the start of a source file changes nothing', () => {
+test('a byte-order mark at the start of a source file changes nothing, though validate.mjs refuses one in SKILL.md', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pe-bom-'));
   try {
     copyTo(dir);
@@ -116,8 +116,11 @@ test('a byte-order mark at the start of a source file changes nothing', () => {
     }
     const check = node(join(dir, 'scripts', 'build.mjs'), ['--check']);
     assert.equal(check.code, 0, check.out);
+    // Some skill validators refuse a SKILL.md that doesn't start with "---" (validate.mjs says
+    // which). With the mark read past everywhere else, that is the only error.
     const validate = node(join(dir, 'scripts', 'validate.mjs'));
-    assert.equal(validate.code, 0, validate.out);
+    assert.equal(validate.code, 1, validate.out);
+    assert.match(validate.stderr, /^error: skills\/prompt-engine\/SKILL\.md: starts with a byte-order mark[^\n]*\n\n1 error\(s\)$/m);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

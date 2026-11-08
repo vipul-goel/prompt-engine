@@ -57,6 +57,9 @@ const KEY = /^[A-Za-z][\w-]*$/;
 // line break and refuse the other C0 ones; PyYAML also reads U+0085 as a line break and refuses
 // DEL, the other C1 ones, U+FFFE and U+FFFF.
 const CONTROL = /[\x00-\x08\x0B-\x1F\x7F-\x9F\uFFFE\uFFFF]/;
+// A line in a message: a JSON string, with the characters JSON.stringify leaves as they are (DEL,
+// the C1 range, U+FFFE and U+FFFF) escaped too, so that each one shows.
+const shown = (line) => JSON.stringify(line).replace(/[\x7F-\x9F\uFFFE\uFFFF]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 function scalar(value, line) {
   if (QUOTED.test(value)) return value.slice(1, -1);
   if (BARE.test(value) && !NOT_A_STRING.test(value)) return value;
@@ -65,13 +68,15 @@ function scalar(value, line) {
 export function parseFrontmatter(text) {
   const m = text.match(FRONTMATTER);
   if (!m) return { data: null, body: text };
-  const data = {};
+  // Maps without a prototype, so that a __proto__ key is an ordinary key, reported as not portable,
+  // instead of going to Object.prototype's setter (which drops it, or makes its mapping the prototype).
+  const data = Object.create(null);
   let parent = null;
   for (const line of m[1].split('\n')) {
     if (/^ *$/.test(line)) continue;
-    if (CONTROL.test(line)) throw new Error(`frontmatter must not contain control characters: ${JSON.stringify(line)}`);
+    if (CONTROL.test(line)) throw new Error(`frontmatter must not contain control characters: ${shown(line)}`);
     // PyYAML refuses a tab between a key and its value, at the end of a line and on a blank line.
-    if (line.replace(/"[^"\\]*"/, '').includes('\t')) throw new Error(`frontmatter must not contain tabs outside a "double-quoted string": ${JSON.stringify(line)}`);
+    if (line.replace(/"[^"\\]*"/, '').includes('\t')) throw new Error(`frontmatter must not contain tabs outside a "double-quoted string": ${shown(line)}`);
     const nested = line.match(/^ {2}([\w-]+): +(.*?) *$/);
     const top = line.match(/^([\w-]+):(?: +(.*?))? *$/);
     if (nested && parent) {
@@ -80,7 +85,7 @@ export function parseFrontmatter(text) {
       data[parent][nested[1]] = scalar(nested[2], line);
     } else if (top) {
       if (Object.hasOwn(data, top[1])) throw new Error(`duplicate frontmatter key: ${top[1]}`);
-      if (!top[2]) { data[top[1]] = {}; parent = top[1]; }
+      if (!top[2]) { data[top[1]] = Object.create(null); parent = top[1]; }
       else { data[top[1]] = scalar(top[2], line); parent = null; }
     } else {
       throw new Error(`unsupported frontmatter line: ${line}`);
@@ -90,6 +95,10 @@ export function parseFrontmatter(text) {
 }
 
 const skillText = read(SKILL);
+// read() drops a leading byte-order mark, and Claude Code's frontmatter reader strips one too (read
+// in 2.1.319's code), but skill-creator's quick_validate.py reads the file as it is and refuses one
+// that doesn't start with "---". Whether claude.ai and the Skills API accept one wasn't checked.
+if (readFileSync(join(root, SKILL), 'utf8').charCodeAt(0) === 0xfeff) err(`${SKILL}: starts with a byte-order mark, which some skill validators refuse; save it as UTF-8 without one`);
 let front;
 let skillBody;
 let frontError = false;
@@ -251,6 +260,15 @@ const tracked = trackedFiles();
 const MEMORY_FILES = new Set(['AGENTS.md', 'CLAUDE.local.md']);
 for (const f of tracked ?? []) {
   if (MEMORY_FILES.has(f)) err(`${f}: don't commit it at the plugin root: Claude Code can load it as project memory in a user's session`);
+}
+// The same walk passes through skills/, the skill folder and its references/ folder on the way to a
+// reference. The skill zip is built from the folder on disk, so there a file is refused whether or
+// not git tracks it.
+const MEMORY_NAMES = new Set(['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', '.claude']);
+for (const dir of ['skills', SKILL_DIR, `${SKILL_DIR}/references`]) {
+  for (const f of exists(dir) ? readdirSync(join(root, dir)) : []) {
+    if (MEMORY_NAMES.has(f)) err(`${dir}/${f}: don't keep it in a folder the skill reads from: Claude Code can load it as project memory in a user's session`);
+  }
 }
 
 // Anthropic's plugin directory holds a plugin version for a reviewer when the plugin folder

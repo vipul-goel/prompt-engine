@@ -146,6 +146,9 @@ const FRONTMATTER_REJECTED = [
   ['a tab after the colon', setFront('license', 'license:\tMIT'), TAB_RULE('license:\tMIT')],
   ['a line of a space and a tab', (d) => edit(d, SKILL, (t) => t.replace('license: MIT', 'license: MIT\n \t')), TAB_RULE(' \t')],
   ['a control character in a quoted value', setFront('description', 'description: "Use to improve\u{7} a prompt"'), CONTROL_RULE('description: "Use to improve\u{7} a prompt"')],
+  // JSON.stringify leaves a C1 control character as it is; the message escapes it, so it shows.
+  ['a C1 control character in a quoted value', setFront('description', 'description: "Use to improve\u{85} a prompt"'),
+    CONTROL_RULE('description: "Use to improve a prompt"').replace('improve', 'improve\\u0085')],
 ];
 
 // Eval cases (scripts/eval-cases.mjs): a grader file with front matter, then its body.
@@ -197,6 +200,13 @@ const ROWS = [
   ['accepts extra spaces after a frontmatter colon and trailing spaces', (d) => edit(d, SKILL, (t) => t.replace(/^description: /m, 'description:    ').replace('license: MIT', 'license: MIT   ')), /validate: OK/, 0],
   ['accepts a tab inside a quoted value and a line of spaces', (d) => edit(d, SKILL, (t) => t.replace('description: "Use to', 'description: "Use\tto').replace('license: MIT', 'license: MIT\n   ')), /validate: OK/, 0],
   ['rejects a SKILL.md without frontmatter', (d) => edit(d, SKILL, (t) => t.replace(/^---\n[\s\S]*?\n---\n/, '')), /SKILL\.md: missing YAML frontmatter/],
+  // build.mjs reads past the mark, so this is the only error.
+  ['rejects a SKILL.md that starts with a byte-order mark', (d) => edit(d, SKILL, (t) => `\u{FEFF}${t}`),
+    new RegExp(`^error: ${reEsc(SKILL)}: starts with a byte-order mark, which some skill validators refuse; save it as UTF-8 without one\\n\\n1 error\\(s\\)$`, 'm')],
+  // A __proto__ key would otherwise set the parsed object's prototype, which hides it and makes its
+  // mapping's name look like the top-level name.
+  ['rejects a __proto__ key in the frontmatter, instead of reading its mapping as the prototype', (d) => edit(d, SKILL, (t) => t.replace(/^name: prompt-engine$/m, '__proto__:\n  name: prompt-engine')),
+    [/SKILL\.md: frontmatter key "__proto__" is not portable/, /SKILL\.md: name "" must be 1-64 chars/]],
   ['rejects a Claude Code-only frontmatter key', (d) => edit(d, SKILL, (t) => t.replace('license: MIT', 'license: MIT\nargument-hint: "[prompt]"')), /frontmatter key "argument-hint" is not portable/],
   ['rejects a name that is not lowercase and hyphenated', setFront('name', 'name: Prompt_Engine'), /name "Prompt_Engine" must be 1-64 chars of a-z/],
   ['rejects a name that differs from the folder name', setFront('name', 'name: prompt-engines'), /name "prompt-engines" must equal the folder name "prompt-engine"/],
@@ -273,6 +283,13 @@ const ROWS = [
   ['rejects a renamed bold label in a list item', (d) => edit(d, SKILL, (t) => t.replace('\n7. **Score**', '\n7. **Rating**')), /SKILL\.md: missing contract heading "Score"/],
   // ---- plugin root
   ...FORBIDDEN_ROOT.map((f) => [`rejects ${f} at the plugin root`, (d) => writeFileSync(join(d, f), ''), new RegExp(`(^|\\n)error: ${reEsc(f)}: not allowed at the repo root`)]),
+  // Memory files in the folders that Claude Code walks through to a reference, tracked or not.
+  ...['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md'].map((f) => [`rejects ${f} in the skill folder`, (d) => put(d, `skills/prompt-engine/${f}`, '# Notes\n'),
+    new RegExp(`(^|\\n)error: skills/prompt-engine/${reEsc(f)}: don't keep it in a folder the skill reads from: Claude Code can load it as project memory`)]),
+  ['rejects a .claude folder in skills/', (d) => put(d, 'skills/.claude/settings.json', '{}\n'),
+    /^error: skills\/\.claude: don't keep it in a folder the skill reads from[^\n]*\n\n1 error\(s\)$/m],
+  ['rejects a memory file in the references folder', (d) => put(d, `${REF}/CLAUDE.md`, '# Notes\n'),
+    /(^|\n)error: skills\/prompt-engine\/references\/CLAUDE\.md: don't keep it in a folder the skill reads from/],
   // ---- manifests
   ['requires the plugin name prompt-engine', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.name = 'prompt-engine-x'; }), /plugin\.json: name must be prompt-engine/],
   ['requires a semver plugin version', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.version = '1.0'; }), /plugin\.json: version must be semver/],
