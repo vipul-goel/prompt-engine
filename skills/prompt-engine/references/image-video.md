@@ -123,4 +123,4 @@ Give each segment one action and one camera move, long enough for the action. Va
 
 ## Language
 
-How well each tool follows prompts in languages other than English varies, and vendors don't document it consistently. When the user writes in another language, ask which language the prompt should be in. In quick mode, keep their language and list it as an assumption they can change. Don't translate silently.
+How well each tool follows prompts in languages other than English varies, and vendors don't document it consistently. When the user writes in another language, ask which language the prompt should be in. In quick mode, keep their language and list it as an assumption they can change. Don't translate silently. Don't add a line saying which language to answer in.

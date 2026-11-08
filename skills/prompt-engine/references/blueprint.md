@@ -100,4 +100,4 @@ Fix anything that fails:
 - Scope is explicit, and the output format and length are stated.
 - Every placeholder is listed under "Fill before running", and no template leftovers remain (such as an empty `{{variable}}`).
 - The full prompt is as long as the task needs and no longer, and the short version fits its budget.
-- The prompt is in the user's language, or the language the user asked for, and it says which language to respond in.
+- The prompt is in the user's language, or the language the user asked for, and, unless it is an image or video prompt, it says which language to respond in.
