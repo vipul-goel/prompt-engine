@@ -1,6 +1,7 @@
 // Tests for scripts/build.mjs: running it from unusual paths, sources with CRLF line endings or
-// a byte-order mark, data it can't render, and keeping the skill text and Read results inside
-// recorded histories up to date. Some run against temporary copies of the repository.
+// a byte-order mark, data it can't render, the knowledge file's headings, and keeping the skill
+// text and Read results inside recorded histories up to date. Some run against temporary copies
+// of the repository.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -10,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { normalize, refreshHistory, renderMediaTargets } from '../build.mjs';
+import { KNOWLEDGE_ORDER, normalize, refreshHistory, renderKnowledge, renderMediaTargets } from '../build.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Build output and tool state the checks don't read: copying them only slows the tests down.
@@ -146,6 +147,16 @@ test('build.mjs reports data it cannot render in one line, without a stack trace
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- the knowledge file ----------
+test('the knowledge file demotes headings but not "# " lines inside fenced blocks', () => {
+  const refs = Object.fromEntries(KNOWLEDGE_ORDER.map((k) => [k, `# ${k}\n\nText.\n`]));
+  refs.coding = '# Coding\n\n## Steps\n\n```bash\n# a shell comment\n## not a heading\n```\n\n~~~\n# tilde fence\n~~~\n\n### After\n';
+  const out = renderKnowledge(refs);
+  for (const line of ['## Coding', '### Steps', '#### After', '# a shell comment', '## not a heading', '# tilde fence']) {
+    assert.match(out, new RegExp(`^${line}$`, 'm'), line);
   }
 });
 
