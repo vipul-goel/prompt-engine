@@ -55,6 +55,18 @@ test('ok reply line: needs the reply line from the contract, with ok bare or in 
   assert.ok(!ok(questions('Reply "ok" to accept every ★, or answer like `2b 4: your own text`.')));
 });
 
+test('recommendation marker: a ★ on an option line, not only in the reply line or a legend', () => {
+  const marker = check(U.QUESTIONS, 'recommendation marker');
+  const unstarred = `1. Who will read it?\n   a) Employees  b) Team managers  c) Job seekers\n\n2. How long?\n   a) 600 words  b) 1,500 words\n\n${REPLY_LINE}`;
+  assert.ok(marker(questions(REPLY_LINE)));
+  assert.ok(marker(`1. Keep the public API unchanged? a) Yes ★ (callers rely on it) · b) No\n\n${REPLY_LINE}`));
+  assert.ok(marker(`1. Who will read it?\n   (a) Employees\n   (b) Team managers ★ (they set policy)\n\n${REPLY_LINE}`));
+  assert.ok(!marker(unstarred));
+  assert.ok(!marker(`★ marks the recommended option.\n\n${unstarred}`));
+  assert.deepEqual(failing(U.QUESTIONS, unstarred), ['recommendation marker']);
+  assert.deepEqual(failing(U.DEEP_ROUND, unstarred), ['recommendation marker']);
+});
+
 test('no full prompt yet: a question round holds no draft, score table or menu', () => {
   const none = check(U.QUESTIONS, 'no full prompt yet');
   assert.deepEqual(failing(U.QUESTIONS, questions(REPLY_LINE)), []);
@@ -68,7 +80,7 @@ test('no full prompt yet: a question round holds no draft, score table or menu',
   ]) assert.ok(!none(questions(`${REPLY_LINE}\n\n${draft}`)), draft);
 });
 
-test('what next menu: a starred first option the method allows, numbered or bulleted, then Refine', () => {
+test('what next menu: a starred option the method allows after What next?, numbered or bulleted, and Refine', () => {
   const menu = check(U.STRUCTURE, 'what next menu');
   for (const m of [
     '1) Run it now ★\n2) Refine\n3) Save to file',
@@ -103,7 +115,7 @@ test('after deep: 1-4 new question lines, the reply line and still no draft', ()
   assert.deepEqual(failing(U.DEEP_ROUND, restated), []);
   assert.deepEqual(failing(U.DEEP_ROUND, continued), []);
   assert.deepEqual(failing(U.DEEP_ROUND, five), ['1-4 new questions']);
-  assert.deepEqual(failing(U.DEEP_ROUND, output()), ['1-4 new questions', 'ok reply line', 'no full prompt yet']);
+  assert.deepEqual(failing(U.DEEP_ROUND, output()), ['1-4 new questions', 'recommendation marker', 'ok reply line', 'no full prompt yet']);
 });
 
 test('after change 1: the change is inside a fenced block, and the score is shown again', () => {

@@ -50,9 +50,10 @@ function turn(message, sessionId, { system, model, cwd, env }) {
 }
 
 const has = (re) => (t) => re.test(t);
-// The menu's first option: numbered or bulleted, one of the starred options output-format.md
-// allows, with Refine somewhere after "What next?". The eval graders' menu checks use the
-// same option prefix, (^|\s)(\d[.)]|[-*•])[ \t]*\** (findings 57 and 58).
+// After "What next?": a starred option output-format.md allows, numbered or bulleted, and
+// Refine anywhere after "What next?". It doesn't check that the starred option comes first.
+// The eval graders' menu checks use the same option prefix, (^|\s)(\d[.)]|[-*•])[ \t]*\**
+// (findings 57 and 58).
 export const MENU = /What next\?(?=[\s\S]*Refine)[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★/i;
 const SCORE_TABLE = ['score table', has(/\|\s*Clear goal\s*\|[\s\S]*\|\s*Edge cases\s*\|/i)];
 export const STRUCTURE = [
@@ -66,7 +67,8 @@ export const STRUCTURE = [
 ];
 export const QUESTIONS = [
   ['numbered questions', has(/(^|\n)\s*1[.)]\s/)],
-  ['recommendation marker', has(/★/)],
+  // A ★ on an a) to d) option line, as in coding-vague 03; the reply line holds a ★ too.
+  ['recommendation marker', has(/(^|\n)[^\n]*\b[a-d]\)[^\n]*★/)],
   ['ok reply line', has(/Reply\s+`?ok`?\s+to accept every ★/i)],
   // No draft yet: no fence, Full prompt heading or label, score table or menu.
   ['no full prompt yet', (t) => !/```|(#+\s*|\*\*)Full prompt|(^|\n)[ \t]*Full prompt\s*:|\|\s*Clear goal\s*\||What next\?/i.test(t)],
