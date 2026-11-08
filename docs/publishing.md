@@ -40,7 +40,7 @@ This page is for maintainers. It covers where each part of Prompt Engine is publ
    ```
 
    This updates `.claude-plugin/plugin.json`, the skill's `metadata.version`, and `mcp/package.json`, `package-lock.json`, `server.json` and `manifest.json`, then regenerates derived files. The validator fails if any of them disagree.
-3. **Update `CHANGELOG.md`.** Move the "Unreleased" entries under a `## [0.2.0] - YYYY-MM-DD` heading.
+3. **Update `CHANGELOG.md`.** Move the "Unreleased" entries under a `## [0.2.0] - YYYY-MM-DD` heading. For the first release, replace "not yet released" in the `## [0.1.0]` heading with the date.
 4. **Run the checks:**
 
    ```bash
@@ -58,6 +58,8 @@ This page is for maintainers. It covers where each part of Prompt Engine is publ
    ```
 
    The last command builds every release file into `dist/` without publishing anything. For changes to the method, also run the behavior evals (see [CONTRIBUTING.md](../CONTRIBUTING.md#behavior-evals)).
+
+   If you have Claude Desktop, also install `dist/prompt-engine.mcpb` in it, run the [Claude Desktop checks](manual-checks.md#claude-desktop-with-the-mcp-bundle) and record the result in [compatibility.md](compatibility.md). A release doesn't wait for this: until a result is recorded, the bundle ships labelled as not yet tested in Claude Desktop. Once one is, update the Claude Desktop row's status in compatibility.md and the "(not yet tested in Claude Desktop)" notes next to the download links in `README.md`, `docs/install.md` and `mcp/README.md`.
 5. **Merge to `main`, then tag the merge commit:**
 
    ```bash
@@ -72,7 +74,8 @@ This page is for maintainers. It covers where each part of Prompt Engine is publ
 
 6. **Watch the Release workflow.** It first stops unless the tagged commit is on `main`. Then it tests the MCP server, builds the release files (and stops if the tag doesn't match the version) and packs the npm package. After that, the GitHub release and the npm publish run side by side, and the MCP Registry publish runs once npm has the version. Each publishing job skips what is already published, so if a job fails, fix the cause and choose **Re-run failed jobs** on the run's page (possible for 30 days). A re-run uses the same commit and the same `release.yml`; if the fix needs a change to the repository, finish by hand or release a new version. If the npm job failed, you can also publish that version by hand and then re-run: the npm job skips and the registry job runs. Publish by hand from a clean checkout of the tag (for example `git checkout v0.2.0` in a fresh clone), not from `main`, which may already hold later changes under the same version number; for npm, run the commands in One-time setup, step 1 there.
 
-If a registry publish was skipped or failed, run it by hand from that checkout once the npm version exists. Download the `mcp-publisher` archive for your system and `registry_<version>_checksums.txt` from the same [registry release](https://github.com/modelcontextprotocol/registry/releases) into one folder (for release v1.8.6, the file is `registry_1.8.6_checksums.txt`), and check the archive there with `shasum -a 256 -c --ignore-missing registry_<version>_checksums.txt` (or `sha256sum -c --ignore-missing registry_<version>_checksums.txt`). Both files come from the same release, so this catches a broken download, not a swapped one. Then unpack it, and in `mcp/` run `mcp-publisher login github` and `mcp-publisher publish`.
+   If a registry publish was skipped or failed, run it by hand from that checkout once the npm version exists. Download the `mcp-publisher` archive for your system and `registry_<version>_checksums.txt` from the same [registry release](https://github.com/modelcontextprotocol/registry/releases) into one folder (for release v1.8.6, the file is `registry_1.8.6_checksums.txt`), and check the archive there with `shasum -a 256 -c --ignore-missing registry_<version>_checksums.txt` (or `sha256sum -c --ignore-missing registry_<version>_checksums.txt`). Both files come from the same release, so this catches a broken download, not a swapped one. Then unpack it, and in `mcp/` run `mcp-publisher login github` and `mcp-publisher publish`.
+7. **After the first release only:** delete the notes that say the npm package and the release files come with the first release, below the install table in `README.md` and under MCP clients in `docs/install.md`. Then delete the first-release sentence in step 3 and this step.
 
 ### How users receive it
 
