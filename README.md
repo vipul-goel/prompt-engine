@@ -78,10 +78,10 @@ It explained the additions. For example, the amber window light against blue moo
 
 ## How it's tested
 
-- **Behavior evals** with Claude Code's official runner (`claude plugin eval`), run with and without the skill. The cases cover question rounds, quick mode, follow-up replies, Spanish and Japanese prompts, secret redaction, prompt injection, saving to a file, "nothing runs until you choose", and trigger and non-trigger cases. Results are in [docs/compatibility.md](docs/compatibility.md).
-- **Trigger tests** of the skill description: 24 requests, half of them near-misses such as "translate this prompt" or "run this prompt". In testing with Claude Sonnet 5.5, it started on all 12 prompt requests and on none of the near-misses.
-- **Two-turn tests** of the universal prompt with every tool disabled, the way a chatbot would use it.
-- **Static checks** (`node scripts/validate.mjs`) for portability rules, prompt lint, size budgets and the shared output contract, plus mutation tests that confirm each check catches what it should.
+- **Behavior evals** with Claude Code's official runner (`claude plugin eval`), run with and without the skill. The cases cover question rounds, quick mode, follow-up replies, Spanish and Japanese prompts, secret redaction, prompt injection, saving to a file, "nothing runs until you choose", and trigger and non-trigger cases. Eval runs don't grant shell commands, so the "nothing runs until you choose" and injection cases check file writes and edits only. Results are in [docs/compatibility.md](docs/compatibility.md).
+- **Trigger tests** of the skill description, run once during development: 24 requests, half of them near-misses such as "translate this prompt" or "run this prompt". With Claude Sonnet 5.5, it started on all 12 prompt requests and on none of the near-misses. The request set isn't in the repository.
+- **Conversation tests** of the universal prompt on Claude, through `claude -p` with no tools or MCP servers loaded, the way a chatbot would use it. They make billed calls, so they're run by hand.
+- **Static checks** (`node scripts/validate.mjs`) for portability rules, prompt lint, size budgets and the shared output contract, plus mutation tests for each rule it enforces.
 - **MCP server tests** covering both protocol versions, with and without form questions, over stdio and HTTP.
 
 Some platform details couldn't be verified directly, such as other chat apps' instruction limits and some tools' current syntax. Those are marked as unverified in the docs instead of being presented as facts.
