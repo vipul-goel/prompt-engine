@@ -91,23 +91,26 @@ describe('the method brief', () => {
     expect(brief).toMatch(/adding -2, -3… to the name instead of overwriting/);
   });
 
-  it("says where a critique's gap line goes when ask_user asks the questions", () => {
-    // The core opens a critique's questions with one line naming the biggest gaps, and the server's
-    // steps replace its instruction to send the questions in your own message. So the line is the
-    // form's intro, and it opens the reply when the questions come back as text.
+  it("says where a question round's opening line goes when ask_user asks the questions", () => {
+    // A question round may open with one line of its own: a critique's biggest gaps (the core's
+    // section 3), an already-strong prompt, or a removed secret (output-format.md's Questions round).
+    // The server's steps replace the instruction to send the questions in your own message, so the
+    // line is the form's intro, and it opens the reply when the questions come back as text.
     expect(UNIVERSAL_METHOD).toMatch(/A request to critique a prompt or find what's missing gets the same flow: open the questions with one line naming the biggest gaps\./);
+    expect(REFERENCES['output-format']!.text).toMatch(/\*\*Questions round\.\*\*[^\n]*one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it\./);
     const questions = buildReference('questions');
     for (const [name, text] of [['brief', brief], ['questions', questions]]) {
-      expect(text, name).toMatch(/For a request to critique a prompt or find what's missing, pass the one line naming the biggest gaps as intro\./);
+      expect(text, name).toMatch(/If the round opens with a line of its own \(the biggest gaps for a request to critique a prompt or find what's missing, that the prompt is already strong, or that you removed a pasted secret, suggesting rotating it\), pass that line as intro, in 200 characters or fewer\./);
     }
-    expect(brief).toMatch(/returns the questions as text: show them to the user in their language, after that gap line for a critique, then stop and wait/);
-    expect(questions).toMatch(/returns the questions in Format B: send them as your whole reply, opened by that gap line for a critique, and wait\./);
+    expect(brief).toMatch(/returns the questions as text: show them to the user in their language, after that line if there is one, then stop and wait/);
+    expect(questions).toMatch(/returns the questions in Format B: send them as your whole reply, opened by that line if there is one, and wait\./);
   });
 
   it('asks at most two questions about an already-strong prompt, as the skill does', () => {
     // SKILL.md and output-format.md's Already strong rule set the cap. The core, which the brief
-    // embeds, doesn't state it, so the server's step 2 does.
+    // embeds, states it too; step 2 repeats it next to ask_user's limit of 1–8 questions.
     expect(REFERENCES['output-format']!.text).toMatch(/\*\*Already strong\.\*\*[^\n]*Ask at most two questions/);
+    expect(UNIVERSAL_METHOD).toMatch(/If the prompt is already strong, say so, ask at most 2 questions and make small edits/);
     expect(brief).toMatch(/1–8 questions \(at most 2 if the prompt is already strong\)/);
   });
 

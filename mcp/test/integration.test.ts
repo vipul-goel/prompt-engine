@@ -264,8 +264,8 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
     expect(String(structured.questionsText).endsWith('Anything you skip gets the ★.')).toBe(true);
     expect(textOf(result)).toMatch(/stop and wait/);
     expect(textOf(result)).toMatch(/their language/);
-    // The questions are the whole reply, except that a critique's reply opens with its gap line.
-    expect(structured.next).toMatch(/as your whole reply.*\. For a request to critique a prompt or find what's missing, open that reply with one line naming the biggest gaps\. Then stop and wait\./);
+    // The questions are the whole reply, except for the round's own opening line, if it has one.
+    expect(structured.next).toMatch(/as your whole reply.*\. If the round opens with a line of its own \(the biggest gaps for a critique or what's-missing request, that the prompt is already strong, or that you removed a pasted secret\), open that reply with it\. Then stop and wait\./);
   });
 
   it('opens the chat text with its own line, not the intro, which is the form\'s message', async () => {

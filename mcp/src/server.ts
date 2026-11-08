@@ -287,13 +287,14 @@ function declinedResult(questions: Question[]): CallToolResult {
  * No form here, or the user closed it without answering: ask in the chat, never
  * guess. The intro is the form's message, so the chat text opens with the
  * default line (see buildTextBatch), which next asks the model to translate.
- * For a critique, the reply opens with the gap line the brief has the model
- * pass as the intro.
+ * When the round opens with a line of its own (a critique's biggest gaps, an
+ * already-strong prompt, a removed secret), the reply opens with it; the brief
+ * has the model pass the same line as the intro.
  */
 function textModeResult(questions: Question[], reason: 'no-form' | 'form-closed'): CallToolResult {
   const questionsText = buildTextBatch(questions);
   const why = reason === 'form-closed' ? 'The user closed the form without answering' : "This app can't show a form";
-  const next = `${why}, so ask in the chat: send questionsText to the user as your whole reply, in their language (translate the opening and closing lines if needed; keep the numbers, letters and ★ marks). For a request to critique a prompt or find what's missing, open that reply with one line naming the biggest gaps. Then stop and wait. Don't guess the answers. Read their reply as the brief says: ok accepts every ★, partial answers keep ★ for the rest, and free text wins. Answers they accept, ★ ones included, are [your answer], not assumptions.`;
+  const next = `${why}, so ask in the chat: send questionsText to the user as your whole reply, in their language (translate the opening and closing lines if needed; keep the numbers, letters and ★ marks). If the round opens with a line of its own (the biggest gaps for a critique or what's-missing request, that the prompt is already strong, or that you removed a pasted secret), open that reply with it. Then stop and wait. Don't guess the answers. Read their reply as the brief says: ok accepts every ★, partial answers keep ★ for the rest, and free text wins. Answers they accept, ★ ones included, are [your answer], not assumptions.`;
   // The text block already carries everything, so no JSON mirror here.
   return {
     content: [{ type: 'text', text: `${next}\n\n${questionsText}` }],
