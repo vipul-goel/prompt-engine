@@ -54,6 +54,10 @@ const checkKey = (key, where) => {
 const set = (obj, key, value) => Object.defineProperty(obj, key, { value, enumerable: true, writable: true, configurable: true });
 const spaces = (line) => line.match(/^ */)[0].length;
 const blank = (line) => /^ *$/.test(line);
+// YAML separates with spaces (and tabs, refused here), so a value's own edges keep any other
+// white space, such as a no-break or ideographic space; String.prototype.trim would drop it and
+// read "regex\u{A0}" as regex.
+const trimSp = (s) => s.replace(/^ +| +$/g, '');
 
 function quoted(v, where) {
   if (v[0] === "'") {
@@ -93,7 +97,7 @@ function flow(v, where) {
       continue;
     }
     if (ch === close) break;
-    if ((ch === "'" || ch === '"') && cur.trim() === '') q = ch;
+    if ((ch === "'" || ch === '"') && trimSp(cur) === '') q = ch;
     else if ('[]{}'.includes(ch)) throw new Error(`${where}: nested [ ] or { } isn't supported; quote the entry: ${v}`);
     // YAML reads the rest of the line, closing bracket included, as a comment.
     else if (ch === '#' && (cur === '' || /\s$/.test(cur))) throw new Error(`${where}: a # comment inside ${v[0]} ${close}: ${v}`);
@@ -102,14 +106,14 @@ function flow(v, where) {
   }
   if (q || i >= v.length) throw new Error(`${where}: ${v[0]} without its closing ${close} on the same line: ${v}`);
   if (!/^(?: +#.*)?$/.test(v.slice(i + 1))) throw new Error(`${where}: text after the closing ${close}: ${v}`);
-  if (cur.trim() !== '') entries.push(cur);
+  if (trimSp(cur) !== '') entries.push(cur);
   else if (!entries.length) return close === ']' ? [] : {};
-  if (entries.some((e) => e.trim() === '')) throw new Error(`${where}: an empty entry in ${v[0]} ${close}: ${v}`);
+  if (entries.some((e) => trimSp(e) === '')) throw new Error(`${where}: an empty entry in ${v[0]} ${close}: ${v}`);
   if (close === ']') return entries.map((e) => scalar(e, where));
   const map = {};
   for (const e of entries) {
-    const kv = e.trim().match(/^([A-Za-z_][\w-]*): +(\S.*)$/);
-    if (!kv) throw new Error(`${where}: write each { } entry as key: value: ${e.trim()}`);
+    const kv = trimSp(e).match(/^([A-Za-z_][\w-]*): +(\S.*)$/);
+    if (!kv) throw new Error(`${where}: write each { } entry as key: value: ${trimSp(e)}`);
     checkKey(kv[1], where);
     if (Object.hasOwn(map, kv[1])) throw new Error(`${where}: duplicate key ${kv[1]}`);
     set(map, kv[1], scalar(kv[2], where));
@@ -118,7 +122,7 @@ function flow(v, where) {
 }
 
 function scalar(raw, where) {
-  const v = raw.trim();
+  const v = trimSp(raw);
   if (v[0] === "'" || v[0] === '"') return quoted(v, where);
   if (v[0] === '[' || v[0] === '{') return flow(v, where);
   if (/^[&*!|>%@`#]/.test(v)) throw new Error(`${where}: unsupported YAML value ${v}`);
@@ -135,7 +139,8 @@ function scalar(raw, where) {
 
 // The text of a | or > block from its lines. Indentation is the first non-blank line's, as in
 // YAML. Trailing blank lines are not text: chomping keeps one final line break (clip), none (-)
-// or all of them (+).
+// or all of them (+). A trailing line of more spaces than that indentation is text to YAML (the
+// spaces past it), which this subset refuses.
 function block(lines, style, chomp, where) {
   let end = lines.length;
   while (end > 0 && blank(lines[end - 1])) end--;
@@ -145,6 +150,7 @@ function block(lines, style, chomp, where) {
   const first = body.findIndex((l) => !blank(l));
   const n = spaces(body[first]);
   if (body.slice(0, first).some((l) => l.length > n)) throw new Error(`${where}: a blank line before the block's first line has more spaces than that line`);
+  if (lines.slice(end).some((l) => l.length > n)) throw new Error(`${where}: a line of spaces after the block's last line has more spaces than its first line`);
   if (body.some((l) => !blank(l) && spaces(l) < n)) throw new Error(`${where}: a line of the block is indented less than its first line`);
   const text = body.map((l) => l.slice(n));
   let value;
@@ -201,7 +207,7 @@ export function parseYaml(text, file, firstLine = 1) {
     const m = line.slice(indent).match(/^([A-Za-z_][\w-]*):(?: +(.*))?$/);
     if (!m) throw new Error(`${at(i)}: unsupported line: ${line.trim()}`);
     const key = m[1];
-    const rest = (m[2] ?? '').trim();
+    const rest = trimSp(m[2] ?? '');
     checkKey(key, at(i));
     if (Object.hasOwn(target, key)) throw new Error(`${at(i)}: duplicate key ${key}`);
     const b = rest.match(/^([|>])([-+]?)(?: +#.*)?$/);
@@ -401,7 +407,9 @@ export function checkEvalCases(root, err) {
     }
 
     const cy = c.caseYaml;
-    if (cy) {
+    // claude plugin eval reads a case.yaml with nothing but comments as no file (Bun.YAML.parse
+    // gives null), and fills in schema_version and name, so its checks don't apply.
+    if (cy && Object.keys(cy).length) {
       const file = `${dir}/case.yaml`;
       for (const k of Object.keys(cy)) if (!CASE_KEYS.has(k)) err(`${file}: unknown key "${k}" (claude plugin eval drops it without a message)`);
       for (const [section, allowed] of [['context', CONTEXT_KEYS], ['execution', EXECUTION_KEYS]]) {

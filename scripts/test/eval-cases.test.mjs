@@ -30,6 +30,10 @@ const READS = [
   ['folded blocks', 'a: >\n  x\n  y\n\n  z\nb: >-\n  x  y\n  z\nc: >\n\n  x\n\n\n  y\n', { a: 'x y\nz\n', b: 'x  y z', c: '\nx\n\ny\n' }],
   ['a block under a nested key', 'execution:\n  prompt: |\n    hi\n  max_turns: 4\n', { execution: { prompt: 'hi\n', max_turns: 4 } }],
   ['CRLF line endings and a BOM', '\u{FEFF}a: 1\r\nb: |\r\n  x\r\n', { a: 1, b: 'x\n' }],
+  // YAML separates with spaces only, so other white space at a value's edge is part of the value.
+  ['a no-break space after a value and an ideographic space before one', 'a: x\u{A0}\nb: \u{3000}x\nc: [y\u{A0}, z]\nd: {e: f\u{A0}}\n',
+    { a: 'x\u{A0}', b: '\u{3000}x', c: ['y\u{A0}', 'z'], d: { e: 'f\u{A0}' } }],
+  ['a kept block with only blank lines, and one that ends the text', 'a: |+\n\n\nb: 1\nc: |+\n  x\n', { a: '\n\n', b: 1, c: 'x\n' }],
 ];
 for (const [name, text, want] of READS) {
   test(`parseYaml reads ${name}`, () => assert.deepEqual(parseYaml(text, 'f.yaml'), want));
@@ -65,6 +69,9 @@ const REFUSES = [
   ['a key among list entries', 'a:\n  - x\n  b: 1\n', 'f.yaml:3: a key among the list entries of a'],
   ['a mapping in a list', 'a:\n  - b: 1\n', 'f.yaml:2: quote the value "b: 1"'],
   ['a block whose first lines have more spaces than its text', 'a: |\n     \n  x\n', 'f.yaml:1: a blank line before the block\'s first line has more spaces'],
+  // YAML reads the spaces past the block's indentation as text.
+  ['a block whose last lines have more spaces than its text', 'a: |\n  x\n    \nb: 1\n', 'f.yaml:1: a line of spaces after the block\'s last line has more spaces than its first line'],
+  ['a nested block whose last lines have more spaces than its text', 'execution:\n  prompt: |-\n    x\n       \n  max_turns: 4\n', 'f.yaml:2: a line of spaces after the block\'s last line'],
   ['a block line indented less than the first', 'a: |\n    x\n  y\n', 'f.yaml:1: a line of the block is indented less than its first line'],
   ['a more-indented line in a folded block', 'a: >\n  x\n    y\n', 'f.yaml:1: a more-indented line in a > block'],
   ['a block with an indentation indicator', 'a: |2\n  x\n', 'f.yaml:1: unsupported YAML value |2'],
@@ -72,6 +79,8 @@ const REFUSES = [
   ['an unterminated single-quoted value', "a: 'x\n", 'f.yaml:1: a single-quoted value must end on its line'],
   ['text after a single-quoted value', "a: 'x' y\n", 'f.yaml:1: a single-quoted value must end on its line'],
   ['a comment right after a quoted value', 'a: "x"#c\n', 'f.yaml:1: a double-quoted value must end on its line'],
+  ['a no-break space after a quoted value', "a: 'x'\u{A0}\n", 'f.yaml:1: a single-quoted value must end on its line'],
+  ['a no-break space after a block header', 'a: |\u{A0}\n  x\n', 'f.yaml:1: unsupported YAML value |\u{A0}'],
   ['the escape \\b', 'a: "\\bveo"\n', 'f.yaml:1: unsupported escape \\b'],
   ['the escape \\x without two hex digits', 'a: "\\xZ"\n', 'f.yaml:1: unsupported escape \\x'],
   ['the escape \\u for a surrogate half', 'a: "\\uD83D"\n', 'f.yaml:1: unsupported escape \\uD83D (a surrogate half)'],
@@ -81,6 +90,7 @@ const REFUSES = [
   ['text after a flow', 'a: [x] y\n', 'f.yaml:1: text after the closing ]'],
   ['an empty flow entry', 'a: [x,,y]\n', 'f.yaml:1: an empty entry in [ ]'],
   ['a flow mapping entry without a value', 'a: {b}\n', 'f.yaml:1: write each { } entry as key: value: b'],
+  ['a flow mapping entry without a space after its colon', 'a: {b:c}\n', 'f.yaml:1: write each { } entry as key: value: b:c'],
   ['an anchor', 'a: &x 1\n', 'f.yaml:1: unsupported YAML value &x 1'],
   ['a tag', 'a: !!str 1\n', 'f.yaml:1: unsupported YAML value !!str 1'],
   ['a value with ": " inside', 'a: b: c\n', 'f.yaml:1: quote the value "b: c"'],
@@ -251,6 +261,94 @@ test('checkEvalCases refuses a fixture that is a link or has a second name', { s
   ]);
 });
 
+test('checkEvalCases checks the form of each grader option, not only that it is there', () => {
+  const { errors } = check({
+    'evals/demo/prompt.md': PROMPT,
+    // Accepted: a {tool, input_match} step, count:N, and a pattern that compiles with its flags.
+    'evals/demo/graders/01-order.md': "---\ntype: tool_order\nbefore: {tool: Read, input_match: 'x'}\nafter: Write\n---\n",
+    'evals/demo/graders/02-count.md': '---\ntype: regex\npattern: x\nmatch: count:3\n---\n',
+    'evals/demo/graders/03-unicode.md': "---\ntype: regex\npattern: '\\p{L}'\nflags: u\n---\n",
+    // Refused.
+    'evals/demo/graders/04-order-extra-key.md': '---\ntype: tool_order\nbefore: {tool: Read, x: 1}\nafter: Write\n---\n',
+    'evals/demo/graders/05-order-bad-match.md': "---\ntype: tool_order\nbefore:\n  tool: Read\n  input_match: '(['\nafter: Write\n---\n",
+    'evals/demo/graders/06-order-no-after.md': '---\ntype: tool_order\nbefore: Read\n---\n',
+    'evals/demo/graders/07-order-empty.md': "---\ntype: tool_order\nbefore: ''\nafter: Write\n---\n",
+    // Compiles without a flag, but not with u: the flags count.
+    'evals/demo/graders/08-flags-matter.md': "---\ntype: regex\npattern: 'a{'\nflags: u\n---\n",
+    'evals/demo/graders/09-weight-string.md': "---\ntype: regex\npattern: x\nweight: '2'\n---\n",
+    'evals/demo/graders/10-flags-list.md': '---\ntype: regex\npattern: x\nflags: []\n---\n',
+    // The CLI fills a pattern from the body only when the key is missing, not when it is null.
+    'evals/demo/graders/11-null-pattern.md': '---\ntype: regex\npattern: ~\n---\nx\n',
+    'evals/demo/graders/12-focus-absolute.md': '---\ntype: llm\nfocus: {source: file, path: /abs}\n---\nPASS.\n',
+    'evals/demo/graders/13-focus-extra-key.md': '---\ntype: llm\nfocus: {source: file, path: a, x: 1}\n---\nPASS.\n',
+    'evals/demo/graders/14-focus-source.md': '---\ntype: llm\nfocus: {source: url, path: a}\n---\nPASS.\n',
+  });
+  const focus = 'focus must be trace, last_message, files, mock_calls or {source: file, path: <a relative path>}';
+  assert.deepEqual(errors.map((e) => e.replace(/: Invalid regular expression.*/, ': Invalid regular expression')), [
+    'evals/demo/graders/04-order-extra-key.md: before must be a tool name or {tool, input_match}',
+    'evals/demo/graders/05-order-bad-match.md: before.input_match: Invalid regular expression',
+    'evals/demo/graders/06-order-no-after.md: after must be a tool name or {tool, input_match}',
+    'evals/demo/graders/07-order-empty.md: before must be a tool name or {tool, input_match}',
+    'evals/demo/graders/08-flags-matter.md: pattern: Invalid regular expression',
+    'evals/demo/graders/09-weight-string.md: weight must be a number above 0',
+    'evals/demo/graders/10-flags-list.md: flags may use only d g i m s u v y',
+    'evals/demo/graders/11-null-pattern.md: needs a pattern (the pattern key, or the file\'s body)',
+    `evals/demo/graders/12-focus-absolute.md: ${focus}`,
+    `evals/demo/graders/13-focus-extra-key.md: ${focus}`,
+    `evals/demo/graders/14-focus-source.md: ${focus}`,
+  ]);
+});
+
+test('checkEvalCases checks case values at the edges of the CLI\'s limits', () => {
+  const at = (name, front) => ({ [`evals/${name}/prompt.md`]: `---\n${front}---\n\n${PROMPT}`, [`evals/${name}/graders/01-x.md`]: REGEX });
+  const { errors } = check({
+    ...at('runs-50', 'runs: 50\n'), ...at('runs-51', 'runs: 51\n'), ...at('runs-half', 'runs: 1.5\n'),
+    ...at('turns-1', 'max_turns: 1\n'), ...at('turns-0', 'max_turns: 0\n'),
+    ...at('timeout-3600', 'timeout_seconds: 3600\n'), ...at('timeout-3601', 'timeout_seconds: 3601\n'),
+    ...at('env-lowercase', 'env: {EVAL_x: a}\n'),
+    ...at('tags-number', 'tags: [1]\n'),
+    ...at('schema-in-prompt', "schema_version: '2.0'\n"),
+    'evals/schema-in-case/case.yaml': "schema_version: '2.0'\nname: schema-in-case\n",
+    ...at('schema-in-case', ''),
+  });
+  assert.deepEqual(errors, [
+    'evals/env-lowercase/prompt.md: env key "EVAL_x" must match EVAL_[A-Z0-9_]* (other keys fail the run)',
+    'evals/runs-51/prompt.md: runs must be a whole number from 1 to 50',
+    'evals/runs-half/prompt.md: runs must be a whole number from 1 to 50',
+    'evals/schema-in-case/case.yaml: schema_version must be a quoted 1.x string, such as "1.1"',
+    'evals/schema-in-prompt/prompt.md: schema_version must be a quoted 1.x string, such as "1.1"',
+    'evals/tags-number/prompt.md: tags must be a list of strings, such as [a, b]',
+    'evals/timeout-3601/prompt.md: timeout_seconds must be a whole number from 1 to 3600',
+    'evals/turns-0/prompt.md: max_turns must be a whole number from 1 to 200',
+  ]);
+});
+
+test('checkEvalCases reports only the parse error of a file that does not parse', () => {
+  // case.yaml might have set execution.prompt, so the empty body isn't reported; a grader that
+  // doesn't parse still counts as the case's grader.
+  const { errors } = check({
+    'evals/demo/case.yaml': 'name: demo\nname: again\n',
+    'evals/demo/prompt.md': '---\ntags: [a]\n---\n',
+    'evals/demo/graders/01-x.md': REGEX,
+    'evals/other/prompt.md': PROMPT,
+    'evals/other/graders/01-x.md': '---\ntype: regex\npattern: "\\b"\n---\n',
+  });
+  assert.deepEqual(errors, ['evals/demo/case.yaml:2: duplicate key name', 'evals/other/graders/01-x.md:3: unsupported escape \\b; YAML reads it differently from a regex, so write \\\\ for a backslash']);
+});
+
+test('checkEvalCases reads a case.yaml with nothing but comments as no file, as claude plugin eval does', () => {
+  const { errors, cases } = check({
+    'evals/demo/case.yaml': '# kept for notes\n',
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-x.md': REGEX,
+    // With no prompt.md, the case still needs a prompt.
+    'evals/bare/case.yaml': '\n',
+    'evals/bare/graders/01-x.md': REGEX,
+  });
+  assert.deepEqual(errors, ['evals/bare: no prompt (a prompt.md body, or execution.prompt in case.yaml)']);
+  assert.deepEqual(cases.find((c) => c.name === 'demo').caseYaml, {});
+});
+
 // The git check (finding 67): a fixture the case names that git ignores.
 const IGNORED = '12345678-1234-4123-8123-123456789abc.jsonl';
 const ignoredCase = (baseline) => ({
@@ -263,6 +361,19 @@ test('checkEvalCases reports a fixture that git ignores, once', { skip: !hasGit 
   const files = { ...ignoredCase(IGNORED), 'evals/demo/graders/02-y.md': `---\ntype: baseline\nbaseline_file: ${IGNORED}\n---\nPASS if as good.\n`, [`evals/demo/${IGNORED}`]: '{}\n' };
   const { errors } = check(files, (dir) => git(dir, 'init', '-q'));
   assert.deepEqual(errors, [`evals/demo/${IGNORED}: ignored by .gitignore, so a clean checkout lacks it (git check-ignore -v evals/demo/${IGNORED} names the rule)`]);
+});
+
+test('checkEvalCases reports an ignored history_file and scaffold_script too', { skip: !hasGit && 'needs git' }, () => {
+  const { errors } = check({
+    '.gitignore': '*.jsonl\n*.sh\n',
+    'evals/demo/case.yaml': 'schema_version: "1.1"\nname: demo\ncontext:\n  scaffold_script: setup.sh\n  history_file: history.jsonl\n',
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-x.md': REGEX,
+    'evals/demo/setup.sh': 'true\n',
+    'evals/demo/history.jsonl': '{}\n',
+  }, (dir) => git(dir, 'init', '-q'));
+  const ignored = (p) => `evals/demo/${p}: ignored by .gitignore, so a clean checkout lacks it (git check-ignore -v evals/demo/${p} names the rule)`;
+  assert.deepEqual(errors, [ignored('setup.sh'), ignored('history.jsonl')]);
 });
 
 test('checkEvalCases asks git only about fixtures that exist', { skip: !hasGit && 'needs git' }, () => {

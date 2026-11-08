@@ -339,6 +339,9 @@ const ROWS = [
     /spanish-quick\/prompt\.md: unknown front matter key "max-turns" \(claude plugin eval refuses to load the case\)/],
   ['rejects a misspelled grader type', (d) => edit(d, 'evals/trigger-natural-phrasing/graders/02-skill-fired.md', (t) => t.replace('type: tool_used', 'type: tool-used')),
     /02-skill-fired\.md: type must be one of regex, tool_used, tool_order, file_exists, llm, baseline/],
+  // YAML keeps a no-break space at a value's edge, so claude plugin eval reads "regex\u{A0}".
+  ['rejects a grader type followed by a no-break space', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('type: regex', 'type: regex\u{A0}')),
+    /03-assumptions-heading\.md: type must be one of regex, tool_used, tool_order, file_exists, llm, baseline/],
   ['rejects a misspelled match mode', (d) => edit(d, 'evals/coding-vague-asks-questions/graders/02-at-most-eight-questions.md', (t) => t.replace('not_contains', 'not-contains')),
     /02-at-most-eight-questions\.md: match must be contains, not_contains or count:N/],
   ['rejects a pattern that does not compile', (d) => put(d, `${VEO}/05-bad-regex.md`, grader('regex', "pattern: '([unclosed'\n")), /05-bad-regex\.md: pattern: Invalid regular expression/],
