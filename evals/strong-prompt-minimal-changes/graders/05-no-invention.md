@@ -20,6 +20,6 @@ Pull requests:
 - Bump eslint to 9.3 (#816)
 - Speed up dashboard load by caching widgets (#820)
 </original_prompt>
-The prompt names no product, company, people or release date and gives no links. If the reply asks questions and shows no enhanced prompt yet, PASS.
+Apart from the pull request titles, the prompt names no product, company, people or release date and gives no links. If the reply asks questions and shows no enhanced prompt yet, PASS.
 Check every specific value the enhanced prompt tells the model to use: names of products, people or companies; counts, lengths, limits, prices and percentages; dates; file names; URLs. Skip values the prompt above gives, today's date when the prompt states it on purpose, and examples introduced with 'for example', 'e.g.' or 'such as'.
 PASS if each remaining value is a placeholder in square brackets, double or single (such as [[app name]] or [app name]), or is covered by a numbered item under Assumptions; minor values may share one item. FAIL if any remaining value is neither, whatever tag the reply gives it ([you], [best practice] or none), or if the reply contains such values and has no Assumptions section.
