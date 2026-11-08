@@ -45,7 +45,7 @@ You:   ok
 | **MCP clients** (Claude Desktop, Claude Code, Cursor, VS Code, Zed…) | `npx -y prompt-engine-mcp` as a local MCP server, or the one-click `.mcpb` file for Claude Desktop from the releases page. [MCP server guide](mcp/README.md) |
 | **Claude API or Agent SDK** | Upload the skill folder with the Skills API, or place it in `.claude/skills/`. See [docs/install.md](docs/install.md) |
 
-**Don't install it twice.** A plugin added on Claude.ai also appears in Claude Code, so adding the same thing in both places gives you two copies. Step-by-step instructions for every option are in [docs/install.md](docs/install.md). The npm package and the release files appear after the first release; until then, use the marketplace, `npx skills add`, or the files in this repo.
+**Don't install it twice.** A plugin or skill you add on Claude.ai also loads in Claude Code when you sign in there with the same account, and several agents read the same skill folders, so a second install can leave you with two copies; [Install it once](docs/install.md#install-it-once) says which copy runs and how to remove the extra one. Step-by-step instructions for every option are in [docs/install.md](docs/install.md). The npm package and the release files appear after the first release; until then, use the marketplace, `npx skills add`, or the files in this repo.
 
 ## Use it
 

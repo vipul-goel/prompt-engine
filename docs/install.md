@@ -1,6 +1,6 @@
 # Install Prompt Engine
 
-Pick the option for the app you use. Installing the same thing in two places makes duplicates: a plugin added on Claude.ai also shows up in Claude Code. Each option says whether its steps were verified against the vendor's docs or tested here; see [compatibility.md](compatibility.md) for details.
+Pick one option for the app you use. Some options reach more than one app, so a second install can give you two copies (see [Install it once](#install-it-once)). Each option says whether its steps were verified against the vendor's docs or tested here; see [compatibility.md](compatibility.md) for details.
 
 - [Claude Code](#claude-code)
 - [Claude.ai, Claude Desktop and the Claude mobile apps](#claudeai-claude-desktop-and-the-claude-mobile-apps)
@@ -8,6 +8,7 @@ Pick the option for the app you use. Installing the same thing in two places mak
 - [Codex, Gemini CLI, GitHub Copilot, Cursor and other agents that read SKILL.md](#other-agents-that-read-skillmd)
 - [ChatGPT, Gemini and other chatbots](#chatgpt-gemini-and-other-chatbots)
 - [MCP clients](#mcp-clients)
+- [Install it once](#install-it-once)
 
 ## Claude Code
 
@@ -106,3 +107,14 @@ Use the copy-paste prompt. See [universal/README.md](../universal/README.md) for
 ## MCP clients
 
 Run the MCP server locally with `npx -y prompt-engine-mcp`, which is available after the first npm release. In Claude Desktop, install the `.mcpb` file from the releases page instead. Configuration for Claude Code, Cursor, VS Code and others, and how to self-host the HTTP version, are in [mcp/README.md](../mcp/README.md).
+
+## Install it once
+
+Some options reach more than one app, so a second install can give you two copies:
+- **The Claude.ai plugin and the Claude Code plugin.** A plugin you add on Claude.ai also loads in Claude Code as `prompt-engine@synced` when you sign in there with that Claude.ai account (Claude Code 2.1.273 or later). If you also installed `prompt-engine@vipul-goel`, Claude Code loads that copy and reports the Claude.ai copy as not loaded. To use the Claude.ai copy instead, disable yours with `claude plugin disable prompt-engine@vipul-goel`.
+- **The skill zip.** A skill you upload on Claude.ai also loads in Claude Code when you sign in there with that account (Claude Code 2.1.273 or later), next to the plugin's skill rather than in place of it. Use the plugin or the zip, not both. To drop the zip's copy, turn the skill off or delete it in Customize → Skills on Claude.ai.
+- **Claude Desktop.** The plugin and the `.mcpb` bundle each bring the method to Claude Desktop. Pick one.
+- **Copied folders.** Cursor, OpenCode, Goose and GitHub Copilot's local sessions in VS Code read Claude Code's skill folders, `~/.claude/skills/` and `.claude/skills/`, as well as `~/.agents/skills/` and `.agents/skills/`. If you copied the skill into one of these, don't copy it into another.
+- **`npx skills add`.** It counts Claude Code as installed when `~/.claude` exists, and it picks the agents without asking when it finds only one, or when you pass `-y`. If you use the plugin in Claude Code, name the agents you want with `-a`, for example `npx skills add vipul-goel/prompt-engine -a codex`.
+
+Status: checked on 2026-11-08 against Claude Code's plugin and skills docs, claude.com's plugin docs, the Claude Help Center, the skills docs of Cursor, VS Code, OpenCode and Goose, and the code of the `skills` package 1.7.6; not tested here.
