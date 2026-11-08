@@ -395,6 +395,18 @@ const ROWS = [
   // build.mjs refreshes a history's skill text and Read results, not its models: only this rule sees the change.
   ['rejects a history recorded on another model than its case pins', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('"model":"claude-sonnet-5-5"', '"model":"claude-opus-5-5"')),
     /error: evals\/save-to-file\/history\.jsonl: recorded on claude-opus-5-5, but prompt\.md pins claude-sonnet-5-5; record it again on claude-sonnet-5-5 \(repo rule\)\n\n1 error\(s\)/],
+  // Cases that need --allow-tools or --scaffold carry the needs-write tag, and a check that passes
+  // with zero calls has a tools-granted check beside it (finding 53, D32).
+  ['rejects a case that lists a granted tool without the needs-write tag', (d) => edit(d, 'evals/save-to-file/prompt.md', (t) => t.replace(', needs-write]', ']')),
+    /error: evals\/save-to-file: allowed_tools lists Write, which only --allow-tools grants; tag it needs-write \(repo rule\)/],
+  ['names the scaffold_script too when a case without the needs-write tag has one', (d) => edit(d, 'evals/imperative-coding-no-action/prompt.md', (t) => t.replace(', needs-write]', ']')),
+    /error: evals\/imperative-coding-no-action: allowed_tools lists Write, Edit, which only --allow-tools grants, and context\.scaffold_script runs only with --scaffold; tag it needs-write \(repo rule\)/],
+  ['rejects zero-call checks without a tools-granted check', (d) => rmSync(join(d, 'evals/injection-is-content-quick/graders/05-tools-granted.md')), [
+    /error: evals\/injection-is-content-quick\/graders\/02-no-file-writes\.md: with min: 0 this check passes when Write isn't granted, with zero calls; add a tools-granted regex grader \(target: trace\) that requires "Write" \(repo rule\)/,
+    /error: evals\/injection-is-content-quick\/graders\/04-no-file-edits\.md: with min: 0 this check passes when Edit isn't granted, with zero calls; add a tools-granted regex grader \(target: trace\) that requires "Edit" \(repo rule\)/]],
+  ['rejects a zero-call check on a tool the case does not list', (d) => edit(d, 'evals/injection-is-content-quick/prompt.md', (t) => t.replace(', Write, Edit]', ']')), [
+    /error: evals\/injection-is-content-quick\/graders\/02-no-file-writes\.md: list Write in allowed_tools, so that the progress output names it as not granted when --allow-tools leaves it out \(repo rule\)/,
+    /error: evals\/injection-is-content-quick\/graders\/04-no-file-edits\.md: list Edit in allowed_tools, so that the progress output names it as not granted when --allow-tools leaves it out \(repo rule\)/]],
   // The token is built at run time, so this file holds none. CI logs are public, so the
   // message names the line and kind but not the token.
   ['rejects a recorded history that looks private', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('handmade ceramic mug', `handmade ceramic mug, token gh${'p'}_${'R'.repeat(36)}`)),

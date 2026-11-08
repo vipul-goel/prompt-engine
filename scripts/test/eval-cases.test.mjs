@@ -420,3 +420,55 @@ test('checkSuiteRules compares a history case\'s assistant messages with the mod
     'evals/pinned-in-prompt/history.jsonl: recorded on claude-opus-5-5, but prompt.md pins claude-sonnet-5-5; record it again on claude-sonnet-5-5 (repo rule)',
   ]);
 });
+
+test('checkSuiteRules wants the needs-write tag on a case that needs --allow-tools or --scaffold', () => {
+  const READ_ONLY = 'Read, Glob, Grep, NotebookRead, Skill, AskUserQuestion, Agent, TodoWrite, TaskCreate, TaskGet, TaskList, TaskUpdate, TaskStop';
+  const { schema, errors } = rules({
+    ...REGEX_CASE('read-only', promptMd(`allowed_tools: [${READ_ONLY}]\n`)),
+    ...REGEX_CASE('pattern', promptMd("allowed_tools: [Read, 'Bash(ls *)', 'Read(/etc/hosts)']\n")),
+    ...REGEX_CASE('scaffold', promptMd()),
+    'evals/scaffold/case.yaml': 'schema_version: "1.1"\nname: scaffold\ncontext:\n  scaffold_script: setup.sh\n',
+    'evals/scaffold/setup.sh': 'true\n',
+    ...REGEX_CASE('tagged', promptMd('tags: [needs-write]\nallowed_tools: [Write]\n')),
+    'evals/tagged/case.yaml': 'schema_version: "1.1"\nname: tagged\ncontext:\n  scaffold_script: setup.sh\n',
+    'evals/tagged/setup.sh': 'true\n',
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, [
+    'evals/pattern: allowed_tools lists Bash(ls *), Read(/etc/hosts), which only --allow-tools grants; tag it needs-write (repo rule)',
+    'evals/scaffold: context.scaffold_script runs only with --scaffold; tag it needs-write (repo rule)',
+  ]);
+});
+
+test('checkSuiteRules backs a check that passes with zero calls with a tools-granted check', () => {
+  const zero = (tool, extra = 'max: 0\n') => `---\ntype: tool_used\ntool: ${tool}\nmin: 0\n${extra}---\n`;
+  const granted = (pattern, extra = '') => `---\ntype: regex\ntarget: trace\npattern: '${pattern}'\n${extra}---\n`;
+  const WRITE = '"tools":\\[(?=[^\\]]*"Write")';
+  const gatedCase = (name, graders, allowed = 'Write') => ({
+    [`evals/${name}/prompt.md`]: promptMd(`tags: [needs-write]\nallowed_tools: [${allowed}]\n`),
+    ...Object.fromEntries(Object.entries(graders).map(([f, text]) => [`evals/${name}/graders/${f}`, text])),
+  });
+  const { schema, errors } = rules({
+    ...gatedCase('backed', { '01-no-writes.md': zero('Write'), '02-granted.md': granted(WRITE) }),
+    ...gatedCase('pattern-in-body', { '01-no-writes.md': zero('Write'), '02-granted.md': `---\ntype: regex\ntarget: trace\n---\n${WRITE}\n` }),
+    ...gatedCase('listed-with-a-pattern', { '01-no-bash.md': zero('Bash'), '02-granted.md': granted('"tools":\\[(?=[^\\]]*"Bash")') }, "'Bash(ls *)'"),
+    ...gatedCase('min-one', { '01-writes.md': zero('Write', 'max: 1\n').replace('min: 0', 'min: 1') }),
+    ...gatedCase('read-only-tool', { '01-no-skill.md': zero('Skill') }, 'Skill'),
+    ...gatedCase('at-most-two', { '01-few-writes.md': zero('Write', 'max: 2\n') }),
+    ...gatedCase('inverted', { '01-no-writes.md': zero('Write'), '02-granted.md': granted(WRITE, 'match: not_contains\n') }),
+    ...gatedCase('with-only', { '01-no-writes.md': zero('Write'), '02-granted.md': granted(WRITE, 'arm: with-only\n') }),
+    ...gatedCase('last-message', { '01-no-writes.md': zero('Write'), '02-granted.md': `---\ntype: regex\npattern: '${WRITE}'\n---\n` }),
+    ...gatedCase('other-tool', { '01-no-writes.md': zero('Write'), '02-granted.md': granted('"tools":\\[(?=[^\\]]*"Edit")') }, 'Write, Edit'),
+    ...gatedCase('unlisted', { '01-no-writes.md': zero('Write'), '02-granted.md': granted(WRITE) }, 'Edit'),
+  });
+  assert.deepEqual(schema, []);
+  const unbacked = (c, f) => `evals/${c}/graders/${f}: with min: 0 this check passes when Write isn't granted, with zero calls; add a tools-granted regex grader (target: trace) that requires "Write" (repo rule)`;
+  assert.deepEqual(errors, [
+    unbacked('at-most-two', '01-few-writes.md'),
+    unbacked('inverted', '01-no-writes.md'),
+    unbacked('last-message', '01-no-writes.md'),
+    unbacked('other-tool', '01-no-writes.md'),
+    'evals/unlisted/graders/01-no-writes.md: list Write in allowed_tools, so that the progress output names it as not granted when --allow-tools leaves it out (repo rule)',
+    unbacked('with-only', '01-no-writes.md'),
+  ]);
+});

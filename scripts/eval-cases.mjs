@@ -483,8 +483,8 @@ function unread(root, c) {
 }
 
 // A case's settings as claude plugin eval resolves them: a key in prompt.md's front matter wins
-// over the same key in case.yaml, which holds model under execution: and history_file under
-// context:.
+// over the same key in case.yaml, which holds model and allowed_tools under execution: and the
+// fixtures under context:.
 function settings(c) {
   const fm = c.prompt?.data ?? {};
   const cy = c.caseYaml ?? {};
@@ -493,10 +493,29 @@ function settings(c) {
   const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
   return {
     tags: strings(fm.tags ?? cy.tags),
+    allowed: strings(fm.allowed_tools ?? exec.allowed_tools),
     model: fm.model ?? exec.model,
     modelFile: fm.model != null ? 'prompt.md' : 'case.yaml',
+    scaffold: ctx.scaffold_script,
     history: ctx.history_file,
   };
+}
+
+// The tools a run allows when the case lists them in allowed_tools. Any other tool needs
+// --allow-tools, which grants it to every case in the run (plugin-evals docs, "Grant tools"; the
+// same set in 2.1.319's code).
+const READ_ONLY = new Set(['Read', 'Glob', 'Grep', 'NotebookRead', 'Skill', 'AskUserQuestion', 'Agent', 'TodoWrite',
+  'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate', 'TaskStop']);
+// The tool an allowed_tools entry names, without a pattern such as the one in Bash(npm test *).
+const toolName = (t) => t.replace(/\(.*$/s, '');
+// A regex grader that fails unless the trace's tool list, the init line's "tools":[...], names
+// the tool: target trace, a pattern holding "tools" and the tool in double quotes, match contains
+// (the default), and not arm: with-only, which two-arm runs leave out of the score.
+function requiresGrant(g, tool) {
+  const d = g.data;
+  const p = d.pattern ?? (g.body !== '' ? g.body : undefined);
+  return d.type === 'regex' && d.target === 'trace' && (d.match === undefined || d.match === 'contains') && d.arm !== 'with-only'
+    && typeof p === 'string' && p.includes('"tools"') && p.includes(`"${tool}"`);
 }
 
 // The models of a recording's assistant messages. Claude Code writes <synthetic> as the model of
@@ -546,6 +565,23 @@ export function checkSuiteRules(root, cases, err) {
           if (m !== s.model) err(`${c.dir}/history.jsonl: recorded on ${m}, but ${s.modelFile} pins ${s.model}; record it again on ${s.model} (repo rule)`);
         }
       }
+    }
+    // A case that needs a granted tool or its scaffold script is tagged needs-write, so one
+    // command with --tag needs-write, --allow-tools and --scaffold runs all of them (D32).
+    // Exact names, the stricter reading: an entry with a pattern counts as a tool to grant.
+    const gated = s.allowed.filter((t) => !READ_ONLY.has(t));
+    const needs = [];
+    if (gated.length) needs.push(`allowed_tools lists ${gated.join(', ')}, which only --allow-tools grants`);
+    if (s.scaffold != null) needs.push('context.scaffold_script runs only with --scaffold');
+    if (needs.length && !s.tags.includes('needs-write')) err(`${c.dir}: ${needs.join(', and ')}; tag it needs-write (repo rule)`);
+    // A tool_used grader with min: 0, such as a max: 0 check, passes with zero calls, which is
+    // all a run can make of a tool it doesn't grant. Listed in allowed_tools, the tool shows as
+    // not granted in the progress output; a grader that requires it in the trace fails the case.
+    for (const g of c.graders) {
+      const { type, tool, min } = g.data;
+      if (type !== 'tool_used' || typeof tool !== 'string' || READ_ONLY.has(tool) || min !== 0) continue;
+      if (!s.allowed.some((t) => toolName(t) === tool)) err(`${g.file}: list ${tool} in allowed_tools, so that the progress output names it as not granted when --allow-tools leaves it out (repo rule)`);
+      if (!c.graders.some((h) => requiresGrant(h, tool))) err(`${g.file}: with min: 0 this check passes when ${tool} isn't granted, with zero calls; add a tools-granted regex grader (target: trace) that requires "${tool}" (repo rule)`);
     }
   }
   if (byModel.size > 1) {

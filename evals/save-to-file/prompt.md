@@ -1,5 +1,5 @@
 ---
-tags: [writing, followup, save]
+tags: [writing, followup, save, needs-write]
 model: claude-sonnet-5-5
 max_turns: 12
 timeout_seconds: 300
