@@ -15,14 +15,16 @@ One method ships in four formats, so most changes start in one place and flow ou
 
 ## Setup
 
-- **Node.js 22.19 or later.** That's the oldest version the project supports, and the MCP server's checks need it: `npm run test:inspector` runs the MCP Inspector, which stops with an error on older versions. The scripts in `scripts/` use only Node built-ins, so there's nothing to install at the repository root.
+- **Node.js 22.19 or later.** That's the oldest version the project supports, and the MCP server's checks need it: `npm run test:inspector` runs the MCP Inspector, which stops with an error on older versions. The scripts in `scripts/` use only Node built-ins, so there's nothing to install at the repository root. `scripts/release.mjs` also needs the `zip` and `unzip` commands, and npm for the full release.
 - **No `package.json` at the root.** The root is also the Claude Code plugin root, and Claude Code runs `npm ci` when someone installs a plugin that has a `package.json` and a lockfile. The validator enforces this, along with the other files a plugin root must not contain.
+- **Everything committed ships.** The plugin's source is the repository root (`"source": "./"` in `.claude-plugin/marketplace.json`), so every file committed to `main` reaches every Claude Code user who installs it from GitHub, twice: in the marketplace clone and in the plugin cache. Keep maintainer notes and large files off `main`. The validator warns about tracked files that Anthropic's plugin directory would hold for a reviewer: more than 512 of them, or a file that isn't an image or font and is 256 KiB or larger, or binary.
+- **No memory files where the skill reads.** Claude Code can load memory files such as `CLAUDE.md` from a folder below a session's working directory once it reads a file there. So in a session started in a folder that holds the plugin cache, the skill's reads of its references can load such files from the plugin; [Known limits](docs/compatibility.md#known-limits) records a run that showed it. Besides a root `CLAUDE.md`, the validator refuses a tracked `AGENTS.md` or `CLAUDE.local.md` at the root, and a `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md` or `.claude` in `skills/`, `skills/prompt-engine/` or its `references/` folder, tracked or not, because the skill zip is built from the folder on disk.
 - **For the MCP server:** `cd mcp && npm ci`.
 - **[Claude Code](https://code.claude.com/docs)** for `claude plugin validate` and the behavior evals.
 
 ## Checks
 
-Run these before opening a pull request. CI runs the same ones.
+Run these before opening a pull request. CI runs them too, with the script checks on both Linux and Windows. It also builds the skill zip, runs `claude plugin validate` with `--profile directory` added, and packs the MCP server as an npm package and as a `.mcpb` bundle and starts each.
 
 ```bash
 node scripts/build.mjs --check && node scripts/validate.mjs && node --test scripts/test/*.test.mjs
@@ -40,8 +42,8 @@ cd mcp && npm test && npm run test:inspector
 
 The validator explains each failure. The most common ones:
 - **Generated file is stale.** Run `node scripts/build.mjs`.
-- **Contract item missing.** Every heading, score dimension and marker in `data/contract.json` must appear in `SKILL.md`, `references/output-format.md` and the universal core. If you rename one, rename it everywhere.
-- **Budget exceeded.** `SKILL.md` has a size budget, and its key sections must start within the first 8,000 characters. That's because Claude Code keeps only about the first 5,000 tokens of an invoked skill after it compacts a long conversation. Move detail into a reference file instead.
+- **Contract item missing.** Every heading, score dimension and marker in `data/contract.json` must appear in `SKILL.md`, `references/output-format.md` and the universal core. A heading counts only as a `##` to `####` heading followed by a colon or the end of its line, or as a **bold** label that starts a list item, so `### Score anchors` doesn't count as the `Score` heading. If you rename one, rename it everywhere.
+- **Budget exceeded.** `SKILL.md` has a size budget, and its key sections must start within the first 8,000 characters. That's because Claude Code keeps only the first 5,000 tokens of an invoked skill after it compacts a long conversation; 8,000 characters is a deliberately conservative proxy for that. Move detail into a reference file instead.
 
 ## Writing guidelines for the method
 
@@ -49,7 +51,7 @@ These apply to `SKILL.md`, the references and the universal prompt, and to the p
 
 - **Give the reason, not emphasis.** Explain why an instruction matters rather than writing it in capitals. The validator flags capitalized pressure words such as MUST or NEVER and requests to show the model's reasoning, which current Claude models may refuse.
 - **Stay portable.**
-  - Frontmatter may only use `name`, `description`, `license`, `allowed-tools` and `metadata`, because Claude.ai and the Skills API reject other keys.
+  - Frontmatter may only use `name`, `description`, `license`, `allowed-tools` and `metadata`, because Claude.ai and the Skills API reject other keys. Write each value as a single-line `"double-quoted string"` without `"` or `\` inside, or as one bare word, so that strict YAML parsers and Claude Code read it the same way. Save `SKILL.md` as UTF-8 without a byte-order mark, which some skill validators refuse.
   - The description must be one line, without `<` or `>`, within the cap in `data/contract.json`.
   - Skill text must not use Claude Code's substitution syntax, such as `$ARGUMENTS` or `${CLAUDE_…}`; the validator lists every pattern.
 - **Never present unverified facts as facts.** This applies to the method and to the prompts it writes: unknowns become `[[placeholders]]`, and defaults become labelled assumptions. Tool-specific details belong in `data/media-targets.json` with a verification status and sources.
@@ -61,8 +63,8 @@ These apply to `SKILL.md`, the references and the universal prompt, and to the p
 
 1. Write `skills/prompt-engine/references/<domain>.md`, starting with a `# Title` line.
 2. In `SKILL.md`, make the "2. Diagnose" step point to it.
-3. Add the file's name to `KNOWLEDGE_ORDER` in `scripts/build.mjs`, then run `node scripts/build.mjs`. This updates the universal knowledge file and the MCP server's content.
-4. If the MCP server lists domains by name (see `mcp/src/`), add it there and to the server's tests.
+3. Add the file's name to `KNOWLEDGE_ORDER` in `scripts/build.mjs`, then run `node scripts/build.mjs`. This updates the universal knowledge file and the MCP server's content. `node scripts/validate.mjs` fails while a reference is missing from `KNOWLEDGE_ORDER`, or while `KNOWLEDGE_ORDER` names a file that doesn't exist.
+4. Add the domain to `DOMAINS` in `mcp/src/brief.ts`, which also builds `get_checklist`'s list of accepted domains and the checklist resources. Then add it, in the same order as `DOMAINS`, to the five lists written out by hand: the brief's `get_checklist` step in `mcp/src/brief.ts`, and in `mcp/src/server.ts` the tool order in `INSTRUCTIONS`, the description of `get_checklist`'s `domain` field, `get_checklist`'s own description and the checklist template's description. `mcp/test/brief.test.ts` and `mcp/test/integration.test.ts` fail until `DOMAINS` and all five lists name it. Also update `get_checklist`'s description in `mcp/manifest.json` and the tools table in `mcp/README.md`, which no test checks.
 5. Add at least one eval case that uses the new checklist.
 
 ### Update image or video tool data
@@ -122,6 +124,6 @@ When you change the method, include the eval summary, with and without the skill
 
 ## Reporting problems
 
-Open an issue with the rough prompt, the app and model you used, what you expected and what happened. Remove anything private first.
+Open an issue with the rough prompt, the app and model you used, what you expected and what happened. If you use the Claude Code plugin, add the `version`, `installedAt` and `lastUpdated` that `claude plugin list --json` shows for `prompt-engine@vipul-goel`: the version number stays the same until the next release, so the dates tell which copy you have. Remove anything private first.
 
 If you find a way that Prompt Engine could leak data or act without the user choosing to, don't post the details publicly. Use the repository's private vulnerability reporting (Security tab) if it's enabled, or open an issue asking for a private contact.
