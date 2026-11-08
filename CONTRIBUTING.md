@@ -102,7 +102,7 @@ The cases in `evals/` run with Claude Code's plugin eval runner, with and withou
 Evals make real model calls on your account and are billed. Start with a subset and a cost ceiling:
 
 ```bash
-claude plugin eval . --case 'image-*' --runs 1 --max-cost-usd 1 --no-publish
+claude plugin eval . --case 'image-*' --runs 1 --max-cost-usd 1 --no-publish --judge-model claude-haiku-5-5
 ```
 
 - **Cases that grant tools or run scaffold scripts.** The full suite needs `--allow-tools Write Edit --scaffold`. Read a case's `scaffold_script` before you run it.

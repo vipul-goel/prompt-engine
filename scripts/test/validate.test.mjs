@@ -325,7 +325,7 @@ const ROWS = [
     /error: evals\/spanish-quick: no prompt \(a prompt\.md body, or execution\.prompt in case\.yaml\)/],
   ['rejects a context that is not a mapping', (d) => edit(d, 'evals/save-to-file/case.yaml', (t) => t.replace('context:\n  history_file: history.jsonl', 'context: history.jsonl')),
     /save-to-file\/case\.yaml: context must be a mapping/],
-  ['rejects a value of the wrong type', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\nmodel: 5')), /spanish-quick\/prompt\.md: model must be a string/],
+  ['rejects a value of the wrong type', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace(/^model: .*$/m, 'model: 5')), /spanish-quick\/prompt\.md: model must be a string/],
   ['rejects tags that are not a list', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace(/^tags: .*$/m, 'tags: smoke')),
     /spanish-quick\/prompt\.md: tags must be a list of strings, such as \[a, b\]/],
   // Grader options.
@@ -387,6 +387,14 @@ const ROWS = [
     /error: evals\/trigger-natural-phrasing\/graders\/02-skill-fired\.md: a trigger case's Skill grader needs arm: both; without it, two-arm runs leave it out of the score \(repo rule\)/],
   ['rejects a trigger case without a tool_used grader on Skill', (d) => rmSync(join(d, 'evals/no-trigger-plain-task/graders/01-skill-not-fired.md')),
     /error: evals\/no-trigger-plain-task: a case tagged trigger needs a tool_used grader on Skill \(repo rule\)/],
+  // Every case pins one agent model, and a history case the model it was recorded on (finding 47, D28).
+  ['rejects a case that does not pin the agent model', (d) => edit(d, 'evals/video-veo-quick/prompt.md', (t) => t.replace(/^model: .*\n/m, '')),
+    /error: evals\/video-veo-quick\/prompt\.md: set model: to pin the agent under test; without it, the model comes from --model, ANTHROPIC_MODEL or Claude Code's default \(repo rule\)/],
+  ['rejects cases that pin different models', (d) => edit(d, 'evals/video-veo-quick/prompt.md', (t) => t.replace(/^model: .*$/m, 'model: claude-opus-5-5')),
+    /error: evals: cases pin different models \(claude-sonnet-5-5 in \d+ cases; claude-opus-5-5 in video-veo-quick\); pin one agent model in every case \(repo rule\)/],
+  // build.mjs refreshes a history's skill text and Read results, not its models: only this rule sees the change.
+  ['rejects a history recorded on another model than its case pins', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('"model":"claude-sonnet-5-5"', '"model":"claude-opus-5-5"')),
+    /error: evals\/save-to-file\/history\.jsonl: recorded on claude-opus-5-5, but prompt\.md pins claude-sonnet-5-5; record it again on claude-sonnet-5-5 \(repo rule\)\n\n1 error\(s\)/],
   // The token is built at run time, so this file holds none. CI logs are public, so the
   // message names the line and kind but not the token.
   ['rejects a recorded history that looks private', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('handmade ceramic mug', `handmade ceramic mug, token gh${'p'}_${'R'.repeat(36)}`)),

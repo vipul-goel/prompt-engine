@@ -483,17 +483,40 @@ function unread(root, c) {
 }
 
 // A case's settings as claude plugin eval resolves them: a key in prompt.md's front matter wins
-// over the same key in case.yaml.
+// over the same key in case.yaml, which holds model under execution: and history_file under
+// context:.
 function settings(c) {
   const fm = c.prompt?.data ?? {};
   const cy = c.caseYaml ?? {};
+  const exec = isMapping(cy.execution) ? cy.execution : {};
+  const ctx = isMapping(cy.context) ? cy.context : {};
   const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
-  return { tags: strings(fm.tags ?? cy.tags) };
+  return {
+    tags: strings(fm.tags ?? cy.tags),
+    model: fm.model ?? exec.model,
+    modelFile: fm.model != null ? 'prompt.md' : 'case.yaml',
+    history: ctx.history_file,
+  };
+}
+
+// The models of a recording's assistant messages. Claude Code writes <synthetic> as the model of
+// a message it makes itself (read in 2.1.319's code), so a value in angle brackets doesn't count.
+// A line that isn't JSON is skipped: scripts/build.mjs fails on it.
+function recordedModels(file) {
+  const models = new Set();
+  for (const line of normalize(readFileSync(file, 'utf8')).split('\n')) {
+    let row;
+    try { row = JSON.parse(line); } catch { continue; }
+    const m = row?.type === 'assistant' ? row.message?.model : undefined;
+    if (typeof m === 'string' && !m.startsWith('<')) models.add(m);
+  }
+  return models;
 }
 
 // This repo's rules for how the cases run and score, which claude plugin eval doesn't require.
 // cases is checkEvalCases's result; a case with a file that didn't read is skipped.
 export function checkSuiteRules(root, cases, err) {
+  const byModel = new Map(); // model -> the cases that pin it
   for (const c of cases) {
     if (unread(root, c)) continue;
     const s = settings(c);
@@ -508,5 +531,27 @@ export function checkSuiteRules(root, cases, err) {
         if (g.data.arm === undefined || g.data.arm === 'with-only') err(`${g.file}: a trigger case's Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)`);
       }
     }
+    // Every case pins the agent under test, and all pin the same one, so the scores of a run
+    // compare across cases and runs (D28). checkValues reports a model that isn't a string.
+    if (s.model == null || s.model === '') {
+      const where = c.prompt ? `${c.dir}/prompt.md: set model:` : `${c.dir}/case.yaml: set execution.model`;
+      err(`${where} to pin the agent under test; without it, the model comes from --model, ANTHROPIC_MODEL or Claude Code's default (repo rule)`);
+    } else if (typeof s.model === 'string') {
+      byModel.set(s.model, [...(byModel.get(s.model) ?? []), c.name]);
+      // A history case resumes a conversation recorded on one model; run on another, it tests
+      // a mix of the two.
+      const history = join(root, c.dir, 'history.jsonl');
+      if (s.history === 'history.jsonl' && isPlainFile(history)) {
+        for (const m of recordedModels(history)) {
+          if (m !== s.model) err(`${c.dir}/history.jsonl: recorded on ${m}, but ${s.modelFile} pins ${s.model}; record it again on ${s.model} (repo rule)`);
+        }
+      }
+    }
+  }
+  if (byModel.size > 1) {
+    // The most common model by count, the others by case name.
+    const list = [...byModel].sort(([a, x], [b, y]) => y.length - x.length || (a < b ? -1 : 1))
+      .map(([m, names], i) => `${m} in ${i === 0 && names.length > 1 ? `${names.length} cases` : names.join(', ')}`);
+    err(`evals: cases pin different models (${list.join('; ')}); pin one agent model in every case (repo rule)`);
   }
 }

@@ -283,8 +283,9 @@ test('checkEvalCases skips the git check when .git is not a repository (exit 128
 });
 
 // ---------- checkSuiteRules: this repo's rules for how the cases run and score ----------
-// prompt.md with the given front matter lines.
-const promptMd = (front) => `---\n${front}---\n\n${PROMPT}`;
+const MODEL = 'claude-sonnet-5-5';
+// prompt.md with the given front matter lines and a model line, none when model is null.
+const promptMd = (front = '', model = MODEL) => `---\n${front}${model === null ? '' : `model: ${model}\n`}---\n\n${PROMPT}`;
 const SKILL_CHECK = (extra = '') => `---\ntype: tool_used\ntool: Skill\n${extra}---\n`;
 // checkEvalCases's errors (schema) and checkSuiteRules's (errors) on a small tree.
 function rules(files) {
@@ -318,7 +319,7 @@ test('checkSuiteRules scores a trigger case\'s Skill grader in both arms', () =>
 });
 
 test('checkSuiteRules reads tags as claude plugin eval does: prompt.md\'s, else case.yaml\'s', () => {
-  const caseYaml = (name) => `schema_version: "1.1"\nname: ${name}\ntags: [trigger]\n`;
+  const caseYaml = (name) => `schema_version: "1.1"\nname: ${name}\ntags: [trigger]\nexecution:\n  model: ${MODEL}\n`;
   const { schema, errors } = rules({
     'evals/from-case-yaml/case.yaml': caseYaml('from-case-yaml'),
     'evals/from-case-yaml/prompt.md': PROMPT,
@@ -354,4 +355,68 @@ test('checkSuiteRules skips a case with a file that did not read, and leaves an 
     'evals/no-front-matter: needs at least one grader in graders/ with front matter',
   ]);
   assert.deepEqual(errors, []);
+});
+
+const REGEX_CASE = (name, prompt) => ({ [`evals/${name}/prompt.md`]: prompt, [`evals/${name}/graders/01-x.md`]: REGEX });
+const SET_MODEL = (file) => `${file}: set model: to pin the agent under test; without it, the model comes from --model, ANTHROPIC_MODEL or Claude Code's default (repo rule)`;
+
+test('checkSuiteRules requires a model in prompt.md, or under execution: in case.yaml', () => {
+  const { schema, errors } = rules({
+    ...REGEX_CASE('unset', promptMd('', null)),
+    ...REGEX_CASE('empty', promptMd('', "''")),
+    ...REGEX_CASE('not-a-string', promptMd('', '5')),
+    ...REGEX_CASE('in-case-yaml', promptMd('', null)),
+    'evals/in-case-yaml/case.yaml': `schema_version: "1.1"\nname: in-case-yaml\nexecution:\n  model: ${MODEL}\n`,
+    'evals/case-yaml-only/case.yaml': 'schema_version: "1.1"\nname: case-yaml-only\nexecution:\n  prompt: Hi.\n',
+    'evals/case-yaml-only/graders/01-x.md': REGEX,
+  });
+  assert.deepEqual(schema, ['evals/not-a-string/prompt.md: model must be a string']);
+  assert.deepEqual(errors, [
+    "evals/case-yaml-only/case.yaml: set execution.model to pin the agent under test; without it, the model comes from --model, ANTHROPIC_MODEL or Claude Code's default (repo rule)",
+    SET_MODEL('evals/empty/prompt.md'),
+    SET_MODEL('evals/unset/prompt.md'),
+  ]);
+});
+
+test('checkSuiteRules wants one model across the cases, prompt.md\'s winning over case.yaml\'s', () => {
+  const { schema, errors } = rules({
+    ...REGEX_CASE('a', promptMd()),
+    ...REGEX_CASE('b', promptMd()),
+    ...REGEX_CASE('c', promptMd()),
+    ...REGEX_CASE('overrides', promptMd()),
+    'evals/overrides/case.yaml': 'schema_version: "1.1"\nname: overrides\nexecution:\n  model: claude-opus-5-5\n',
+    ...REGEX_CASE('odd', promptMd('', 'claude-opus-5-5')),
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, ['evals: cases pin different models (claude-sonnet-5-5 in 4 cases; claude-opus-5-5 in odd); pin one agent model in every case (repo rule)']);
+  // With one case on each model, both are named.
+  assert.deepEqual(rules({ ...REGEX_CASE('x', promptMd('', 'm-2')), ...REGEX_CASE('y', promptMd('', 'm-1')) }).errors,
+    ['evals: cases pin different models (m-1 in y; m-2 in x); pin one agent model in every case (repo rule)']);
+});
+
+test('checkSuiteRules compares a history case\'s assistant messages with the model it pins', () => {
+  const row = (type, model) => JSON.stringify({ type, message: { role: type, model, content: 'x' } });
+  const history = [
+    row('user', 'claude-haiku-5-5'), // only assistant messages count
+    row('assistant', MODEL),
+    row('assistant', '<synthetic>'), // a message Claude Code wrote itself
+    row('assistant', 'claude-opus-5-5'),
+    'not JSON', // scripts/build.mjs fails on this line
+    row('assistant', 'claude-opus-5-5'),
+    '',
+  ].join('\n');
+  const historyCase = (name, caseYaml, prompt) => ({
+    [`evals/${name}/case.yaml`]: `schema_version: "1.1"\nname: ${name}\n${caseYaml}context:\n  history_file: history.jsonl\n`,
+    [`evals/${name}/history.jsonl`]: history,
+    ...REGEX_CASE(name, prompt),
+  });
+  const { schema, errors } = rules({
+    ...historyCase('pinned-in-prompt', '', promptMd()),
+    ...historyCase('pinned-in-case-yaml', `execution:\n  model: ${MODEL}\n`, PROMPT),
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, [
+    'evals/pinned-in-case-yaml/history.jsonl: recorded on claude-opus-5-5, but case.yaml pins claude-sonnet-5-5; record it again on claude-sonnet-5-5 (repo rule)',
+    'evals/pinned-in-prompt/history.jsonl: recorded on claude-opus-5-5, but prompt.md pins claude-sonnet-5-5; record it again on claude-sonnet-5-5 (repo rule)',
+  ]);
 });
