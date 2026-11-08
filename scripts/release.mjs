@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { root, OS_JUNK } from './build.mjs';
+import { root, OS_JUNK, normalize } from './build.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -20,7 +20,8 @@ const value = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i +
 const run = (cmd, cmdArgs, opts = {}) => execFileSync(cmd, cmdArgs, { cwd: root, stdio: 'inherit', ...opts });
 const dist = join(root, 'dist');
 
-const version = JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+// normalize(), as validate.mjs reads it: a byte-order mark would make JSON.parse throw here.
+const version = JSON.parse(normalize(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8'))).version;
 const tag = value('--tag');
 if (tag && tag !== `v${version}`) {
   console.error(`tag ${tag} does not match plugin version v${version}; bump .claude-plugin/plugin.json (and the versions it is synced with) first`);

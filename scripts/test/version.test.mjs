@@ -143,7 +143,9 @@ test('reminds about CHANGELOG.md until the version has a dated heading', () => {
     const reminder = /Next: give CHANGELOG\.md a "## \[9\.8\.7\] - YYYY-MM-DD" heading/;
     const withHeading = (heading, eol = '\n') =>
       writeFileSync(changelog, `# Changelog\n\n## [Unreleased]\n\n${heading}\n\nFirst version.\n`.replaceAll('\n', eol));
-    for (const heading of ['## [9.8.7] - not yet released', '## [9.8.70] - 2026-11-10']) {
+    // Undated, another version, a heading that only an unescaped "." would match, and one with
+    // text after the date.
+    for (const heading of ['## [9.8.7] - not yet released', '## [9.8.70] - 2026-11-10', '## [9x8x7] - 2026-11-10', '## [9.8.7] - 2026-11-10 [YANKED]']) {
       withHeading(heading);
       const r = run(dir, 'version.mjs', '9.8.7');
       assert.equal(r.code, 0, r.out);
