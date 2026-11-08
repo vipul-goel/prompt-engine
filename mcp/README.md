@@ -1,8 +1,8 @@
 # Prompt Engine MCP server
 
-`prompt-engine-mcp` brings [Prompt Engine](https://github.com/vipul-goel/prompt-engine) to any MCP client. Prompt Engine turns a rough prompt into a detailed, LLM-ready prompt. It finds what's missing, asks you a few multiple-choice questions with a recommended answer for each, then writes the prompt and explains every addition.
+`prompt-engine-mcp` brings [Prompt Engine](https://github.com/vipul-goel/prompt-engine) to MCP clients. Prompt Engine turns a rough prompt into a detailed, LLM-ready prompt. It finds what's missing, asks you a few multiple-choice questions with a recommended answer for each, then writes the prompt and explains every addition.
 
-The model you already use does the writing. This server supplies the method, the domain checklists, a way to ask you questions and a deterministic lint. It never calls a model, needs no API key, makes no network calls and doesn't log prompts.
+The model you already use does the writing. This server supplies the method, the domain checklists, a way to ask you questions and a deterministic lint. It never calls a model or any other service, needs no API key and doesn't log prompts.
 
 - [Install](#install)
 - [Use it](#use-it)
@@ -13,9 +13,7 @@ The model you already use does the writing. This server supplies the method, the
 
 ## Install
 
-The npm package and the `.mcpb` file appear with the first release. Until then, build from a clone (see [Development and testing](#development-and-testing)) and point your client at `node /path/to/prompt-engine/mcp/dist/cli.js`.
-
-**Claude Desktop.** Download `prompt-engine.mcpb` from the [latest release](https://github.com/vipul-goel/prompt-engine/releases) and open it with Claude Desktop. The bundle carries its own server file, so nothing else gets installed.
+**Claude Desktop.** Download `prompt-engine.mcpb` from the [latest release](https://github.com/vipul-goel/prompt-engine/releases) (not yet tested in Claude Desktop) and open it with Claude Desktop. The bundle carries its own server file, so nothing else gets installed. That file includes third-party code under the MIT, Apache-2.0 and BSD-3-Clause licenses, whose texts are in `server/THIRD_PARTY_NOTICES.txt` inside the bundle. To check a download, put it next to `SHA256SUMS` from the same release and run `shasum -a 256 -c --ignore-missing SHA256SUMS` (or `sha256sum -c --ignore-missing SHA256SUMS`).
 
 **Claude Code.**
 
@@ -45,7 +43,7 @@ Add `--scope user` to use it in every project. If you also installed the Prompt 
 }
 ```
 
-The server is supported on Node.js 22.19 or later. On Windows, some clients need `"command": "cmd", "args": ["/c", "npx", "-y", "prompt-engine-mcp"]`.
+The server is supported on Node.js 22.19 or later. On Windows, some clients need `"command": "cmd", "args": ["/c", "npx", "-y", "prompt-engine-mcp"]`. To run it from a clone instead, build it (see [Development and testing](#development-and-testing)) and start it with `node /path/to/prompt-engine/mcp/dist/cli.js`; in JSON configs, that's `"command": "node", "args": ["/path/to/prompt-engine/mcp/dist/cli.js"]`.
 
 ## Use it
 
@@ -87,13 +85,13 @@ The form has a single-choice field per question, preselected on the recommended 
 
 `ask_user` adds the ★ itself: it takes a ★ that stands alone at the start or end of the recommended label off, and rejects a label with any other ★, such as a star rating. A rating with one ★ on the recommended option alone, such as "4.5 ★", looks the same as that marker and loses its ★ too; the ★ that `ask_user` adds stands next to it. It also rejects a question, a `why` or a label with no visible character, and two labels in one question that differ only in whitespace, invisible characters or Unicode normalization. Joiners, variation selectors and tag characters count as differences except at the start of a label or after an ASCII character, since elsewhere they change how emoji and some scripts are drawn: the flags of England and Scotland are two labels. Labels that look alike because of letters from another script, full-width letters or ligatures are not caught. Control characters in the model's text and the user's notes become spaces (notes keep their line breaks), and unpaired surrogates become U+FFFD.
 
-`check_prompt` is a heuristic. For each scored area (Clear goal, Context, Constraints, Output format, Edge cases) it reports whether the draft explicitly mentions it, with short evidence, plus lint findings from [`data/lint-rules.json`](../data/lint-rules.json): capitalized pressure words, requests to expose reasoning, prefill instructions, template leftovers, open `[[placeholders]]` and similar. It gives no score; the model scores with the shared rubric.
+`check_prompt` is a heuristic. For each scored area (Clear goal, Context, Constraints, Output format, Edge cases) it reports whether the draft explicitly mentions it, with short evidence, plus lint findings from [`data/lint-rules.json`](https://github.com/vipul-goel/prompt-engine/blob/main/data/lint-rules.json): capitalized pressure words, requests to expose reasoning, prefill instructions, template leftovers, open `[[placeholders]]` and similar. It gives no score; the model scores with the shared rubric.
 
 The area checks, and every lint rule except the `{{template}}` and `[[placeholder]]` checks, match English text only. When a draft looks mostly non-English, an area without a match is reported as `unknown` rather than `not found`. Language is judged on the prose, without code blocks, inline code and URLs; text in bare fences, and in fences marked as text, Markdown or a prompt, counts only when the prose outside them is too short to judge. Letters of another script mark a draft as non-English once they are a fifth of its letters, so tool names don't make a Chinese draft English. An English draft that quotes a longer passage in another script, such as a sentence to translate, is read as non-English too, and its areas come back `unknown`. It recognizes drafts in non-Latin scripts; in German, French, Spanish, Portuguese, Italian, Dutch, Polish, Swedish, Turkish, Indonesian, Tagalog, Swahili or Romanized Hindi; and with many accented letters. Drafts in other languages, and short or terse drafts in any script, may be reported as `not found`.
 
 Output format counts a format word (JSON, YAML, CSV, XML, Markdown, HTML) only in phrases such as "respond in JSON", "the output must be valid JSON", "return JSON only", or "JSON only" and "Output: JSON" at the start of a line, list item or sentence, so "build a JSON parser" doesn't count. Other wordings, such as "It must be valid JSON" or "Give me JSON only", can be reported as not found. Phrases about the task that use the same words, such as "an endpoint that returns JSON" or "stored in JSON", still count.
 
-Lines are matched one at a time, after each control character becomes a space and each run of whitespace one space, so a lint rule about tabs or double spaces never fires here. A rule whose pattern could run slowly or miss matches is skipped and named in the summary; [CONTRIBUTING.md](../CONTRIBUTING.md#add-a-lint-rule) lists the limits. The time grows linearly with the draft's length, and the tests time hostile 100,000-character drafts.
+Lines are matched one at a time, after each control character becomes a space and each run of whitespace one space, so a lint rule about tabs or double spaces never fires here. A rule whose pattern could run slowly or miss matches is skipped and named in the summary; [CONTRIBUTING.md](https://github.com/vipul-goel/prompt-engine/blob/main/CONTRIBUTING.md#add-a-lint-rule) lists the limits. The time grows linearly with the draft's length, and the tests time hostile 100,000-character drafts.
 
 ### Prompt
 
@@ -168,8 +166,8 @@ One client can still hold all 128 request slots with slow uploads, or all 1,024 
 ## Privacy
 
 - **No prompt logging.** Over stdio, stdout carries only protocol messages. On stderr the server writes its start-up line (`--http` only), warnings about its own settings, and one line per error. It logs nothing for requests that succeed, and nothing for most refused ones: a foreign or unparseable `Host`, a foreign `Origin`, an unsupported method, a body that is too large or isn't JSON, a busy server, or headers that never arrive. Some refusals by the MCP SDK are logged as a fixed phrase with its reason code, such as `rejected a request (method-header-missing)`, and so are stdio messages that are JSON but not JSON-RPC, such as `ignored a message that is not valid JSON-RPC (invalid-message)`. Stdio lines that aren't JSON are dropped without a reply or a log line. No line quotes a request. Any other error, such as a socket failing or an upload cut off (`Error: aborted`), is logged as its type and message, with quoted text removed, control characters replaced by spaces, and cut to 200 characters. The Worker's own code logs only its two warnings about `ALLOWED_HOSTS` entries.
-- **No API key and no network calls.** It never calls a model or any other service.
-- **Your prompt stays with your model.** `enhance_prompt` never receives it. Only `check_prompt` sees a draft, and only when the model calls it.
+- **No API key and no outbound calls.** It never calls a model or any other service.
+- **What the server receives.** `enhance_prompt` never receives your prompt. Only `check_prompt` sees a draft, and only when the model calls it. `ask_user` receives the questions and, when your app shows a form, returns your answers and notes. On a server someone else hosts, those calls pass through their server.
 - Self-hosted and Workers deployments keep nothing between requests.
 
 ## Development and testing

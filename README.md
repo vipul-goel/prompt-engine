@@ -2,7 +2,7 @@
 
 **Turn a rough prompt into a detailed, explained, LLM-ready prompt by answering a few multiple-choice questions.**
 
-You type what you'd normally type into an AI tool. Prompt Engine finds what's missing — goal, audience, context, constraints, format, edge cases — and asks you a few questions, each with a recommended answer. Then it writes a prompt that gives the reason behind each instruction. It works in Claude, Claude Code, ChatGPT, Gemini, Codex, GitHub Copilot, Cursor and any MCP client.
+You type what you'd normally type into an AI tool. Prompt Engine finds what's missing — goal, audience, context, constraints, format, edge cases — and asks you a few questions, each with a recommended answer. Then it writes a prompt that gives the reason behind each instruction. It's tested in Claude Code and made for Claude.ai, ChatGPT, Gemini, Codex, GitHub Copilot, Cursor and MCP clients; [docs/compatibility.md](docs/compatibility.md) shows how far each one has been checked.
 
 ```text
 You:   /prompt-engine write a blog post about remote work
@@ -39,13 +39,13 @@ You:   ok
 | You use | How to install |
 |---|---|
 | **Claude Code** | `/plugin marketplace add vipul-goel/prompt-engine`, then `/plugin install prompt-engine@vipul-goel`. On Claude Code 2.1.275 or later, this one line does both: `/plugin install prompt-engine --marketplace vipul-goel/prompt-engine` |
-| **Claude.ai** (web, desktop, mobile) | Customize → Plugins → Add → Add marketplace → `https://github.com/vipul-goel/prompt-engine`. Or upload `prompt-engine.zip` from the [latest release](https://github.com/vipul-goel/prompt-engine/releases) under Customize → Skills. Skills need **Code execution and file creation** turned on in Settings. |
-| **Codex, Gemini CLI, GitHub Copilot, Cursor, Cline, OpenCode, Goose and other agents that read SKILL.md** | `npx skills add vipul-goel/prompt-engine`, or copy the [`skills/prompt-engine`](skills/prompt-engine) folder into `~/.agents/skills/` |
+| **Claude.ai** (web, desktop, mobile) | Customize → Plugins → Add → Add marketplace → `https://github.com/vipul-goel/prompt-engine`. Or upload `prompt-engine.zip` from the [latest release](https://github.com/vipul-goel/prompt-engine/releases) under Customize → Skills. Skills need **Code execution and file creation** (called **Create and edit files** in the updated Settings layout) turned on in Settings. |
+| **Codex, Gemini CLI, GitHub Copilot, Cursor, Cline, OpenCode, Goose and other agents that read SKILL.md** | `npx skills add vipul-goel/prompt-engine`, or copy the [`skills/prompt-engine`](skills/prompt-engine) folder into `~/.agents/skills/`, which every agent named here reads ([other folders](docs/install.md#other-agents-that-read-skillmd)) |
 | **ChatGPT, Gemini, Microsoft Copilot, Perplexity or any other chatbot** | Paste [`universal/prompt-engine.md`](universal/prompt-engine.md) into a chat, a custom GPT, a Gem or a project. [Setup notes](universal/README.md) |
-| **MCP clients** (Claude Desktop, Claude Code, Cursor, VS Code, Zed…) | `npx -y prompt-engine-mcp` as a local MCP server, or the one-click `.mcpb` file for Claude Desktop from the releases page. [MCP server guide](mcp/README.md) |
+| **MCP clients** (Claude Desktop, Claude Code, Cursor, VS Code, Zed…) | `npx -y prompt-engine-mcp` as a local MCP server, or the one-click `.mcpb` file for Claude Desktop from the releases page (not yet tested in Claude Desktop). [MCP server guide](mcp/README.md) |
 | **Claude API or Agent SDK** | Upload the skill folder with the Skills API, or place it in `.claude/skills/`. See [docs/install.md](docs/install.md) |
 
-**Don't install it twice.** A plugin added on Claude.ai also appears in Claude Code, so adding the same thing in both places gives you two copies. Step-by-step instructions for every option are in [docs/install.md](docs/install.md). The npm package and the release files appear after the first release; until then, use the marketplace, `npx skills add`, or the files in this repo.
+**Don't install it twice.** A plugin or skill you add on Claude.ai also loads in Claude Code when you sign in there with the same account, and several agents read the same skill folders, so a second install can leave you with two copies; [Install it once](docs/install.md#install-it-once) says which copies overlap and what to do about them. Step-by-step instructions for every option are in [docs/install.md](docs/install.md). The npm package and the release files appear after the first release; until then, use the marketplace, `npx skills add`, or the files in this repo.
 
 ## Use it
 
@@ -59,7 +59,7 @@ You:   ok
 - **Modes:** start your prompt with `quick:` for no questions, or `deep:` for extra question rounds.
 - **Answering questions:** `ok` accepts every ★; `2b 4: your own text` answers some questions and keeps ★ for the rest.
 - **After the prompt is ready:**
-  - `1` runs it here;
+  - `1` runs it here (a bare `ok` doesn't);
   - `change 2: …` edits an assumption;
   - `deep` asks more questions;
   - in Claude Code, `3` saves it to `prompts/<name>.md`.
@@ -68,7 +68,7 @@ In Claude Code, the questions and the "What next?" menu appear as clickable dial
 
 ## Real example
 
-From the test suite (Claude Sonnet 5.5, quick mode), for "a cozy cabin in the snow at night" as a Midjourney prompt:
+From the test suite (quick mode), for "a cozy cabin in the snow at night" as a Midjourney prompt:
 
 ```text
 small log cabin with warm glowing windows nestled in deep fresh snow at night, thin chimney smoke curling upward, three snow-laden pine trees beside it, clear sky full of stars with a crescent moon, soft blue moonlight on the snowdrifts, amber window light spilling across the snow, a single line of footprints leading to the front door, wide shot at eye level, photorealistic --ar 3:2 --no people text watermark
@@ -78,17 +78,17 @@ It explained the additions. For example, the amber window light against blue moo
 
 ## How it's tested
 
-- **Behavior evals** with Claude Code's official runner (`claude plugin eval`), run with and without the skill. The cases cover question rounds, quick mode, follow-up replies, Spanish and Japanese prompts, secret redaction, prompt injection, saving to a file, "nothing runs until you choose", and trigger and non-trigger cases. Results are in [docs/compatibility.md](docs/compatibility.md).
-- **Trigger tests** of the skill description: 24 requests, half of them near-misses such as "translate this prompt" or "run this prompt". In testing with Claude Sonnet 5.5, it started on all 12 prompt requests and on none of the near-misses.
-- **Two-turn tests** of the universal prompt with every tool disabled, the way a chatbot would use it.
-- **Static checks** (`node scripts/validate.mjs`) for portability rules, prompt lint, size budgets and the shared output contract, plus mutation tests that confirm each check catches what it should.
+- **Behavior evals** with Claude Code's official runner (`claude plugin eval`), run with and without the skill. The cases cover question rounds, quick mode, follow-up replies, Spanish and Japanese prompts, secret redaction, prompt injection, saving to a file, "nothing runs until you choose", and trigger and non-trigger cases. Eval runs don't grant shell commands, so the "nothing runs until you choose" and injection cases check file writes and edits only. Results are in [docs/compatibility.md](docs/compatibility.md).
+- **Trigger tests** of the skill description, run as a one-off during development: 24 requests, half of them near-misses such as "translate this prompt" or "run this prompt". With Claude Sonnet 5.5, it started on all 12 prompt requests and on none of the near-misses. The request set isn't in the repository.
+- **Conversation tests** of the universal prompt on Claude, through `claude -p` with no tools or MCP servers loaded, the way a chatbot would use it. They make billed calls, so they're run by hand.
+- **Static checks** (`node scripts/validate.mjs`) for portability rules, prompt lint, size budgets and the shared output contract, plus mutation tests for each rule it enforces.
 - **MCP server tests** covering both protocol versions, with and without form questions, over stdio and HTTP.
 
 Some platform details couldn't be verified directly, such as other chat apps' instruction limits and some tools' current syntax. Those are marked as unverified in the docs instead of being presented as facts.
 
 ## Prior art and what's different
 
-Anthropic's Console prompt improver and generator were retired in August 2026, according to Anthropic's release notes. Most remaining "enhance prompt" buttons, such as those in app builders and IDEs, rewrite silently without asking or explaining. Community projects explored parts of this idea:
+Anthropic's [release notes](https://platform.claude.com/docs/en/release-notes/overview#july-17-2026) (July 17, 2026 entry) announced the retirement of the legacy Console Workbench and the experimental API endpoints for generating and improving prompts on August 17, 2026. As of November 2026, community projects cover parts of this idea:
 - [prompt-master](https://github.com/nidhinjs/prompt-master) asks at most 3 questions and returns one prompt block;
 - [claude-code-prompt-improver](https://github.com/severity1/claude-code-prompt-improver) uses a hook to research the repo and ask questions when a prompt is vague;
 - [prompt-architect](https://github.com/ckelsoe/prompt-architect) offers framework-based rewrites with scores;
@@ -98,7 +98,7 @@ Prompt Engine combines adaptive questions with recommended answers, a no-inventi
 
 ## Privacy
 
-The skill and the universal prompt are just instructions: your prompts go only to the AI app you already use. The MCP server makes no network calls, needs no API key and doesn't log prompts. Its main tool doesn't even receive your prompt text.
+The skill and the universal prompt are just instructions: your prompts go only to the AI app you already use. The MCP server never calls a model or any other service, needs no API key and doesn't log prompts. Its main tool, `enhance_prompt`, never receives your prompt. `check_prompt` receives a draft when the model calls it, and `ask_user` receives the questions and, when your app shows them as a form, your answers and notes. A server on your own machine sends none of this anywhere; if you connect to a copy someone else hosts, those calls go to their server.
 
 ## Repository layout
 
