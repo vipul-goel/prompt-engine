@@ -538,6 +538,10 @@ test('checkSuiteRules wants the needs-write tag on a case that needs --allow-too
   const { schema, errors } = rules({
     ...REGEX_CASE('read-only', promptMd(`allowed_tools: [${READ_ONLY}]\n`)),
     ...REGEX_CASE('pattern', promptMd("allowed_tools: [Read, 'Bash(ls *)', 'Read(/etc/hosts)']\n")),
+    // A read-only tool with a rule needs no grant, except Read, Glob or Grep with a rule outside the
+    // workspace (2.1.319's code).
+    ...REGEX_CASE('read-only-rules', promptMd("allowed_tools: ['Skill(prompt-engine)', 'Read(./src/**)', 'Glob(src/*.ts)', 'TodoWrite(x)', 'Agent(/abs)']\n")),
+    ...REGEX_CASE('outside-rules', promptMd("allowed_tools: ['Read(~/notes)', 'Grep(../x)', 'Glob(C:/x)', 'Read(\\x)', 'Write(./x)']\n")),
     ...REGEX_CASE('scaffold', promptMd()),
     'evals/scaffold/case.yaml': 'schema_version: "1.1"\nname: scaffold\ncontext:\n  scaffold_script: setup.sh\n',
     'evals/scaffold/setup.sh': 'true\n',
@@ -547,6 +551,7 @@ test('checkSuiteRules wants the needs-write tag on a case that needs --allow-too
   });
   assert.deepEqual(schema, []);
   assert.deepEqual(errors, [
+    'evals/outside-rules: allowed_tools lists Read(~/notes), Grep(../x), Glob(C:/x), Read(\\x), Write(./x), which only --allow-tools grants; tag it needs-write (repo rule)',
     'evals/pattern: allowed_tools lists Bash(ls *), Read(/etc/hosts), which only --allow-tools grants; tag it needs-write (repo rule)',
     'evals/scaffold: context.scaffold_script runs only with --scaffold; tag it needs-write (repo rule)',
   ]);
@@ -572,6 +577,8 @@ test('checkSuiteRules backs a check that passes with zero calls with a tools-gra
     ...gatedCase('last-message', { '01-no-writes.md': zero('Write'), '02-granted.md': `---\ntype: regex\npattern: '${WRITE}'\n---\n` }),
     ...gatedCase('other-tool', { '01-no-writes.md': zero('Write'), '02-granted.md': granted('"tools":\\[(?=[^\\]]*"Edit")') }, 'Write, Edit'),
     ...gatedCase('unlisted', { '01-no-writes.md': zero('Write'), '02-granted.md': granted(WRITE) }, 'Edit'),
+    // A trace pattern that names the tool but not the init line's tool list checks for a call.
+    ...gatedCase('no-tool-list', { '01-no-writes.md': zero('Write'), '02-called.md': granted('"name":"Write"') }),
   });
   assert.deepEqual(schema, []);
   const unbacked = (c, f) => `evals/${c}/graders/${f}: with min: 0 this check passes when Write isn't granted, with zero calls; add a tools-granted regex grader (target: trace) that requires "Write" (repo rule)`;
@@ -579,10 +586,22 @@ test('checkSuiteRules backs a check that passes with zero calls with a tools-gra
     unbacked('at-most-two', '01-few-writes.md'),
     unbacked('inverted', '01-no-writes.md'),
     unbacked('last-message', '01-no-writes.md'),
+    unbacked('no-tool-list', '01-no-writes.md'),
     unbacked('other-tool', '01-no-writes.md'),
     'evals/unlisted/graders/01-no-writes.md: list Write in allowed_tools, so that the progress output names it as not granted when --allow-tools leaves it out (repo rule)',
     unbacked('with-only', '01-no-writes.md'),
   ]);
+});
+
+test('checkSuiteRules counts only a regex grader as a tools-granted check', () => {
+  // The CLI refuses a target or pattern on another grader type; the schema check says so.
+  const { schema, errors } = rules({
+    'evals/not-regex/prompt.md': promptMd('tags: [needs-write]\nallowed_tools: [Write]\n'),
+    'evals/not-regex/graders/01-no-writes.md': '---\ntype: tool_used\ntool: Write\nmin: 0\nmax: 0\n---\n',
+    'evals/not-regex/graders/02-granted.md': `---\ntype: file_exists\npath: x\ntarget: trace\npattern: '"tools":\\[(?=[^\\]]*"Write")'\n---\n`,
+  });
+  assert.deepEqual(schema, ['evals/not-regex/graders/02-granted.md: key "target" is not a file_exists grader option', 'evals/not-regex/graders/02-granted.md: key "pattern" is not a file_exists grader option']);
+  assert.deepEqual(errors, ['evals/not-regex/graders/01-no-writes.md: with min: 0 this check passes when Write isn\'t granted, with zero calls; add a tools-granted regex grader (target: trace) that requires "Write" (repo rule)']);
 });
 
 // ---------- checkConversations: the history cases ----------

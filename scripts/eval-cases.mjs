@@ -518,6 +518,18 @@ const READ_ONLY = new Set(['Read', 'Glob', 'Grep', 'NotebookRead', 'Skill', 'Ask
   'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate', 'TaskStop']);
 // The tool an allowed_tools entry names, without a pattern such as the one in Bash(npm test *).
 const toolName = (t) => t.replace(/\(.*$/s, '');
+// Whether a run allows an allowed_tools entry without --allow-tools, as 2.1.319's code decides
+// it: a read-only tool, also with a rule such as Skill(prompt-engine) or Read(./src/**), unless it
+// is Read, Glob or Grep with a rule that starts with /, ~, \ or a drive letter, or has a ".."
+// segment. Not modeled, since no case here uses one: a tool on a mocked MCP server, which needs no
+// grant either (docs).
+function allowedUngranted(entry) {
+  const name = toolName(entry);
+  const rule = entry.match(/^[^(]*\(([\s\S]*)\)$/)?.[1];
+  if (!READ_ONLY.has(name)) return false;
+  if (rule === undefined || !['Read', 'Glob', 'Grep'].includes(name)) return true;
+  return !/^[/~\\]|^[A-Za-z]:/.test(rule) && !rule.split(/[\\/]/).includes('..');
+}
 // A regex grader that fails unless the trace's tool list, the init line's "tools":[...], names
 // the tool: target trace, a pattern holding "tools" and the tool in double quotes, match contains
 // (the default), and not arm: with-only, which two-arm runs leave out of the score.
@@ -596,8 +608,7 @@ export function checkSuiteRules(root, cases, err) {
     }
     // A case that needs a granted tool or its scaffold script is tagged needs-write, so one
     // command with --tag needs-write, --allow-tools and --scaffold runs all of them (D32).
-    // Exact names, the stricter reading: an entry with a pattern counts as a tool to grant.
-    const gated = s.allowed.filter((t) => !READ_ONLY.has(t));
+    const gated = s.allowed.filter((t) => !allowedUngranted(t));
     const needs = [];
     if (gated.length) needs.push(`allowed_tools lists ${gated.join(', ')}, which only --allow-tools grants`);
     if (s.scaffold != null) needs.push('context.scaffold_script runs only with --scaffold');
