@@ -4,11 +4,12 @@
 //   skills/prompt-engine/references/*.md -> universal/prompt-engine-knowledge.md
 //   skills/, universal/ and data/        -> mcp/src/generated/content.ts (when mcp/ exists)
 //   SKILL.md and references/            -> the skill text and Read results inside evals/*/history.jsonl
+//   data/lint-rules.json                 -> evals/<case>/graders/lint-prompt*.md (LINT_GRADER_CASES)
 // Zero dependencies: Node >= 22.19 built-ins only. Output is deterministic (no timestamps),
 // so `node scripts/build.mjs && git diff --exit-code` detects stale generated files.
 // `node scripts/build.mjs --check` exits 1 instead of writing when anything is stale.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -204,6 +205,73 @@ export function refreshHistory(jsonl, skillBody, readPluginFile) {
   }).join('\n');
 }
 
+// Eval cases whose reply holds an enhanced prompt get two regex graders generated from
+// data/lint-rules.json (D36): lint-prompt.md for the rules without flags, lint-prompt-i.md for
+// the rules with flag i. Each fails when a rule matches inside any fenced block of the reply,
+// which is where the full prompt and the short version go, so the same words in the commentary
+// don't count. open-placeholder stays out (placeholders are allowed), vague-quality-words
+// applies only to image and video prompts, and secret-redaction-quick skips template-leftover,
+// because a correct GitHub Actions prompt reads the key as ${{ secrets.NAME }}. The graders
+// match the raw text of each block, code spans included, so a prompt that names a CRITICAL log
+// level in backticks fails them.
+export const LINT_GRADER_CASES = {
+  'followup-ok-accepts-recommendations': {},
+  'followup-partial-answers': {},
+  'image-midjourney-quick': { media: true },
+  'japanese-midjourney-quick': { media: true },
+  'research-quick-vector-databases': {},
+  'secret-redaction-quick': { skip: ['template-leftover'] },
+  'spanish-quick': {},
+  'strong-prompt-minimal-changes': {},
+  'video-veo-quick': { media: true },
+  'writing-quick-launch-email': {},
+};
+const LINT_NEVER = new Set(['open-placeholder']);
+const LINT_MEDIA_ONLY = new Set(['vague-quality-words']);
+const LINT_FILES = { '': 'lint-prompt.md', i: 'lint-prompt-i.md' };
+
+// A pattern that matches when x matches inside any fenced block: skip whole blocks, each closed
+// by a fence as long as its opener, then search one block. Named groups, because the rules' own
+// groups would shift numbered backreferences. An opening fence takes its whole run of backticks
+// ((?!`)). Without that, a fence of four or more backticks can also be read as a shorter one, so
+// on a reply without a match the time doubled with each such block: 20 took 3 s in JavaScriptCore.
+export const inFencedBlock = (x) => '^(?:(?:(?!`{3})[\\s\\S])*?(?<f>`{3,})(?!`)[^\\n]*\\n(?:(?!\\n\\k<f>)[\\s\\S])*?\\n\\k<f>)*?'
+  + '(?:(?!`{3})[\\s\\S])*?(?<g>`{3,})(?!`)[^\\n]*\\n(?:(?!\\n\\k<g>)[\\s\\S])*?(?:' + x + ')';
+
+export function renderLintGraders(rules, { media = false, skip = [] } = {}) {
+  for (const id of skip) {
+    if (!rules.some((r) => r.id === id)) throw new Error(`LINT_GRADER_CASES in scripts/build.mjs skips ${id}, which data/lint-rules.json doesn't have`);
+  }
+  const groups = {};
+  for (const r of rules) {
+    if (LINT_NEVER.has(r.id) || skip.includes(r.id) || (LINT_MEDIA_ONLY.has(r.id) && !media)) continue;
+    if (!Object.hasOwn(LINT_FILES, r.flags)) throw new Error(`data/lint-rules.json ${r.id}: flags "${r.flags}" have no generated eval grader; add one to LINT_FILES in scripts/build.mjs`);
+    (groups[r.flags] ??= []).push(r);
+  }
+  const files = {};
+  for (const [flags, rs] of Object.entries(groups)) {
+    const ids = rs.map((r) => r.id).join(', ');
+    const pattern = inFencedBlock(rs.map((r) => `(?:${r.pattern})`).join('|'));
+    // A rule that compiles alone can still break the combined pattern, for example with a group
+    // named f or g.
+    try { new RegExp(pattern, flags); } catch (e) { throw new Error(`data/lint-rules.json ${ids}: the generated eval grader doesn't compile (${e.message})`); }
+    const yaml = [
+      '# Generated from data/lint-rules.json by scripts/build.mjs; edit the rules there, not this file.',
+      `# Fails when a fenced block of the reply matches: ${ids}.`,
+      'type: regex',
+      `pattern: '${pattern.replace(/'/g, "''")}'`,
+      ...(flags ? [`flags: ${flags}`] : []),
+      'match: not_contains',
+      'weight: 1',
+    ];
+    // claude plugin eval (2.1.319) ends the front matter at the first "---" anywhere in it, and
+    // YAML folds a line break inside a quoted value into a space: either would change the grader.
+    if (yaml.some((l) => l.includes('---')) || /[\r\n]/.test(pattern)) throw new Error(`data/lint-rules.json ${ids}: a generated eval grader can't hold "---" or a line break; write -{3} or \\n instead`);
+    files[LINT_FILES[flags]] = ['---', ...yaml, '---', ''].join('\n');
+  }
+  return files;
+}
+
 export function buildAll() {
   const outputs = {};
   const media = JSON.parse(read('data/media-targets.json'));
@@ -221,6 +289,12 @@ export function buildAll() {
     if (!entry.isDirectory() || !existsSync(join(root, p))) continue;
     // Name the history in the error, so the build's one line says which file to record again.
     try { outputs[p] = refreshHistory(read(p), skillBody, readPluginFile); } catch (e) { throw new Error(`${p}: ${e.message}`); }
+  }
+  const lintRules = JSON.parse(read('data/lint-rules.json')).rules;
+  for (const [c, opts] of Object.entries(LINT_GRADER_CASES)) {
+    const dir = `evals/${c}/graders`;
+    if (!existsSync(join(root, dir)) || !statSync(join(root, dir)).isDirectory()) throw new Error(`LINT_GRADER_CASES in scripts/build.mjs names ${dir}, which does not exist`);
+    for (const [name, text] of Object.entries(renderLintGraders(lintRules, opts))) outputs[`${dir}/${name}`] = text;
   }
   if (existsSync(join(root, 'mcp', 'package.json'))) {
     const strip = ({ $comment, ...rest }) => rest;

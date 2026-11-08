@@ -341,10 +341,24 @@ if (exists('evals')) {
 
 // ---------- generated files ----------
 // buildAll() throws on sources it can't render: list that with the other errors.
-let built = {};
+let built = null;
 try { built = buildAll(); } catch (e) { err(`build failed: ${e.message}`); }
-for (const [p, content] of Object.entries(built)) {
+for (const [p, content] of Object.entries(built ?? {})) {
   if (!exists(p) || read(p) !== content) err(`${p}: stale; run node scripts/build.mjs`);
+}
+// build.mjs writes files but never deletes them, so a lint grader it no longer writes (its case
+// left LINT_GRADER_CASES, or its group of rules is empty) would stay and keep grading. The
+// lint-prompt*.md names are reserved for its graders. Skipped when the build failed, since then
+// no file counts as written.
+if (built && exists('evals')) {
+  for (const c of readdirSync(join(root, 'evals'), { withFileTypes: true })) {
+    const dir = `evals/${c.name}/graders`;
+    if (!c.isDirectory() || !exists(dir) || !statSync(join(root, dir)).isDirectory()) continue;
+    for (const f of readdirSync(join(root, dir))) {
+      const p = `${dir}/${f}`;
+      if (/^lint-prompt.*\.md$/.test(f) && !Object.hasOwn(built, p)) err(`${p}: looks generated, but scripts/build.mjs doesn't write it; delete it or add the case to LINT_GRADER_CASES`);
+    }
+  }
 }
 
 for (const w of warnings) console.warn(`warning: ${w}`);

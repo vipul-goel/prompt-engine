@@ -15,6 +15,7 @@ Prompt Engine is one method shipped in four formats. To keep them from drifting 
 │ data/media-targets.json                  │──► references/media-targets.md            (build.mjs)
 │ data/contract.json                       │──► checked in SKILL.md, references, universal core (validate.mjs)
 │ data/lint-rules.json                     │──► self-lint (validate.mjs) and the MCP check_prompt tool
+│                                          │──► evals/*/graders/lint-prompt*.md        (build.mjs)
 └──────────────────────────────────────────┘
 ```
 

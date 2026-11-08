@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { LINT_GRADER_CASES } from '../build.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Build output and tool state the checks don't read: copying them only slows the tests down.
@@ -268,6 +269,19 @@ const ROWS = [
     /evals\/save-to-file\/history\.jsonl line 1: GitHub token \(looks private; remove it or record again\)/, 1, /ghp_/],
   // ---- generated files
   ['rejects a stale generated file', (d) => edit(d, `${REF}/media-targets.md`, (t) => `${t}\nhand edit\n`), /references\/media-targets\.md: stale; run node scripts\/build\.mjs/],
+  // The eval lint graders are generated from data/lint-rules.json (finding 59, D36). build.mjs
+  // never deletes a file, so a lint grader it doesn't write is reported too.
+  ['rejects a hand-edited lint grader', (d) => edit(d, 'evals/research-quick-vector-databases/graders/lint-prompt.md', (t) => t.replace('IMPORTANT', 'IMPORTANT|URGENT')),
+    /evals\/research-quick-vector-databases\/graders\/lint-prompt\.md: stale; run node scripts\/build\.mjs/],
+  ['reports every lint grader that a rule change makes stale', (d) => editJson(d, 'data/lint-rules.json', (j) => {
+    const r = j.rules.find((x) => x.id === 'pressure-words');
+    r.pattern = r.pattern.replace('IMPORTANT', 'IMPORTANT|URGENT');
+  }), Object.keys(LINT_GRADER_CASES).map((c) => new RegExp(`evals/${reEsc(c)}/graders/lint-prompt\\.md: stale`))],
+  ['rejects a lint grader that build.mjs does not write', (d) => put(d, 'evals/coding-vague-asks-questions/graders/lint-prompt.md', '---\ntype: regex\npattern: x\n---\n'),
+    /evals\/coding-vague-asks-questions\/graders\/lint-prompt\.md: looks generated, but scripts\/build\.mjs doesn't write it; delete it or add the case to LINT_GRADER_CASES/],
+  // With the build failed, no file counts as written: the other cases' graders aren't listed.
+  ['reports a lint-grader case that is gone, and lists no lint grader as unwritten', (d) => rmSync(join(d, 'evals/spanish-quick'), { recursive: true }),
+    /error: build failed: LINT_GRADER_CASES in scripts\/build\.mjs names evals\/spanish-quick\/graders, which does not exist/, 1, /looks generated/],
   // ---- text that must make no difference
   ['passes with CRLF line endings', (d) => {
     for (const f of [SKILL, `${REF}/media-targets.md`, CORE, 'data/contract.json']) edit(d, f, (t) => t.replace(/\n/g, '\r\n'));
@@ -276,6 +290,8 @@ const ROWS = [
     for (const f of ['.DS_Store', 'Thumbs.db', 'desktop.ini']) {
       put(d, `skills/prompt-engine/${f}`, 'x');
       put(d, `${REF}/${f}`, 'x');
+      put(d, `evals/${f}`, 'x');
+      put(d, `evals/spanish-quick/graders/${f}`, 'x');
     }
   }, /validate: OK/, 0],
 ];

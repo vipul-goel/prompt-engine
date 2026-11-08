@@ -11,7 +11,7 @@ One method ships in four formats, so most changes start in one place and flow ou
 | The method (single source) | `skills/prompt-engine/SKILL.md`, `skills/prompt-engine/references/*.md` | Edit by hand |
 | Hand-written mirror | `universal/prompt-engine.md` | When you change the workflow or the output format in `SKILL.md`, make the same change here. It must stay under 7,500 characters |
 | Data | `data/contract.json` (output contract and size budgets), `data/lint-rules.json`, `data/media-targets.json` | Edit by hand |
-| Generated | `universal/prompt-engine-knowledge.md`, `skills/prompt-engine/references/media-targets.md`, `mcp/src/generated/content.ts`, and the skill text inside `evals/*/history.jsonl` | Never edit; run `node scripts/build.mjs` |
+| Generated | `universal/prompt-engine-knowledge.md`, `skills/prompt-engine/references/media-targets.md`, `mcp/src/generated/content.ts`, the skill text inside `evals/*/history.jsonl`, and the lint graders `evals/*/graders/lint-prompt*.md` | Never edit; run `node scripts/build.mjs` |
 
 ## Setup
 
@@ -80,7 +80,7 @@ The MCP server serves `references/questions.md` and `references/output-format.md
 
 ### Add a lint rule
 
-Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript regular expression `pattern`, `flags`, a `severity` and a `message` that says what to do instead. Set `selfCheck: true` only if Prompt Engine's own instructions must never match it, and add a test for it in `scripts/test/validate.test.mjs`.
+Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript regular expression `pattern`, `flags`, a `severity` and a `message` that says what to do instead. Set `selfCheck: true` only if Prompt Engine's own instructions must never match it, and add a test for it in `scripts/test/validate.test.mjs`. Then run `node scripts/build.mjs`, which turns the rules into the eval graders `evals/<case>/graders/lint-prompt*.md`; it stops on a rule whose `flags` are other than empty or `i` until `LINT_FILES` in `scripts/build.mjs` names a file for them. It also stops on a pattern the graders can't carry: one that holds `---` or a raw line break (write `-{3}` or `\n`), or a group named `f` or `g`.
 
 The MCP server's `check_prompt` tool uses the same rules on drafts of up to 100,000 characters from anyone who can reach the server. It matches one line at a time, after turning each control character into a space and each run of whitespace into one space, so a rule about tabs, double spaces or other whitespace never fires there. It matches a line over 2,300 characters in overlapping windows.
 
@@ -97,7 +97,7 @@ The MCP tests fail if `check_prompt` skips a rule. These limits bound the work a
 
 ## Behavior evals
 
-The cases in `evals/` run with Claude Code's plugin eval runner, with and without the plugin. Each case folder holds `prompt.md`, `case.yaml` and `graders/*.md`; see Claude Code's [plugin eval docs](https://code.claude.com/docs/en/plugin-evals.md) for the format.
+The cases in `evals/` run with Claude Code's plugin eval runner, with and without the plugin. Each case folder holds `prompt.md`, `case.yaml` and `graders/*.md`; see Claude Code's [plugin eval docs](https://code.claude.com/docs/en/plugin-evals.md) for the format. `scripts/build.mjs` writes `graders/lint-prompt.md` and `graders/lint-prompt-i.md` for each case in its `LINT_GRADER_CASES`: add a new case whose reply holds an enhanced prompt there, and leave the `lint-prompt` names to those files.
 
 Evals make real model calls on your account and are billed. Start with a subset and a cost ceiling:
 
