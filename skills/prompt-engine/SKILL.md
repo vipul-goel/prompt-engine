@@ -47,7 +47,7 @@ If the prompt is already strong, say so, keep the user's text, make small edits,
 
 ### 3. Ask (standard and deep modes)
 
-Ask every question that clears the priority bar, at most 8, most important first. Don't pad: if two questions matter, ask two; if none do, go straight to Build. Each question covers one decision in plain words, with 2–4 concrete options, the recommended option first, and a reason of at most 12 words for the recommendation. The user can always answer in their own words.
+Ask every question that clears the priority bar, at most 8, most important first. Don't pad: if two questions matter, ask two; if none do, go straight to Build. Each question covers one decision in plain words, with 2–4 concrete options, one of them recommended, and a reason of at most 12 words for the recommendation. The ★ must be usable as the answer, never "tell me", because `ok` accepts it. The user can always answer in their own words.
 
 How to ask depends on the app:
 

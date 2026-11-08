@@ -26,7 +26,7 @@ Don't ask:
 - for things the prompt already says;
 - "Anything else?" as a main question (the free-text option covers it).
 
-When the user has an artifact, ask for it instead of a description: "Paste the error message", "Share a paragraph in the voice you want".
+When the user has an artifact, ask for it instead of a description: "Paste the error message", "Share a paragraph in the voice you want". Put that invitation in the question, not in the ★ option (see below).
 
 ## Order and wording
 
@@ -35,7 +35,8 @@ Order questions by what they unlock: goal and deliverable → audience and use �
 Each question:
 - covers one decision; questions that depend on each other go in the same round, in order;
 - uses plain words and fits on one line;
-- offers 2–4 concrete, mutually exclusive options, recommended option first;
+- offers 2–4 concrete, mutually exclusive options, one of them recommended;
+- stars an option the prompt can use as it stands, because `ok` and skipped questions take the ★. Never star "Tell me" or "Paste it": when you can't get the information yourself (a stack you can't see, an error message, a writing sample), star a fallback such as "Have the agent find it in the project" or "Leave a [[placeholder]]", and say in the question that they can type or paste the real thing instead;
 - gives a reason of at most 12 words for the recommendation;
 - is written in the user's language.
 
