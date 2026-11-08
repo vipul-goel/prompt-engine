@@ -336,7 +336,7 @@ export const LINT_RULES: ReadonlyArray<{ id: string; pattern: string; flags: str
     "flags": "",
     "severity": "warning",
     "selfCheck": true,
-    "message": "Capitalized pressure words make current models over-apply the rule. Write it plainly and give the reason; keep 'always' and 'never' for true invariants."
+    "message": "Capitalized pressure words can make current models over-apply the rule. Write it plainly and give the reason; keep 'always' and 'never' for true invariants."
   },
   {
     "id": "visible-reasoning-request",

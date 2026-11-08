@@ -91,3 +91,78 @@ test('changes nothing when a file has an unexpected "version" key', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('sets the version in a CRLF checkout, changing only the version lines', () => {
+  const dir = copyRepo();
+  try {
+    const files = ['.claude-plugin/plugin.json', 'skills/prompt-engine/SKILL.md', 'mcp/package.json', 'mcp/package-lock.json', 'mcp/server.json', 'mcp/manifest.json'];
+    for (const f of files) writeFileSync(join(dir, f), read(dir, f).replace(/\n/g, '\r\n'));
+    const before = Object.fromEntries(files.map((f) => [f, read(dir, f).replace(/\r\n/g, '\n').split('\n')]));
+    const bumped = run(dir, 'version.mjs', '9.8.7');
+    assert.equal(bumped.code, 0, bumped.out);
+    for (const f of files) {
+      const after = read(dir, f).split('\n');
+      assert.equal(after.length, before[f].length, f);
+      const changed = after.filter((l, i) => l !== before[f][i]);
+      assert.ok(changed.length > 0 && changed.every((l) => /9\.8\.7/.test(l)), `${f}: ${changed.join(' | ')}`);
+    }
+    const checked = run(dir, 'validate.mjs');
+    assert.equal(checked.code, 0, checked.out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("keeps $$, $&, $' and $` in SKILL.md's frontmatter as they are", () => {
+  const dir = copyRepo();
+  try {
+    const rel = 'skills/prompt-engine/SKILL.md';
+    // A function replacer, so this setup doesn't expand the $ sequences itself.
+    const description = "description: \"Use to improve a prompt for any AI tool: $$ $& $' $` stay as typed.\"";
+    writeFileSync(join(dir, rel), read(dir, rel).replace(/^description: .*$/m, () => description));
+    const before = read(dir, rel);
+    assert.ok(before.includes(description), 'the setup wrote the description as typed');
+    const bumped = run(dir, 'version.mjs', '9.8.7');
+    assert.equal(bumped.code, 0, bumped.out);
+    const after = read(dir, rel);
+    assert.equal(after.match(/^description: .*$/m)[0], description);
+    const versionLine = /^ {2}version: "[^"]*"$/m;
+    assert.match(after, /^ {2}version: "9\.8\.7"$/m);
+    assert.equal(after.replace(versionLine, ''), before.replace(versionLine, ''));
+    const checked = run(dir, 'validate.mjs');
+    assert.equal(checked.code, 0, checked.out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('reminds about CHANGELOG.md until the version has a dated heading', () => {
+  const dir = copyRepo();
+  try {
+    const changelog = join(dir, 'CHANGELOG.md');
+    const reminder = /Next: give CHANGELOG\.md a "## \[9\.8\.7\] - YYYY-MM-DD" heading/;
+    const withHeading = (heading, eol = '\n') =>
+      writeFileSync(changelog, `# Changelog\n\n## [Unreleased]\n\n${heading}\n\nFirst version.\n`.replaceAll('\n', eol));
+    // Undated, another version, a heading that only an unescaped "." would match, and one with
+    // text after the date.
+    for (const heading of ['## [9.8.7] - not yet released', '## [9.8.70] - 2026-11-10', '## [9x8x7] - 2026-11-10', '## [9.8.7] - 2026-11-10 [YANKED]']) {
+      withHeading(heading);
+      const r = run(dir, 'version.mjs', '9.8.7');
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.out, reminder, heading);
+    }
+    rmSync(changelog);
+    const missing = run(dir, 'version.mjs', '9.8.7');
+    assert.equal(missing.code, 0, missing.out);
+    assert.match(missing.out, reminder, 'no CHANGELOG.md');
+    for (const eol of ['\n', '\r\n']) {
+      withHeading('## [9.8.7] - 2026-11-10', eol);
+      const r = run(dir, 'version.mjs', '9.8.7');
+      assert.equal(r.code, 0, r.out);
+      assert.doesNotMatch(r.out, /Next: give CHANGELOG/, JSON.stringify(eol));
+      assert.match(r.out, /Then run the checks and tag v9\.8\.7/);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

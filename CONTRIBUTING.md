@@ -11,11 +11,11 @@ One method ships in four formats, so most changes start in one place and flow ou
 | The method (single source) | `skills/prompt-engine/SKILL.md`, `skills/prompt-engine/references/*.md` | Edit by hand |
 | Hand-written mirror | `universal/prompt-engine.md` | When you change the workflow or the output format in `SKILL.md`, make the same change here. It must stay under 7,500 characters |
 | Data | `data/contract.json` (output contract and size budgets), `data/lint-rules.json`, `data/media-targets.json` | Edit by hand |
-| Generated | `universal/prompt-engine-knowledge.md`, `skills/prompt-engine/references/media-targets.md`, `mcp/src/generated/content.ts`, and the skill text inside `evals/*/history.jsonl` | Never edit; run `node scripts/build.mjs` |
+| Generated | `universal/prompt-engine-knowledge.md`, `skills/prompt-engine/references/media-targets.md`, `mcp/src/generated/content.ts`, the skill text inside `evals/*/history.jsonl`, and the lint graders `evals/*/graders/lint-prompt*.md` | Never edit; run `node scripts/build.mjs` |
 
 ## Setup
 
-- **Node.js 20 or later** (22 recommended). The scripts in `scripts/` use only Node built-ins, so there's nothing to install at the repository root.
+- **Node.js 22.19 or later.** That's the oldest version the project supports, and the MCP server's checks need it: `npm run test:inspector` runs the MCP Inspector, which stops with an error on older versions. The scripts in `scripts/` use only Node built-ins, so there's nothing to install at the repository root.
 - **No `package.json` at the root.** The root is also the Claude Code plugin root, and Claude Code runs `npm ci` when someone installs a plugin that has a `package.json` and a lockfile. The validator enforces this, along with the other files a plugin root must not contain.
 - **For the MCP server:** `cd mcp && npm ci`.
 - **[Claude Code](https://code.claude.com/docs)** for `claude plugin validate` and the behavior evals.
@@ -80,7 +80,7 @@ The MCP server serves `references/questions.md` and `references/output-format.md
 
 ### Add a lint rule
 
-Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript regular expression `pattern`, `flags`, a `severity` and a `message` that says what to do instead. Set `selfCheck: true` only if Prompt Engine's own instructions must never match it, and add a test for it in `scripts/test/validate.test.mjs`.
+Add an entry to `data/lint-rules.json`. Each entry has an `id`, a JavaScript regular expression `pattern`, `flags`, a `severity` and a `message` that says what to do instead. Set `selfCheck: true` only if Prompt Engine's own instructions must never match it, and add a test for it in `scripts/test/validate.test.mjs`. Then run `node scripts/build.mjs`, which turns the rules into the eval graders `evals/<case>/graders/lint-prompt*.md`; it stops on a rule whose `flags` are other than empty or `i` until `LINT_FILES` in `scripts/build.mjs` names a file for them. It also stops on a pattern the graders can't carry: one that holds `---` or a raw line break (write `-{3}` or `\n`), a group named `f` or `g`, or a `^` or `$` outside a character class, which in a grader would match only at the start or end of the whole reply.
 
 The MCP server's `check_prompt` tool uses the same rules on drafts of up to 100,000 characters from anyone who can reach the server. It matches one line at a time, after turning each control character into a space and each run of whitespace into one space, so a rule about tabs, double spaces or other whitespace never fires there. It matches a line over 2,300 characters in overlapping windows.
 
@@ -97,16 +97,16 @@ The MCP tests fail if `check_prompt` skips a rule. These limits bound the work a
 
 ## Behavior evals
 
-The cases in `evals/` run with Claude Code's plugin eval runner, with and without the plugin. Each case folder holds `prompt.md`, `case.yaml` and `graders/*.md`; see Claude Code's [plugin eval docs](https://code.claude.com/docs/en/plugin-evals.md) for the format.
+The cases in `evals/` run with Claude Code's plugin eval runner, with and without the plugin. Each case folder holds `prompt.md`, `case.yaml` and `graders/*.md`; see Claude Code's [plugin eval docs](https://code.claude.com/docs/en/plugin-evals.md) for the format. `scripts/build.mjs` writes `graders/lint-prompt.md` and `graders/lint-prompt-i.md` for each case in its `LINT_GRADER_CASES`: add a new case whose reply holds an enhanced prompt there, and leave the `lint-prompt` names to those files.
 
 Evals make real model calls on your account and are billed. Start with a subset and a cost ceiling:
 
 ```bash
-claude plugin eval . --case 'image-*' --runs 1 --max-cost-usd 1 --no-publish
+claude plugin eval . --case 'image-*' --runs 1 --max-cost-usd 1 --no-publish --judge-model claude-haiku-5-5
 ```
 
 - **Cases that grant tools or run scaffold scripts.** The full suite needs `--allow-tools Write Edit --scaffold`. Read a case's `scaffold_script` before you run it.
-- **Follow-up cases.** These resume a recorded first turn. Record one with `node scripts/eval/record-history.mjs evals/<case>/history.jsonl "<first message>"`. The script keeps only the conversation, rewrites local paths and refuses to write a file that still contains an e-mail address. Read the file before you commit it anyway. Afterwards, `node scripts/build.mjs` keeps the skill text and reference files inside the recording up to date, so re-record only when the recorded question round itself should change.
+- **Follow-up cases.** These resume a recorded first turn. Record one with `node scripts/eval/record-history.mjs evals/<case>/history.jsonl "<first message>"`. Before the billed call, the script refuses a first message that looks private and checks that it can find Claude Code's transcript folder (`$CLAUDE_CONFIG_DIR` or `~/.claude`). It pre-approves Read only in the skill's folder, but Claude Code's documentation says the skill's own `allowed-tools: Read` pre-approves every read during the turn that invokes it, so other files can still end up in a recording. From the transcript, the script keeps only the conversation and rewrites the plugin, working and home folders and the session ID. It refuses to write a file that still contains what looks like a key, token, e-mail address, home path or this machine's name, but no scan recognises every secret or another machine's name. `node scripts/validate.mjs` runs the same scan, without the checks for this machine's home folder and name, on every committed `history.jsonl`. Read the file before you commit it anyway. Afterwards, `node scripts/build.mjs` keeps the skill text and reference reads inside the recording up to date. It doesn't change what the model said, so re-record when a recorded turn (a question round, an output or a menu) no longer matches the method, or when the build stops with "re-record it". `node scripts/validate.mjs` reports a recording whose last assistant turn is neither a question round nor a whole output with its What next? menu, that calls or searches for AskUserQuestion, or whose last assistant row didn't end its turn.
 - **Results.** They go to `evals/results/`, which is ignored by git. Run transcripts can include details of your account, so don't commit them.
 - **Universal prompt.** It has its own two-turn test: `node scripts/eval/universal-test.mjs`.
 - **Reading outputs side by side.** Run the evals with `--json result.json --keep-temp`, then `node scripts/eval/to-review.mjs result.json <workspace>/iteration-1`. This converts the results into the workspace layout used by the review viewer in Anthropic's skill-creator skill.

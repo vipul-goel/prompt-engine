@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { root } from './build.mjs';
+import { root, OS_JUNK, normalize } from './build.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -20,7 +20,8 @@ const value = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i +
 const run = (cmd, cmdArgs, opts = {}) => execFileSync(cmd, cmdArgs, { cwd: root, stdio: 'inherit', ...opts });
 const dist = join(root, 'dist');
 
-const version = JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+// normalize(), as validate.mjs reads it: a byte-order mark would make JSON.parse throw here.
+const version = JSON.parse(normalize(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8'))).version;
 const tag = value('--tag');
 if (tag && tag !== `v${version}`) {
   console.error(`tag ${tag} does not match plugin version v${version}; bump .claude-plugin/plugin.json (and the versions it is synced with) first`);
@@ -33,8 +34,18 @@ mkdirSync(dist, { recursive: true });
 // 1. Skill zip: the archive's top-level entry must be the prompt-engine/ folder (claude.ai rejects a bare SKILL.md at the root).
 const zipPath = join(dist, 'prompt-engine.zip');
 rmSync(zipPath, { force: true });
-run('zip', ['-q', '-r', zipPath, 'prompt-engine', '-x', '*.DS_Store'], { cwd: join(root, 'skills') });
-const listing = execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' }).split('\n').filter(Boolean);
+// zip and unzip are external commands. Stock Windows has neither, so say what to do instead of a stack trace.
+const needs = (cmd, fn) => {
+  try {
+    return fn();
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    console.error(`release.mjs needs the ${cmd} command, which isn't installed. On Linux, install the zip and unzip packages. On Windows, zip the skills/prompt-engine folder yourself instead: in File Explorer, right-click it, then Show more options > Send to > Compressed (zipped) folder (on Windows 10, Send to is in the first menu); the archive must have prompt-engine/ at its top level.`);
+    process.exit(1);
+  }
+};
+needs('zip', () => run('zip', ['-q', '-r', zipPath, 'prompt-engine', '-x', ...[...OS_JUNK].map((f) => `*${f}`)], { cwd: join(root, 'skills') }));
+const listing = needs('unzip', () => execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' })).split('\n').filter(Boolean);
 if (!listing.includes('prompt-engine/SKILL.md') || listing.some((f) => !f.startsWith('prompt-engine/'))) {
   console.error('zip layout is wrong: expected everything under prompt-engine/');
   process.exit(1);
@@ -55,7 +66,7 @@ if (existsSync(join(root, 'mcp', 'package.json'))) {
   assets.push('prompt-engine.mcpb');
 }
 
-// 4. Checksums (the MCP Registry lists an .mcpb package with its SHA-256).
+// 4. Checksums, for anyone checking a download: shasum -a 256 -c --ignore-missing SHA256SUMS (sha256sum on Linux).
 const sums = assets.map((f) => `${createHash('sha256').update(readFileSync(join(dist, f))).digest('hex')}  ${f}`);
 writeFileSync(join(dist, 'SHA256SUMS'), `${sums.join('\n')}\n`);
 console.log(`\nrelease artifacts for v${version} in dist/:\n${sums.join('\n')}`);

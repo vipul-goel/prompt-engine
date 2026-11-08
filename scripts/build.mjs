@@ -3,18 +3,25 @@
 //   data/media-targets.json              -> skills/prompt-engine/references/media-targets.md
 //   skills/prompt-engine/references/*.md -> universal/prompt-engine-knowledge.md
 //   skills/, universal/ and data/        -> mcp/src/generated/content.ts (when mcp/ exists)
-//   SKILL.md and references/            -> the skill text inside evals/*/history.jsonl
-// Zero dependencies: Node >= 20 built-ins only. Output is deterministic (no timestamps),
+//   SKILL.md and references/            -> the skill text and Read results inside evals/*/history.jsonl
+//   data/lint-rules.json                 -> evals/<case>/graders/lint-prompt*.md (LINT_GRADER_CASES)
+// Zero dependencies: Node >= 22.19 built-ins only. Output is deterministic (no timestamps),
 // so `node scripts/build.mjs && git diff --exit-code` detects stale generated files.
 // `node scripts/build.mjs --check` exits 1 instead of writing when anything is stale.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // PE_ROOT lets tests point the scripts at a temporary copy of the repository.
 export const root = process.env.PE_ROOT || join(dirname(fileURLToPath(import.meta.url)), '..');
-const read = (p) => readFileSync(join(root, p), 'utf8');
+// Text as the scripts compare it: without a leading byte-order mark and with LF line endings,
+// so a CRLF checkout (Git for Windows' default) or a BOM an editor added changes nothing.
+export const normalize = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s).replace(/\r\n/g, '\n');
+const read = (p) => normalize(readFileSync(join(root, p), 'utf8'));
+// Files the operating system writes into folders (Finder, Explorer). Git ignores them
+// (.gitignore), validate.mjs skips them and release.mjs leaves them out of the skill zip.
+export const OS_JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 
 const STATUS_LABEL = {
   verified: '✓ verified against the vendor’s own documentation',
@@ -31,6 +38,7 @@ export function renderMediaTargets(data) {
   ];
   for (const t of data.targets) {
     if (!STATUS_LABEL[t.status]) throw new Error(`media-targets: unknown status "${t.status}" for ${t.id}`);
+    if (!Array.isArray(t.sources)) throw new Error(`media-targets: ${t.id} needs a sources array`);
     lines.push(`## ${t.name}`, '');
     lines.push(`*${t.kind} · ${STATUS_LABEL[t.status]} (last checked ${t.last_verified})*`, '');
     const fields = [
@@ -118,41 +126,160 @@ export function renderContentModule({ version, universal, refs, contract, media,
   ].join('\n');
 }
 
-const SKILL_HEADER = 'Base directory for this skill:';
+// How Claude Code starts the skill text it injects, with the plugin path that
+// scripts/eval/record-history.mjs writes in place of the real one.
+const SKILL_TEXT_HEAD = 'Base directory for this skill: /plugin/skills/prompt-engine\n\n';
+// The names a recording can invoke the skill by: the Skill tool's input.skill, and a typed slash command.
+const SKILL_NAMES = new Set(['prompt-engine', 'prompt-engine:prompt-engine']);
+const COMMAND_NAME = /<command-name>\/(prompt-engine(?::prompt-engine)?)<\/command-name>/;
+// Claude Code's Read result: each line prefixed with its number and a tab.
+const numberLines = (text) => text.split('\n').map((l, i) => `${i + 1}\t${l}`).join('\n');
 
 // Follow-up eval cases resume a recorded conversation (evals/*/history.jsonl), which
 // holds the skill text and the reference files as they were when it was recorded
 // (scripts/eval/record-history.mjs rewrites the plugin path to /plugin). Both are
 // refreshed here so the follow-up turn is tested against the current method; the
-// recorded questions and answers stay as they were.
+// recorded questions and answers stay as they were. The skill text is found by
+// prompt-engine's own header and ends where the line with the recorded invocation's
+// arguments starts. A reference file is refreshed both in the Read result and in Claude
+// Code's own copy of it (toolUseResult.file); a failed Read (is_error) stays as recorded.
+// A recording this can't refresh exactly throws, so it is recorded again instead of being
+// patched by guesswork: skill text without a recorded invocation, arguments without their
+// ARGUMENTS line (or an ARGUMENTS line other than an empty one without them), a plugin path that
+// wasn't rewritten, a Read with offset or limit (D12: Claude Code's partial-read format isn't
+// verified), a Read of a file that no longer exists, or one of a path with a ".." segment, which
+// would copy a file from outside the plugin into the history.
 export function refreshHistory(jsonl, skillBody, readPluginFile) {
-  const readPaths = new Map();
+  const reads = new Map(); // Read tool_use id -> { rel, partial }
+  let args = null; // the arguments of the latest prompt-engine invocation; null before the first one
   return jsonl.split('\n').map((line) => {
     if (!line.trim()) return line;
     const row = JSON.parse(line);
-    const parts = Array.isArray(row.message?.content) ? row.message.content : [];
+    const content = row.message?.content;
+    // A typed slash command: "<command-name>/prompt-engine:prompt-engine</command-name>\n<command-args>…</command-args>".
+    const typed = typeof content === 'string' ? content
+      : Array.isArray(content) ? content.filter((p) => p.type === 'text').map((p) => p.text).join('\n') : '';
+    if (COMMAND_NAME.test(typed)) args = typed.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1] ?? '';
+    const parts = Array.isArray(content) ? content : [];
     let changed = false;
     for (const part of parts) {
-      if (part.type === 'tool_use' && part.name === 'Read') {
+      if (part.type === 'tool_use' && part.name === 'Skill' && SKILL_NAMES.has(part.input?.skill)) {
+        args = typeof part.input.args === 'string' ? part.input.args : '';
+      } else if (part.type === 'tool_use' && part.name === 'Read') {
         const m = String(part.input?.file_path ?? '').match(/^\/plugin\/(.+)$/);
-        if (m) readPaths.set(part.id, m[1]);
-      } else if (part.type === 'tool_result' && readPaths.has(part.tool_use_id) && typeof part.content === 'string') {
-        const current = readPluginFile(readPaths.get(part.tool_use_id));
-        // Claude Code's Read result: each line prefixed with its number and a tab.
-        const numbered = current?.split('\n').map((l, i) => `${i + 1}\t${l}`).join('\n');
-        if (numbered !== undefined && numbered !== part.content) { part.content = numbered; changed = true; }
-      } else if (part.type === 'text' && part.text.startsWith(SKILL_HEADER)) {
-        // "<header line>\n\n<SKILL.md body>\n\n\nARGUMENTS: <args>"
-        const start = part.text.indexOf('\n# ') + 1;
-        const args = part.text.lastIndexOf('ARGUMENTS:');
-        const end = args >= 0 ? args : part.text.length;
-        const gap = part.text.slice(0, end).match(/\s*$/)[0];
-        const text = `${part.text.slice(0, start)}${skillBody}${gap}${part.text.slice(end)}`;
-        if (start > 0 && text !== part.text) { part.text = text; changed = true; }
+        if (m) reads.set(part.id, { rel: m[1], partial: part.input.offset !== undefined || part.input.limit !== undefined });
+      } else if (part.type === 'tool_result' && reads.has(part.tool_use_id) && part.is_error !== true) {
+        const { rel, partial } = reads.get(part.tool_use_id);
+        if (rel.split(/[\\/]/).includes('..')) throw new Error(`reads ${rel}, outside the plugin; re-record it`);
+        if (partial) throw new Error(`reads part of ${rel} (offset/limit); re-record it`);
+        const current = readPluginFile(rel);
+        if (current === undefined) throw new Error(`reads ${rel}, which no longer exists; re-record it`);
+        if (typeof part.content !== 'string') throw new Error(`has a Read result for ${rel} that isn't text; re-record it`);
+        const numbered = numberLines(current);
+        if (numbered !== part.content) { part.content = numbered; changed = true; }
+        // Claude Code's own copy of the file, in the shape of a whole-file Read; the spread keeps the key order.
+        const file = row.toolUseResult?.file;
+        if (file?.filePath === `/plugin/${rel}`) {
+          const n = current.split('\n').length;
+          const fresh = { ...file, content: current, numLines: n, startLine: 1, totalLines: n };
+          if (JSON.stringify(fresh) !== JSON.stringify(file)) { row.toolUseResult.file = fresh; changed = true; }
+        }
+      } else if (part.type === 'text' && part.text.startsWith(SKILL_TEXT_HEAD)) {
+        if (args === null) throw new Error('skill text without a recorded prompt-engine invocation; re-record it');
+        // "<head><SKILL.md body>\n" and, when there are arguments, "\n\nARGUMENTS: <args>". Cut at
+        // that line when it holds exactly the recorded arguments (which may themselves contain
+        // "\n\nARGUMENTS: "); otherwise at the last such line, since Claude Code escapes some
+        // characters in it, such as "!". With no arguments, Claude Code appends no line (read in
+        // 2.1.314-2.1.317's code). An empty ARGUMENTS line is kept as recorded and any other one is
+        // refused, so a later version that writes one can't have it dropped without a word.
+        const exact = `\n\nARGUMENTS: ${args}`;
+        let cut = part.text.length;
+        if (part.text.endsWith(exact)) cut -= exact.length;
+        else if (args) {
+          cut = part.text.lastIndexOf('\n\nARGUMENTS: ');
+          if (cut < SKILL_TEXT_HEAD.length) throw new Error('arguments were recorded, but the skill text has no ARGUMENTS line; re-record it');
+        } else if (/\n\nARGUMENTS:[^\n]*$/.test(part.text)) throw new Error('no arguments were recorded, but the skill text ends with an ARGUMENTS line; re-record it');
+        const old = part.text.slice(SKILL_TEXT_HEAD.length, cut);
+        const text = `${SKILL_TEXT_HEAD}${skillBody}${old.match(/\s*$/)[0]}${part.text.slice(cut)}`;
+        if (text !== part.text) { part.text = text; changed = true; }
+      } else if (part.type === 'text' && /^Base directory for this skill: .*[\\/]skills[\\/]prompt-engine\n/.test(part.text)) {
+        throw new Error('the skill text names a plugin path other than /plugin; record it with scripts/eval/record-history.mjs');
       }
     }
     return changed ? JSON.stringify(row) : line;
   }).join('\n');
+}
+
+// Eval cases whose reply holds an enhanced prompt get two regex graders generated from
+// data/lint-rules.json (D36): lint-prompt.md for the rules without flags, lint-prompt-i.md for
+// the rules with flag i. Each fails when a rule matches inside any fenced block of the reply,
+// which is where the full prompt and the short version go, so the same words in the commentary
+// don't count. open-placeholder stays out (placeholders are allowed), vague-quality-words
+// applies only to image and video prompts, and secret-redaction-quick skips template-leftover,
+// because a correct GitHub Actions prompt reads the key as ${{ secrets.NAME }}. The graders
+// match the raw text of each block, code spans included, so a prompt that names a CRITICAL log
+// level in backticks fails them.
+export const LINT_GRADER_CASES = {
+  'followup-ok-accepts-recommendations': {},
+  'followup-partial-answers': {},
+  'image-midjourney-quick': { media: true },
+  'japanese-midjourney-quick': { media: true },
+  'research-quick-vector-databases': {},
+  'secret-redaction-quick': { skip: ['template-leftover'] },
+  'spanish-quick': {},
+  'strong-prompt-minimal-changes': {},
+  'video-veo-quick': { media: true },
+  'writing-quick-launch-email': {},
+};
+const LINT_NEVER = new Set(['open-placeholder']);
+const LINT_MEDIA_ONLY = new Set(['vague-quality-words']);
+const LINT_FILES = { '': 'lint-prompt.md', i: 'lint-prompt-i.md' };
+// A ^ or $ outside a character class and not escaped. In a generated grader, which has no m flag,
+// it matches only at the start or end of the whole reply, not at a line of a fenced block, so the
+// grader would miss what check_prompt (which matches one line at a time) still finds.
+const hasAnchor = (pattern) => [...pattern.matchAll(/\\.|\[(?:\\.|[^\]\\])*\]|[\^$]/g)].some((m) => m[0] === '^' || m[0] === '$');
+
+// A pattern that matches when x matches inside any fenced block: skip whole blocks, each closed
+// by a fence as long as its opener, then search one block. Named groups, because the rules' own
+// groups would shift numbered backreferences. An opening fence takes its whole run of backticks
+// ((?!`)). Without that, a fence of four or more backticks can also be read as a shorter one, so
+// on a reply without a match the time doubled with each such block: 20 took 3 s in JavaScriptCore.
+export const inFencedBlock = (x) => '^(?:(?:(?!`{3})[\\s\\S])*?(?<f>`{3,})(?!`)[^\\n]*\\n(?:(?!\\n\\k<f>)[\\s\\S])*?\\n\\k<f>)*?'
+  + '(?:(?!`{3})[\\s\\S])*?(?<g>`{3,})(?!`)[^\\n]*\\n(?:(?!\\n\\k<g>)[\\s\\S])*?(?:' + x + ')';
+
+export function renderLintGraders(rules, { media = false, skip = [] } = {}) {
+  for (const id of skip) {
+    if (!rules.some((r) => r.id === id)) throw new Error(`LINT_GRADER_CASES in scripts/build.mjs skips ${id}, which data/lint-rules.json doesn't have`);
+  }
+  const groups = {};
+  for (const r of rules) {
+    if (LINT_NEVER.has(r.id) || skip.includes(r.id) || (LINT_MEDIA_ONLY.has(r.id) && !media)) continue;
+    if (!Object.hasOwn(LINT_FILES, r.flags)) throw new Error(`data/lint-rules.json ${r.id}: flags "${r.flags}" have no generated eval grader; add one to LINT_FILES in scripts/build.mjs`);
+    (groups[r.flags] ??= []).push(r);
+  }
+  const files = {};
+  for (const [flags, rs] of Object.entries(groups)) {
+    const ids = rs.map((r) => r.id).join(', ');
+    const pattern = inFencedBlock(rs.map((r) => `(?:${r.pattern})`).join('|'));
+    // A rule that compiles alone can still break the combined pattern, for example with a group
+    // named f or g.
+    try { new RegExp(pattern, flags); } catch (e) { throw new Error(`data/lint-rules.json ${ids}: the generated eval grader doesn't compile (${e.message})`); }
+    const yaml = [
+      '# Generated from data/lint-rules.json by scripts/build.mjs; edit the rules there, not this file.',
+      `# Fails when a fenced block of the reply matches: ${ids}.`,
+      'type: regex',
+      `pattern: '${pattern.replace(/'/g, "''")}'`,
+      ...(flags ? [`flags: ${flags}`] : []),
+      'match: not_contains',
+      'weight: 1',
+    ];
+    // claude plugin eval (2.1.319) ends the front matter at the first "---" anywhere in it, and
+    // YAML folds a line break inside a quoted value into a space: either would change the grader.
+    if (yaml.some((l) => l.includes('---')) || /[\r\n]/.test(pattern)) throw new Error(`data/lint-rules.json ${ids}: a generated eval grader can't hold "---" or a line break; write -{3} or \\n instead`);
+    for (const r of rs) if (hasAnchor(r.pattern)) throw new Error(`data/lint-rules.json ${r.id}: a generated eval grader can't carry ^ or $ (without the m flag they match only at the start or end of the whole reply, not at a line of a fenced block); write the rule without them`);
+    files[LINT_FILES[flags]] = ['---', ...yaml, '---', ''].join('\n');
+  }
+  return files;
 }
 
 export function buildAll() {
@@ -169,7 +296,15 @@ export function buildAll() {
   const readPluginFile = (p) => outputs[p] ?? (existsSync(join(root, p)) ? read(p) : undefined);
   for (const entry of readdirSync(join(root, 'evals'), { withFileTypes: true })) {
     const p = `evals/${entry.name}/history.jsonl`;
-    if (entry.isDirectory() && existsSync(join(root, p))) outputs[p] = refreshHistory(read(p), skillBody, readPluginFile);
+    if (!entry.isDirectory() || !existsSync(join(root, p))) continue;
+    // Name the history in the error, so the build's one line says which file to record again.
+    try { outputs[p] = refreshHistory(read(p), skillBody, readPluginFile); } catch (e) { throw new Error(`${p}: ${e.message}`); }
+  }
+  const lintRules = JSON.parse(read('data/lint-rules.json')).rules;
+  for (const [c, opts] of Object.entries(LINT_GRADER_CASES)) {
+    const dir = `evals/${c}/graders`;
+    if (!existsSync(join(root, dir)) || !statSync(join(root, dir)).isDirectory()) throw new Error(`LINT_GRADER_CASES in scripts/build.mjs names ${dir}, which does not exist`);
+    for (const [name, text] of Object.entries(renderLintGraders(lintRules, opts))) outputs[`${dir}/${name}`] = text;
   }
   if (existsSync(join(root, 'mcp', 'package.json'))) {
     const strip = ({ $comment, ...rest }) => rest;
@@ -187,11 +322,13 @@ export function buildAll() {
 
 function main() {
   const check = process.argv.includes('--check');
-  const outputs = buildAll();
+  // A source the build can't render is a data error to fix, not a crash: one line, no stack.
+  let outputs;
+  try { outputs = buildAll(); } catch (e) { console.error(`build failed: ${e.message}`); process.exit(1); }
   let stale = 0;
   for (const [p, content] of Object.entries(outputs)) {
     const abs = join(root, p);
-    const current = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+    const current = existsSync(abs) ? normalize(readFileSync(abs, 'utf8')) : null;
     if (current === content) continue;
     if (check) { console.error(`stale: ${p}`); stale++; continue; }
     mkdirSync(dirname(abs), { recursive: true });
@@ -202,4 +339,9 @@ function main() {
   if (check) console.log('generated files are up to date');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+// Run only as the entry point. Compare real paths: import.meta.url is percent-encoded and
+// symlink-free, process.argv[1] is neither (spaces, /tmp and /var on macOS, Windows).
+const isEntry = () => {
+  try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); } catch { return false; }
+};
+if (isEntry()) main();
