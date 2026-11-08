@@ -146,7 +146,7 @@ test('Fill placeholders ★ while placeholders are open: no starred Run it now, 
     [['[[app name]]'], '1) Try it here ★ (results there may differ)\n2) Refine'],
     [['[[sign text]]'], "1) Done ★ (paste it into Midjourney, since I can't generate images)\n2) Refine"],
     [['[[api key]]', '[[email source]]'], '1) Run it now ★\n2) Refine'],
-    // key ends no placeholder here, and tokens isn't token.
+    // Not a secret's placeholder: key doesn't end the name, and tokens isn't token.
     [['[[key feature]]'], '1) Run it now ★\n2) Refine'],
     [['[[max tokens]]'], '1) Run it now ★\n2) Refine'],
   ]) assert.ok(!fill(withFill(items, { menu })), `${items} ${menu}`);
