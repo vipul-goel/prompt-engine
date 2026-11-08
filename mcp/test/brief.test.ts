@@ -104,6 +104,13 @@ describe('the method brief', () => {
     expect(questions).toMatch(/returns the questions in Format B: send them as your whole reply, opened by that gap line for a critique, and wait\./);
   });
 
+  it('asks at most two questions about an already-strong prompt, as the skill does', () => {
+    // SKILL.md and output-format.md's Already strong rule set the cap. The core, which the brief
+    // embeds, doesn't state it, so the server's step 2 does.
+    expect(REFERENCES['output-format']!.text).toMatch(/\*\*Already strong\.\*\*[^\n]*Ask at most two questions/);
+    expect(brief).toMatch(/1–8 questions \(at most 2 if the prompt is already strong\)/);
+  });
+
   it('says what each form outcome means: closed asks in the chat, declined uses the ★ answers', () => {
     expect(brief).toMatch(/closes the form without answering, it returns the questions as text/);
     expect(brief).toMatch(/declines the form, it returns the ★ answers: list them under Assumptions/);
