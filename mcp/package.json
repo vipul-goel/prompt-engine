@@ -1,7 +1,7 @@
 {
   "name": "prompt-engine-mcp",
   "version": "0.1.0",
-  "description": "MCP server for Prompt Engine: turns a rough prompt into a detailed, LLM-ready prompt by asking multiple-choice questions with recommended answers. No API key, no network calls.",
+  "description": "MCP server for Prompt Engine: turns a rough prompt into a detailed, LLM-ready prompt by asking multiple-choice questions with recommended answers. No API key, and it never calls a model or any other service.",
   "keywords": [
     "mcp",
     "mcp-server",
@@ -33,7 +33,7 @@
     "!dist/worker.js"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "mcpName": "io.github.vipul-goel/prompt-engine",
   "scripts": {
@@ -45,6 +45,7 @@
     "test:worker": "node scripts/worker-smoke.mjs",
     "bundle": "node scripts/bundle.mjs",
     "pack:mcpb": "npm run bundle && node scripts/pack-mcpb.mjs",
+    "test:pack": "node scripts/smoke-pack.mjs",
     "prepublishOnly": "npm run build && npm test",
     "prepack": "node scripts/license.mjs copy",
     "postpack": "node scripts/license.mjs remove"

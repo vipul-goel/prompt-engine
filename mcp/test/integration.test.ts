@@ -25,6 +25,7 @@ import {
 
 const ANNOTATIONS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const RESULT_MAX_CHARS = 32_000;
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const ask = { name: 'ask_user', arguments: { questions: SAMPLE_QUESTIONS } };
 
 async function outputSchemaOf(conn: Connected, tool: string) {
@@ -68,6 +69,8 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
     const askInput = JSON.stringify(byName.ask_user!.inputSchema);
     expect(askInput).toMatch(/The form's message: one line in the user's language\. The form has its own controls, so don't say how to reply\./);
     expect(askInput).toMatch(/without a ★: ask_user adds the ★ to the recommended option \(write a rating in words/);
+    // The form preselects the recommended option and a decline returns it, so it has to stand as an answer.
+    expect(askInput).toMatch(/must work as the answer if the user accepts it unchanged/);
   });
 
   it('lists the enhance prompt with one optional mode argument', async () => {
@@ -124,6 +127,17 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
     expect(resources.some((r) => r.uri.startsWith('skill://'))).toBe(false);
     const { resourceTemplates } = await conn.client.listResourceTemplates();
     expect(resourceTemplates).toEqual([expect.objectContaining({ uriTemplate: 'prompt-engine://checklists/{domain}' })]);
+  });
+
+  it("lists every domain, in order, in get_checklist's domain field and the checklist template's description", async () => {
+    // DOMAINS builds the domain enum, but these two lists are written out by hand in server.ts.
+    // brief.test.ts checks the ones in the instructions, the brief and get_checklist's description.
+    const { tools } = await conn.client.listTools();
+    const properties = tools.find((t) => t.name === 'get_checklist')!.inputSchema.properties as Record<string, { description?: string }>;
+    // One sentence per domain: "coding: code, agents, tool instructions. writing: ...".
+    expect(properties.domain!.description).toMatch(new RegExp(`^${DOMAINS.map((d) => `${esc(d)}: [^.]+\\.`).join(' ')}$`));
+    const { resourceTemplates } = await conn.client.listResourceTemplates();
+    expect(resourceTemplates[0]!.description).toContain(`by domain: ${DOMAINS.slice(0, -1).join(', ')} or ${DOMAINS.at(-1)}.`);
   });
 
   it('reads static resources and the checklist template', async () => {

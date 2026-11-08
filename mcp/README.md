@@ -45,7 +45,7 @@ Add `--scope user` to use it in every project. If you also installed the Prompt 
 }
 ```
 
-The server needs Node.js 20 or later. On Windows, some clients need `"command": "cmd", "args": ["/c", "npx", "-y", "prompt-engine-mcp"]`.
+The server is supported on Node.js 22.19 or later. On Windows, some clients need `"command": "cmd", "args": ["/c", "npx", "-y", "prompt-engine-mcp"]`.
 
 ## Use it
 
@@ -174,14 +174,15 @@ One client can still hold all 128 request slots with slow uploads, or all 1,024 
 
 ## Development and testing
 
-From a clone, in this folder (Node.js 22.19 or later for the full tool chain; the server itself runs on Node.js 20+):
+From a clone, in this folder (Node.js 22.19 or later):
 
 ```bash
 npm ci
 npm run build            # tsc → dist/
 npm test                 # build, type-check, then unit, in-process integration (both protocol eras) and end-to-end tests
 npm run test:inspector   # MCP Inspector CLI gates: tools/list --strict, prompts, resources, tool calls, modern and legacy eras
-npm run pack:mcpb        # esbuild bundle → mcpb/server/index.js, then mcpb validate + pack → dist-mcpb/prompt-engine.mcpb; then unpacks it, checks the 512×512 icon and lists the packed server's tools
+npm run pack:mcpb        # esbuild bundle → mcpb/server/index.js and THIRD_PARTY_NOTICES.txt, then mcpb validate + pack → dist-mcpb/prompt-engine.mcpb; then unpacks it and checks the 512×512 icon, that the notices name every bundled package, and the server's tools and prompts against manifest.json
+npm run test:pack        # npm pack (or the .tgz given after --); checks its files, installs it in a temporary folder, then checks --version, tools/list and get_checklist (needs a build and the npm registry)
 npm run test:worker      # Cloudflare Worker dry-run and wrangler dev smoke test (downloads Wrangler)
 ```
 

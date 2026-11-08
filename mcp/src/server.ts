@@ -143,7 +143,7 @@ const QuestionSchema = z.object({
   header: z.string().min(1).max(HEADER_MAX_CHARS).optional().describe(`A tag of up to ${HEADER_MAX_CHARS} characters, such as "Audience".`),
   question: z.string().min(1).max(MAX.question).describe('One decision in plain words, in the user\'s language.'),
   options: z.array(OptionSchema).min(MIN_OPTIONS).max(MAX_OPTIONS).describe(`${MIN_OPTIONS}-${MAX_OPTIONS} concrete, mutually exclusive options.`),
-  recommended: z.number().int().min(0).max(MAX_OPTIONS - 1).describe('0-based index of the recommended option.'),
+  recommended: z.number().int().min(0).max(MAX_OPTIONS - 1).describe('0-based index of the recommended option. It must work as the answer if the user accepts it unchanged (the form preselects it, and a decline returns it), so never recommend an option that asks the user for the information, such as "Tell me".'),
   why: z.string().min(1).max(MAX.why).describe('The reason for the recommended option, 12 words or fewer, in the user\'s language.'),
 });
 

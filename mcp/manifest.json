@@ -4,7 +4,7 @@
   "display_name": "Prompt Engine",
   "version": "0.1.0",
   "description": "Turns rough prompts into detailed, LLM-ready prompts by asking multiple-choice questions with recommended answers.",
-  "long_description": "Prompt Engine finds what a rough prompt leaves out (goal, audience, context, constraints, format, edge cases), asks you a few multiple-choice questions with a recommended answer for each, then has Claude write a detailed prompt that explains every addition. It includes checklists for coding agents, writing, research, and image and video tools. The server never calls a model, needs no API key, makes no network calls and doesn't log prompts.",
+  "long_description": "Prompt Engine finds what a rough prompt leaves out (goal, audience, context, constraints, format, edge cases), asks you a few multiple-choice questions with a recommended answer for each, then has Claude write a detailed prompt that explains every addition. It includes checklists for coding agents, writing, research, and image and video tools. The server never calls a model or any other service, needs no API key and doesn't log prompts.",
   "author": {
     "name": "vipul-goel",
     "url": "https://github.com/vipul-goel"
@@ -37,13 +37,14 @@
     },
     {
       "name": "ask_user",
-      "description": "Asks your clarifying questions in a form, with the recommended answers preselected."
+      "description": "Asks your clarifying questions: in a form where the app supports one, with the recommended answers preselected, otherwise as a numbered list."
     },
     {
       "name": "check_prompt",
       "description": "A heuristic structure-and-lint report on a draft prompt."
     }
   ],
+  "prompts_generated": true,
   "keywords": [
     "prompt engineering",
     "prompts",
@@ -58,7 +59,7 @@
       "linux"
     ],
     "runtimes": {
-      "node": ">=20.0.0"
+      "node": ">=22.19.0"
     }
   }
 }
