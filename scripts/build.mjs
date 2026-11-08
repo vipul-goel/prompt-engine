@@ -234,6 +234,10 @@ export const LINT_GRADER_CASES = {
 const LINT_NEVER = new Set(['open-placeholder']);
 const LINT_MEDIA_ONLY = new Set(['vague-quality-words']);
 const LINT_FILES = { '': 'lint-prompt.md', i: 'lint-prompt-i.md' };
+// A ^ or $ outside a character class and not escaped. In a generated grader, which has no m flag,
+// it matches only at the start or end of the whole reply, not at a line of a fenced block, so the
+// grader would miss what check_prompt (which matches one line at a time) still finds.
+const hasAnchor = (pattern) => [...pattern.matchAll(/\\.|\[(?:\\.|[^\]\\])*\]|[\^$]/g)].some((m) => m[0] === '^' || m[0] === '$');
 
 // A pattern that matches when x matches inside any fenced block: skip whole blocks, each closed
 // by a fence as long as its opener, then search one block. Named groups, because the rules' own
@@ -272,6 +276,7 @@ export function renderLintGraders(rules, { media = false, skip = [] } = {}) {
     // claude plugin eval (2.1.319) ends the front matter at the first "---" anywhere in it, and
     // YAML folds a line break inside a quoted value into a space: either would change the grader.
     if (yaml.some((l) => l.includes('---')) || /[\r\n]/.test(pattern)) throw new Error(`data/lint-rules.json ${ids}: a generated eval grader can't hold "---" or a line break; write -{3} or \\n instead`);
+    for (const r of rs) if (hasAnchor(r.pattern)) throw new Error(`data/lint-rules.json ${r.id}: a generated eval grader can't carry ^ or $ (without the m flag they match only at the start or end of the whole reply, not at a line of a fenced block); write the rule without them`);
     files[LINT_FILES[flags]] = ['---', ...yaml, '---', ''].join('\n');
   }
   return files;

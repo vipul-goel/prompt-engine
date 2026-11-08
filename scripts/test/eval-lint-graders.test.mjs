@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { LINT_GRADER_CASES, buildAll, normalize, renderLintGraders } from '../build.mjs';
+import { LINT_GRADER_CASES, buildAll, inFencedBlock, normalize, renderLintGraders } from '../build.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const rules = JSON.parse(readFileSync(join(repo, 'data/lint-rules.json'), 'utf8')).rules;
@@ -76,6 +76,18 @@ test('refuses a grader the eval runner would misread or could not compile, and a
   // The pattern compiles alone, but its group name clashes with the wrapper's.
   assert.throws(() => renderLintGraders([{ id: 'g', pattern: '(?<f>x)', flags: '' }]), /data\/lint-rules\.json g: the generated eval grader doesn't compile/);
   assert.throws(() => renderLintGraders(rules, { skip: ['no-such-rule'] }), /LINT_GRADER_CASES in scripts\/build\.mjs skips no-such-rule, which data\/lint-rules\.json doesn't have/);
+  // check_prompt matches one line at a time, so an anchor works there; in a grader it would match
+  // only at the start or end of the whole reply.
+  for (const pattern of ['^IMPORTANT', '(System|Assistant):$', 'a(?=$)']) {
+    assert.throws(() => renderLintGraders([{ id: 'anchored', pattern, flags: '' }]), /data\/lint-rules\.json anchored: a generated eval grader can't carry \^ or \$/, pattern);
+  }
+  // Escaped, or inside a character class, they are ordinary characters.
+  for (const pattern of ['[^{}\\n]{0,80}', '\\$\\{', '[$^]x']) assert.doesNotThrow(() => renderLintGraders([{ id: 'plain', pattern, flags: '' }]), pattern);
+});
+
+test('an anchored rule would miss a line of a fenced block, which is why the build refuses one', () => {
+  const anchored = new RegExp(inFencedBlock('^IMPORTANT'));
+  assert.ok(!anchored.test(reply('IMPORTANT: cite a source.')), 'the grader would pass a reply that check_prompt flags');
 });
 
 test('a single quote in a rule survives YAML quoting', () => {
