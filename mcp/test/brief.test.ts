@@ -91,6 +91,19 @@ describe('the method brief', () => {
     expect(brief).toMatch(/adding -2, -3… to the name instead of overwriting/);
   });
 
+  it("says where a critique's gap line goes when ask_user asks the questions", () => {
+    // The core opens a critique's questions with one line naming the biggest gaps, and the server's
+    // steps replace its instruction to send the questions in your own message. So the line is the
+    // form's intro, and it opens the reply when the questions come back as text.
+    expect(UNIVERSAL_METHOD).toMatch(/A request to critique a prompt or find what's missing gets the same flow: open the questions with one line naming the biggest gaps\./);
+    const questions = buildReference('questions');
+    for (const [name, text] of [['brief', brief], ['questions', questions]]) {
+      expect(text, name).toMatch(/For a request to critique a prompt or find what's missing, pass the one line naming the biggest gaps as intro\./);
+    }
+    expect(brief).toMatch(/returns the questions as text: show them to the user in their language, after that gap line for a critique, then stop and wait/);
+    expect(questions).toMatch(/returns the questions in Format B: send them as your whole reply, opened by that gap line for a critique, and wait\./);
+  });
+
   it('says what each form outcome means: closed asks in the chat, declined uses the ★ answers', () => {
     expect(brief).toMatch(/closes the form without answering, it returns the questions as text/);
     expect(brief).toMatch(/declines the form, it returns the ★ answers: list them under Assumptions/);
