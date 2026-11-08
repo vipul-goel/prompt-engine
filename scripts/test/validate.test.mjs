@@ -26,9 +26,17 @@ function copyRepo(from = repo) {
   return dir;
 }
 
+// git exports variables such as GIT_DIR and GIT_INDEX_FILE to the hooks it runs. Inherited, they
+// would point the git commands in a copy, and validate.mjs's own, at the repository being committed
+// to. The copies' commands and validate runs leave out every variable git itself clears when it
+// moves to another repository.
+const hasGit = spawnSync('git', ['--version']).status === 0;
+const LOCAL_GIT_VARS = new Set(hasGit ? spawnSync('git', ['rev-parse', '--local-env-vars'], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean) : []);
+const gitEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !LOCAL_GIT_VARS.has(k)));
+
 function validate(dir) {
   const r = spawnSync(process.execPath, [join(dir, 'scripts', 'validate.mjs')], {
-    env: { ...process.env, PE_ROOT: dir }, encoding: 'utf8',
+    env: { ...gitEnv(), PE_ROOT: dir }, encoding: 'utf8',
   });
   return { code: r.status, out: r.stdout + r.stderr };
 }
@@ -53,18 +61,19 @@ function withMutation(mutate, expected, code = 1, unexpected = []) {
 
 // A copy that is also a git repository, for the rules that read `git ls-files`. It tracks
 // the files this checkout tracks (everything, when the checkout has no .git); files the
-// checkout doesn't track are copied but stay untracked.
-const hasGit = spawnSync('git', ['--version']).status === 0;
+// checkout doesn't track are copied but stay untracked. The checkout's files are added with -f:
+// git refuses a named path that a gitignore covers (the project's, or a contributor's global one),
+// and these are tracked on purpose.
 function gitCopy() {
   const dir = copyRepo();
   const git = (args, input) => {
-    const r = spawnSync('git', ['-c', 'core.autocrlf=false', ...args], { cwd: dir, encoding: 'utf8', input });
+    const r = spawnSync('git', ['-c', 'core.autocrlf=false', ...args], { cwd: dir, encoding: 'utf8', input, env: gitEnv() });
     if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
     return r.stdout;
   };
   git(['init', '-q']);
-  const listed = existsSync(join(repo, '.git')) ? spawnSync('git', ['ls-files', '-z'], { cwd: repo, encoding: 'utf8' }) : null;
-  if (listed?.status === 0) git(['--literal-pathspecs', 'add', '--pathspec-from-file=-', '--pathspec-file-nul'], listed.stdout.split('\0').filter((f) => f && existsSync(join(dir, f))).join('\0'));
+  const listed = existsSync(join(repo, '.git')) ? spawnSync('git', ['ls-files', '-z'], { cwd: repo, encoding: 'utf8', env: gitEnv() }) : null;
+  if (listed?.status === 0) git(['--literal-pathspecs', 'add', '-f', '--pathspec-from-file=-', '--pathspec-file-nul'], listed.stdout.split('\0').filter((f) => f && existsSync(join(dir, f))).join('\0'));
   else git(['add', '-A']);
   return { dir, git };
 }
@@ -555,26 +564,27 @@ const ROWS = [
 ];
 
 // Rules on tracked files, which need a git copy: [name, mutate(dir, git), expected, code, unexpected].
-// The directory rules warn (D40), so those runs pass.
+// The directory rules warn (D40), so those runs pass. Rows add with -f, as gitCopy does, so that a
+// gitignore can't refuse a file a row means to track.
 const GIT_ROWS = [
   ['warns about a tracked file of 256 KiB or more, but not about a smaller or an untracked one', (d, git) => {
     put(d, 'docs/big.md', 'x'.repeat(256 * 1024));
     put(d, 'docs/small.md', 'x'.repeat(256 * 1024 - 1));
     put(d, 'docs/local.md', 'x'.repeat(300_000));
-    git(['add', 'docs/big.md', 'docs/small.md']);
+    git(['add', '-f', 'docs/big.md', 'docs/small.md']);
   }, /warning: docs\/big\.md: 262144 bytes; Anthropic's plugin directory holds/, 0, [/small\.md/, /local\.md/]],
   ['warns about more than 512 tracked files', (d, git) => {
     for (let i = 0; i < 520; i++) put(d, `many/${i}.md`, `${i}\n`);
-    git(['add', 'many']);
+    git(['add', '-f', 'many']);
   }, /warning: the plugin folder \(the repository root\) has \d+ tracked files; Anthropic's plugin directory holds a plugin with more than 512/, 0],
   ['warns about a tracked binary file that is not an image or font, but not about the PNG icons', (d, git) => {
     put(d, 'docs/guide.pdf', Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00, 0x01]));
-    git(['add', 'docs/guide.pdf']);
+    git(['add', '-f', 'docs/guide.pdf']);
   }, /warning: docs\/guide\.pdf: a binary file; Anthropic's plugin directory holds/, 0, /icon\.png/],
   // Memory files at the plugin root (finding 73): refused when tracked, and only then, so a
   // maintainer's private copy passes.
   ...['AGENTS.md', 'CLAUDE.local.md'].flatMap((f) => [
-    [`rejects a tracked ${f} at the plugin root`, (d, git) => { put(d, f, '# Notes\n'); git(['add', f]); },
+    [`rejects a tracked ${f} at the plugin root`, (d, git) => { put(d, f, '# Notes\n'); git(['add', '-f', f]); },
       new RegExp(`(^|\\n)error: ${reEsc(f)}: don't commit it at the plugin root: Claude Code can load it as project memory`), 1],
     [`ignores an untracked ${f} at the plugin root`, (d) => put(d, f, '# Notes\n'), /validate: OK/, 0],
   ]),
@@ -613,6 +623,71 @@ test('copies a checkout in a folder named like a skipped entry, still without it
   } finally {
     rmSync(parent, { recursive: true, force: true });
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The git copies under conditions that broke them: a gitignore that covers every path, and the
+// repository variables that git exports to a hook. Each runs a GIT_ROWS row through the helpers.
+const gitRow = (name) => {
+  const row = GIT_ROWS.find(([n]) => n === name);
+  assert.ok(row, name);
+  inGitCopy(...row.slice(1));
+};
+// A git copy tracks every file the checkout tracks (when the checkout has .git).
+function copyTracksCheckout() {
+  if (!existsSync(join(repo, '.git'))) return;
+  const { dir, git } = gitCopy();
+  try {
+    const list = (out) => out.split('\0').filter((f) => f && existsSync(join(dir, f))).sort();
+    const checkout = list(spawnSync('git', ['ls-files', '-z'], { cwd: repo, encoding: 'utf8', env: gitEnv() }).stdout);
+    assert.ok(checkout.length > 100, `${checkout.length} tracked files`);
+    assert.deepEqual(list(git(['ls-files', '-z'])), checkout);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+// Sets environment variables for one call, then puts them back.
+function withEnv(vars, fn) {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, vars);
+  try {
+    fn();
+  } finally {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
+}
+
+test('git copies track the checkout\'s files and a row\'s, even when a gitignore covers every path', { skip: !hasGit && 'needs git' }, () => {
+  const cfg = mkdtempSync(join(tmpdir(), 'pe-gitconfig-'));
+  try {
+    writeFileSync(join(cfg, 'ignore'), '*\n');
+    writeFileSync(join(cfg, 'config'), `[core]\n\texcludesFile = ${join(cfg, 'ignore').replaceAll('\\', '/')}\n`);
+    withEnv({ GIT_CONFIG_GLOBAL: join(cfg, 'config') }, () => {
+      copyTracksCheckout();
+      gitRow('rejects a tracked AGENTS.md at the plugin root');
+    });
+  } finally {
+    rmSync(cfg, { recursive: true, force: true });
+  }
+});
+
+test('git copies leave alone the repository that GIT_DIR and GIT_INDEX_FILE name', { skip: !hasGit && 'needs git' }, () => {
+  const other = mkdtempSync(join(tmpdir(), 'pe-hook-'));
+  const git = (...args) => spawnSync('git', args, { cwd: other, encoding: 'utf8', env: gitEnv() });
+  try {
+    git('init', '-q');
+    writeFileSync(join(other, 'a.txt'), 'a\n');
+    git('add', 'a.txt');
+    const before = git('ls-files', '--stage').stdout;
+    assert.match(before, /\ta\.txt\n$/);
+    withEnv({ GIT_DIR: join(other, '.git'), GIT_INDEX_FILE: join(other, '.git', 'index') }, () => {
+      copyTracksCheckout();
+      gitRow('rejects a tracked AGENTS.md at the plugin root');
+      gitRow('ignores an untracked AGENTS.md at the plugin root');
+    });
+    assert.equal(git('ls-files', '--stage').stdout, before, 'the other repository\'s index is unchanged');
+  } finally {
+    rmSync(other, { recursive: true, force: true });
   }
 });
 
