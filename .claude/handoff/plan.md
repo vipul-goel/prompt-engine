@@ -35,14 +35,14 @@ The repo review's owner decisions were accepted as recommended: D1-D26 on 2026-1
 - **Compaction.** About the first 5k tokens of an invoked skill survive compaction.
 - **Plugin layout.** The repo can be marketplace + plugin with `source: "./"`, and plugin skills run as `/plugin:skill`. The plugin root must not contain a **`package.json` + lockfile** (Claude Code runs `npm ci` on install), `bin/` (Claude.ai refuses the plugin), `CLAUDE.md`, `.mcp.json` or `commands/`.
 - **Claude.ai.** It can add the same GitHub marketplace (Customize › Plugins), which then syncs to Claude Code. Skills there need "Code execution and file creation".
-- **Other agents.** Codex, Gemini CLI, GitHub Copilot, Cline, Mistral Vibe, OpenCode and Goose read SKILL.md, with `.agents/skills/` as the shared folder. `npx skills add` installs into many agents. Cursor, Zed, Devin Desktop and Kiro document their skill folders too; Kiro lists only its own `.kiro/skills/` folders (checked 2026-11-03, D22).
+- **Other agents.** Codex, Gemini CLI, GitHub Copilot, Cline, Mistral Vibe, OpenCode and Goose read SKILL.md, with `.agents/skills/` as the shared folder. `npx skills add` installs into many agents. Cursor, Zed, Devin Desktop and Kiro document their skill folders too; Kiro lists only its own `.kiro/skills/` folders (checked 2026-11-03, D22). OpenAI's skills page (learn.chatgpt.com/docs/build-skills, read 2026-11-09) says the ChatGPT desktop app runs standalone skills, and ChatGPT on the web, desktop and mobile runs skills that come in plugins. That's untested here, and the user docs still send ChatGPT users to the universal prompt until the owner decides whether to offer a skill route there.
 - **MCP.** The spec is 2026-07-28 (stateless) and the TS SDK is v2 (`@modelcontextprotocol/server` 2.4). `serveStdio` and `createMcpHandler` share one factory, and form elicitation goes through `inputRequired.elicit`. Sampling is deprecated and unsupported by Claude. Claude connectors accept authless public servers.
 - **Registry and bundles.** The MCP Registry needs `mcpName` equal to the `server.json` name and a description of 100 characters or fewer. `.mcpb` bundles go out via GitHub Releases.
 - **Claude prompting guidance.** The newest models can refuse prompts that ask them to show their reasoning. Prefill errors on Claude 4.6+. ALL-CAPS/MUST pressure gets over-applied. Explaining *why* helps. Ask only when the answer changes the work.
 - **Retired Anthropic tools.** Anthropic retired its Console prompt generate/improve endpoints on Aug 17, 2026.
 
 **⚠️ Unverified or secondary-only.** These ship as "check the tool's current docs", never as facts:
-- whether ChatGPT supports skills, and the GPT, Gem and Project limits;
+- the GPT, Gem and Project limits;
 - whether ChatGPT accepts authless MCP;
 - Midjourney V8 flag details and other volatile media facts;
 - the Claude.ai description limit (Phase-0 test);
@@ -90,16 +90,18 @@ data/*.json                                      # only what code consumes: rubr
 universal/                                       # prompt-engine.md (hand-written core ≤7,500, contract-tested) · prompt-engine-knowledge.md (generated) · README.md
 mcp/                                             # standalone npm package prompt-engine-mcp with its own lockfile (nested, so the plugin loader ignores it)
 scripts/*.mjs                                    # zero-dependency Node: build, validate, release (builds dist/; release.yml publishes);
-                                                 #   scripts/eval/universal-test.mjs is the universal prompt's conversation test. No smoke
-                                                 #   scripts: Claude Code's dialogs get a manual checklist in docs/manual-checks.md (D25),
-                                                 #   and mcp/'s npm run test:pack installs and starts the packed npm package, in CI and in
+                                                 #   scripts/eval/universal-test.mjs is the universal prompt's conversation test. The planned
+                                                 #   scripts/smoke/*.sh (tmux, platforms) weren't written: Claude Code's dialogs get a manual
+                                                 #   checklist in docs/manual-checks.md (D25), and mcp/'s npm run test:pack
+                                                 #   (mcp/scripts/smoke-pack.mjs) installs and starts the packed npm package, in CI and in
                                                  #   release.yml's build job
                                                  #   release --zip needs zip and unzip; without them it stops with a one-line error (D43)
 evals/<case>/{prompt.md,case.yaml,graders/}      # claude plugin eval format; evals/results/ gitignored;
                                                  #   graders/lint-prompt*.md are generated from data/lint-rules.json (D36)
 docs/ · .github/workflows/{ci,release,evals}.yml · .claude/CLAUDE.md (contributor notes) · README · LICENSE · CONTRIBUTING · CHANGELOG
-# D39: before the PR leaves draft, .claude/handoff and the notes' Status and Not-finished sections move to a maintainer-notes branch;
-#   .claude/CLAUDE.md itself stays unless a check shows Claude Code loading it from the plugin cache
+# D39: before the PR leaves draft, .claude/handoff and the notes' Status and Not-finished sections move to a maintainer-notes branch.
+#   The 2026-11-07 check showed Claude Code loading .claude/CLAUDE.md from the plugin cache, so in the same commit the remaining
+#   notes move to docs/maintainers.md (imported from an untracked .claude/CLAUDE.md) and validate.mjs refuses tracked .claude/ entries
 ```
 Cut from v1, since none of these were requested and they're untested: the Gemini extension, the Codex `openai.yaml` sidecar, Skills-over-MCP, micro/full universal variants, vendor-specific ask-tool instructions, and a prompt-rewriting hook (UserPromptSubmit can't replace prompts).
 
@@ -141,14 +143,14 @@ Each phase is a workflow with independent reviewers and ends in a commit.
    - The Worker, if its checks pass.
 4. **Distribution.**
    - Manifests.
-   - Release checks that publish nothing (`release.mjs` has no `--dry-run`: it only builds `dist/`, and release.yml publishes): validate.mjs and the MCP tests check that every version agrees, and the MCP tests check `server.json` against its schema; `npm run pack:mcpb` runs `mcpb validate` and `mcpb pack`, then starts the packed server; `npm run test:pack` installs the packed npm package and starts it. CI runs both package checks on Node 22 and 24, and again on 22.19.0, the floor (D26); the release workflow's build job runs both before anything is published (finding 79).
+   - Release checks that publish nothing (`release.mjs` has no `--dry-run`: it only builds `dist/`, and release.yml publishes): validate.mjs and the MCP tests check that `plugin.json`, the skill's metadata, `mcp/package.json`, `server.json` and `manifest.json` carry one version (neither reads `package-lock.json`'s), and the MCP tests check `server.json` against its schema; `npm run pack:mcpb` runs `mcpb validate` and `mcpb pack`, then starts the packed server; `npm run test:pack` installs the packed npm package and starts it. CI runs both package checks on Node 22 and 24, and again on 22.19.0, the floor (D26); the release workflow's build job runs both before anything is published (finding 79).
    - CI/release/evals workflows, checked with actionlint.
    - Docs: a "Pick one" install table, a "don't install twice" note, prior art, privacy.
    - Platform smoke tests: `npx skills add . --list`, plus Codex and Gemini CLI if they install without accounts.
 5. **Finish.**
    1. Description tuning: `run_loop` from a scratch directory, with at least half the eval set being near-miss task requests and a length cap from Phase 0.
    2. The full `claude plugin eval`.
-   3. A tmux smoke test from a fresh clone + marketplace install.
+   3. A smoke test from a fresh marketplace install: one run by hand is recorded, on 2026-10-29, before 998e0c8; no tmux script was written, and since D25 re-runs follow the manual Claude Code checklist in docs/manual-checks.md (handoff step 4).
    4. Multi-agent code review, fixes, every check re-run.
    5. Push.
 
@@ -188,7 +190,7 @@ Reused utilities, from `/root/.claude/skills/synced/…/skill-creator/`:
   - questions arrive as dialogs (≤4 per dialog, Recommended first, short headers);
   - the "What next?" menu appears;
   - nothing executes before you pick, shell commands included, for an imperative coding prompt too (D32).
-- **Universal.** `claude -p --system-prompt "$(cat universal/prompt-engine.md)" --tools "" --safe-mode --strict-mcp-config --disallowedTools "mcp__*" --output-format stream-json --verbose` on 6 cases, then `--resume` with `ok`, an override, `deep` or `change 1: …`. A case fails if any tool or MCP server loads (D13). Checked with the script's own regex checks, not the eval graders (D14).
+- **Universal.** `claude -p --system-prompt "$(cat universal/prompt-engine.md)" --tools "" --safe-mode --strict-mcp-config --disallowedTools "mcp__*" --output-format stream-json --verbose` on each of the script's conversations, continued with `--resume` and the replies a user would give, such as `ok`, an override, `deep` or `change 1: …`. A case fails if any tool or MCP server loads (D13). Checked with the script's own regex checks, not the eval graders (D14).
 - **MCP.** Vitest; Inspector `tools/list --strict`, `prompts/get` and both protocol eras; a `wrangler dev` smoke test; `claude -p --mcp-config` end-to-end.
 
 ## What you'll need to do
