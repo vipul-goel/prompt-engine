@@ -245,13 +245,14 @@ export function frontmatter(text, file) {
 
 // ---------- case files ----------
 const TOP = ['schema_version', 'name', 'description', 'tags', 'plugins', 'runs', 'expected_outcome'];
-const EXEC = ['model', 'max_turns', 'timeout_seconds', 'allowed_tools', 'disallowed_tools', 'append_system_prompt', 'env'];
+const EXEC = ['model', 'max_turns', 'timeout_seconds', 'allowed_tools', 'append_system_prompt', 'env'];
 const CASE_KEYS = new Set([...TOP, 'context', 'execution']);
 const CONTEXT_KEYS = new Set(['scaffold_script', 'history_file', 'add_dirs']);
 const EXECUTION_KEYS = new Set([...EXEC, 'prompt']);
 const PROMPT_KEYS = new Set([...TOP, ...EXEC]);
-// Keys the CLI accepts that this repo doesn't use.
-const UNDOCUMENTED = new Set(['artifact_publish', 'growthbook_overrides']);
+// Keys the CLI accepts that this repo doesn't use. disallowed_tools is read by the CLI's code
+// (2.1.319) but missing from the plugin-evals docs' execution keys (fetched 2026-11-08).
+const UNDOCUMENTED = new Set(['artifact_publish', 'growthbook_overrides', 'disallowed_tools']);
 const UNDOCUMENTED_RULE = "not used in this repo; claude plugin eval accepts it, but its docs don't list it (repo rule)";
 // Types in the CLI's case schema; a value of another type makes it refuse the case.
 const STRING_KEYS = new Set(['description', 'expected_outcome', 'model', 'append_system_prompt', 'prompt', 'scaffold_script', 'history_file']);

@@ -364,6 +364,8 @@ const ROWS = [
     /case\.yaml: execution\.artifact_publish: not used in this repo; claude plugin eval accepts it, but its docs don't list it \(repo rule\)/],
   ['rejects an undocumented prompt.md key', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\ngrowthbook_overrides: {a: b}')),
     /spanish-quick\/prompt\.md: growthbook_overrides: not used in this repo.*\(repo rule\)/],
+  ['rejects disallowed_tools, which the CLI reads but its docs leave out', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\ndisallowed_tools: [Bash]')),
+    /spanish-quick\/prompt\.md: disallowed_tools: not used in this repo.*\(repo rule\)/],
   ['rejects a grader name key', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('type: regex', 'type: regex\nname: other')),
     /03-assumptions-heading\.md: name: the file name is the grader's name; don't override it \(repo rule\)/],
   ['rejects a case.yaml without a name', (d) => edit(d, `${SPANISH}/case.yaml`, (t) => t.replace('name: spanish-quick\n', '')),
