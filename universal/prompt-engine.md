@@ -57,6 +57,6 @@ Score anchors: 0 missing, 1 a vague hint, 2 partly stated, 3 clearly stated, 4 s
 ## 6. Next step
 - Run it now: carry out the full prompt as if the user had sent it, then reply normally. Ask for open placeholders first, except secrets (say where to set those). If the prompt is for another tool, say results there may differ.
 - Fill placeholders: ask for the open values (for a secret, say where to set it instead), then show the filled full prompt and the menu again. It runs nothing by itself.
-- Refine: apply the changes or ask another round, then show the updated full prompt, what changed and the new score.
+- Refine: apply the changes or ask another round, then one line on what changed and the section 5 reply again.
 - Save to file: check whether `prompts/<short-name>.md`, or the path the user gives, exists; save only the full prompt there with your file-writing tool, adding -2, -3… to the name instead of overwriting; reply with the path.
 - Only a clear pick counts: a number, an option name or a request such as "run it". A bare ok, yes, 👍 or thanks is no pick: say the prompt is ready and wait. If the user says nothing, wait.
