@@ -1,5 +1,7 @@
 # Install Prompt Engine
 
+Steps checked against the vendors' docs on 2026-11-08. Apps rename menus, so if a label differs, look for the closest match.
+
 Pick one option for the app you use. Some options reach more than one app, so a second install can give you two copies (see [Install it once](#install-it-once)). Each option says whether its steps were verified against the vendor's docs or tested here; see [compatibility.md](compatibility.md) for details.
 
 - [Claude Code](#claude-code)
@@ -57,11 +59,13 @@ Status: tested here with Claude Code 2.1.312.
 
 ## Claude.ai, Claude Desktop and the Claude mobile apps
 
-You need **Code execution and file creation** turned on (Settings → Capabilities; on Team and Enterprise plans an Owner enables it). Anthropic's pages differ on which plans include custom skills: some list Pro, Max, Team and Enterprise, others also list Free.
+You need **Code execution and file creation** turned on (Settings → Capabilities; called **Create and edit files** in the updated Settings layout; on Team and Enterprise plans an Owner controls it). Anthropic's pages differ on which plans include custom skills: some list Pro, Max, Ultra, Team and Enterprise, others also list Free.
 
-**Option A: add the marketplace (recommended, because you get updates).** Go to Customize → Plugins → Add → Add marketplace and enter `https://github.com/vipul-goel/prompt-engine`. Then add the prompt-engine plugin. Plugins added here also appear in Claude Code.
+**Option A: add the marketplace (recommended, because you get updates).** Go to Customize → Plugins → Add → Add marketplace and enter `https://github.com/vipul-goel/prompt-engine`. Then add the prompt-engine plugin. Plugins added here also appear in Claude Code (see [Install it once](#install-it-once)). To get a new version, select **Check for updates** on the marketplace in Customize → Plugins. claude.com's docs also describe **Sync automatically** for marketplaces added from github.com; whether it picks up this repository's pushes wasn't tested here.
 
-**Option B: upload the skill.** Download `prompt-engine.zip` from the [latest release](https://github.com/vipul-goel/prompt-engine/releases), then go to Customize → Skills → + → Create skill → Upload a skill. To build the zip yourself from a clone, run `node scripts/release.mjs --zip`. The archive must contain the `prompt-engine/` folder at its top level.
+**Option B: upload the skill.** Download `prompt-engine.zip` from the [latest release](https://github.com/vipul-goel/prompt-engine/releases), then go to Customize → Skills → + → Create skill → Upload a skill. To check a download, put it next to `SHA256SUMS` from the same release and run `shasum -a 256 -c --ignore-missing SHA256SUMS` (or `sha256sum -c --ignore-missing SHA256SUMS`).
+
+To build the zip yourself from a clone, run `node scripts/release.mjs --zip`. It needs Node.js 22.19 or later and the `zip` and `unzip` commands: macOS includes them; on Linux, install the zip and unzip packages if they're missing. On Windows, or without a clone, zip the `skills/prompt-engine` folder yourself: right-click it, then Show more options → Send to → Compressed (zipped) folder (on Windows 10, Send to is in the first menu); not tested here. Either way, the archive must contain the `prompt-engine/` folder at its top level.
 
 Use it by typing `/` in the message box and picking **prompt-engine**, or write "prompt-engine: <your prompt>". Team and Enterprise Owners can add it for everyone under Organization settings → Plugins & skills.
 
@@ -70,7 +74,7 @@ Status: steps verified in Anthropic's docs. They can't be tested from this repos
 ## Claude API and Claude Agent SDK
 
 - **Claude API.** Upload the `skills/prompt-engine` folder (or the release zip) with the Skills API, then attach it to Messages requests through `container.skills` together with the code execution tool. Follow Anthropic's [Skills guide](https://platform.claude.com/docs/en/build-with-claude/skills-guide.md) for the exact request shapes. Pin a skill version in production. The API has no question dialog, so questions arrive as a numbered list.
-- **Agent SDK.** Put the folder at `.claude/skills/prompt-engine/` in your project, or at `~/.claude/skills/prompt-engine/`. With the default setting sources the SDK loads both. If you pass your own `tools` list, include `Skill`, plus `AskUserQuestion` if your app handles questions.
+- **Agent SDK.** Put the folder at `.claude/skills/prompt-engine/` in your project, or at `~/.claude/skills/prompt-engine/`. With the default setting sources the SDK loads both. If you pass your own `tools` list, include `Skill` and `Read` (the skill reads its reference files with Read), plus `AskUserQuestion` if your app handles questions and `Write` if you want it to offer Save to file. Setting the `skills` option to `['prompt-engine']` pre-approves the skill call and lets Claude invoke only that skill; `'all'` keeps your other skills. The option needs TypeScript SDK 0.2.120 or later, or Python SDK 0.1.62 or later.
 
 Status: verified in Anthropic's docs; not tested here.
 
@@ -106,7 +110,7 @@ Use the copy-paste prompt. See [universal/README.md](../universal/README.md) for
 
 ## MCP clients
 
-Run the MCP server locally with `npx -y prompt-engine-mcp`, which is available after the first npm release. In Claude Desktop, install the `.mcpb` file from the releases page instead. Configuration for Claude Code, Cursor, VS Code and others, and how to self-host the HTTP version, are in [mcp/README.md](../mcp/README.md).
+Run the MCP server locally with `npx -y prompt-engine-mcp`, which is available after the first npm release. In Claude Desktop, install the `.mcpb` file from the releases page instead (not yet tested in Claude Desktop). Configuration for Claude Code, Cursor, VS Code and others, and how to self-host the HTTP version, are in [mcp/README.md](../mcp/README.md).
 
 ## Install it once
 

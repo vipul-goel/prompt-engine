@@ -8,7 +8,9 @@ The design follows the platforms' own documentation and the prompting guidance b
 - Agent Skills overview and best practices (Claude platform): https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview.md · https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices.md
 - Skills API guide: https://platform.claude.com/docs/en/build-with-claude/skills-guide.md
 - Creating and using skills on Claude.ai: https://claude.com/docs/skills/how-to.md · https://support.claude.com/en/articles/12512180-using-skills-in-claude · https://support.claude.com/en/articles/13119606-provision-and-manage-skills-for-your-organization
-- Plugins on Claude.ai: https://claude.com/docs/plugins/platform-support.md
+- The Settings toggle skills need, "Code execution and file creation", called "Create and edit files" in the updated Settings layout (checked on 2026-11-08): https://support.claude.com/en/articles/12111783-create-and-edit-files-with-claude · https://support.claude.com/en/articles/12512180-using-skills-in-claude
+- Plugins on Claude.ai: https://claude.com/docs/plugins/platform-support.md · getting updates with Check for updates or Sync automatically (checked on 2026-11-08): https://claude.com/docs/plugins/overview.md
+- Agent SDK skills, the `tools` and `skills` options (checked on 2026-11-08): https://code.claude.com/docs/en/agent-sdk/skills.md · the `skills` option arrived in TypeScript SDK 0.2.120 and Python SDK 0.1.62, per their changelogs: https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md · https://github.com/anthropics/claude-agent-sdk-python/blob/main/CHANGELOG.md
 - Anthropic's skill-creator validator: https://github.com/anthropics/skills (skills/skill-creator/scripts/quick_validate.py)
 
 ## Claude Code plugins and testing
