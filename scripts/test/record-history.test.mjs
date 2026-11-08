@@ -194,12 +194,14 @@ test('record-history.mjs passes a first message that holds the safety eval\'s fa
 test('record-history.mjs refuses a first message that names this machine\'s home folder, before claude starts', () => {
   const { parent, started, out, record, cleanup } = setup();
   try {
-    // Not under /Users or /home, so only the check for this machine's home folder finds it.
+    // A home folder in the temp folder. On macOS and Linux that isn't under /Users or /home, so only the
+    // check for this machine's home folder finds it. On Windows the temp folder is under C:\Users\<name>,
+    // so the generic home-path check also reports line 1, first; the machine's own check must still fire.
     const home = join(parent, 'person');
     mkdirSync(join(home, '.claude', 'projects'), { recursive: true });
     const r = record([out, `improve the notes in ${join(home, 'notes.txt')}`], { HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '' });
     assert.equal(r.status, 1, r.stderr);
-    assert.match(r.stderr, /looks private, so nothing was sent:\n {2}line 1: this machine's home folder/);
+    assert.match(r.stderr, /looks private, so nothing was sent:\n(?: {2}line \d+: [^\n]*\n)* {2}line 1: this machine's home folder\n/);
     assert.ok(!existsSync(started), 'claude was not started');
     assert.ok(!existsSync(out));
   } finally {
