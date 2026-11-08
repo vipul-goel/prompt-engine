@@ -6,6 +6,8 @@ This file describes how to write the full prompt: which sections to use, how to 
 
 Use the sections that carry task-specific content and drop the rest. A two-line task doesn't need nine headings, and empty boilerplate sections dilute the instructions that matter. Write the headings in the prompt's language: a prompt in German has `# Ziel`, `# Kontext` and `# Ausgabe`, not `# Goal`.
 
+If the prompt is already strong, don't rebuild it on this skeleton: keep the user's wording, sentence order and layout, edit in place and add only short lines, so it grows by at most about half its length.
+
 ```text
 # Goal
 <Action verb + concrete deliverable>. It is for <purpose>, read or used by <audience>.

@@ -44,7 +44,7 @@ Go through the pack's checklist and mark each item explicit, inferable or missin
 
 For each missing item decide: **ask** it, **assume** the recommended default (it goes under Assumptions), or **skip** it because it would not change the result. Use the priority rule in `references/questions.md`: ask only when different answers would lead to materially different prompts.
 
-If the prompt is already strong, say so, keep the user's text, make small edits, and ask at most two questions.
+If the prompt is already strong, say so, keep the user's text and layout (no new headings), make small edits that add at most about half its length, and ask at most two questions.
 
 ### 3. Ask (standard and deep modes)
 
