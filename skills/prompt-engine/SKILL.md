@@ -20,6 +20,8 @@ Use it when the user asks to improve, enhance, rewrite, expand or optimize a pro
 
 Don't use it for ordinary requests such as "write me a cold email" — just do the task. If the user pastes text without saying what they want, ask once whether they want it improved or carried out.
 
+A request to critique a prompt or find what's missing gets the same workflow: open the question round with one line naming the biggest gaps.
+
 ## Workflow
 
 ### 1. Intake
