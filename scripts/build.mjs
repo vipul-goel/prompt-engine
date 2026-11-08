@@ -220,6 +220,7 @@ export function refreshHistory(jsonl, skillBody, readPluginFile) {
 // match the raw text of each block, code spans included, so a prompt that names a CRITICAL log
 // level in backticks fails them.
 export const LINT_GRADER_CASES = {
+  'coding-quick-code-block': {},
   'followup-ok-accepts-recommendations': {},
   'followup-partial-answers': {},
   'image-midjourney-quick': { media: true },
