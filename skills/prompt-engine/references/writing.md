@@ -42,7 +42,7 @@ For stories and creative writing, ask about genre, point of view, length, the re
 
 Rough prompt: "write a launch email for my productivity app" (quick mode)
 
-Assumptions it produces include: audience = existing newsletter subscribers; goal = start a free trial; body of 150–250 words; subject line under 50 characters; friendly and direct tone. Placeholders: `[[app name]]`, `[[key feature]]`, `[[trial length]]`, `[[sign-up link]]`.
+Assumptions it produces include: audience = existing newsletter subscribers; goal = start a free trial; body of 150–250 words; subject line under 50 characters; two alternative subject lines; friendly and direct tone. Placeholders: `[[app name]]`, `[[key feature]]`, `[[trial length]]`, `[[sign-up link]]`.
 
 Enhanced prompt (excerpt):
 
