@@ -88,7 +88,7 @@ Some platform details couldn't be verified directly, such as other chat apps' in
 
 ## Prior art and what's different
 
-Anthropic's Console prompt improver and generator were retired in August 2026, according to Anthropic's release notes. Most remaining "enhance prompt" buttons, such as those in app builders and IDEs, rewrite silently without asking or explaining. Community projects explored parts of this idea:
+Anthropic's [release notes](https://platform.claude.com/docs/en/release-notes/overview#july-17-2026) (July 17, 2026 entry) announced the retirement of the legacy Console Workbench and the experimental API endpoints for generating and improving prompts on August 17, 2026. As of November 2026, community projects cover parts of this idea:
 - [prompt-master](https://github.com/nidhinjs/prompt-master) asks at most 3 questions and returns one prompt block;
 - [claude-code-prompt-improver](https://github.com/severity1/claude-code-prompt-improver) uses a hook to research the repo and ask questions when a prompt is vague;
 - [prompt-architect](https://github.com/ckelsoe/prompt-architect) offers framework-based rewrites with scores;
@@ -98,7 +98,7 @@ Prompt Engine combines adaptive questions with recommended answers, a no-inventi
 
 ## Privacy
 
-The skill and the universal prompt are just instructions: your prompts go only to the AI app you already use. The MCP server makes no network calls, needs no API key and doesn't log prompts. Its main tool doesn't even receive your prompt text.
+The skill and the universal prompt are just instructions: your prompts go only to the AI app you already use. The MCP server never calls a model or any other service, needs no API key and doesn't log prompts. Its main tool, `enhance_prompt`, never receives your prompt. `check_prompt` receives a draft when the model calls it, and `ask_user` receives the questions and, when your app shows them as a form, your answers and notes. A server on your own machine sends none of this anywhere; if you connect to a copy someone else hosts, those calls go to their server.
 
 ## Repository layout
 

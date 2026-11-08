@@ -30,7 +30,7 @@ The design follows the platforms' own documentation and the prompting guidance b
 - Anthropic, refusals (including requests to expose reasoning): https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback
 - Anthropic, per-model prompting pages, for example https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5
 - Claude Code best practices: https://code.claude.com/docs/en/best-practices
-- Anthropic release notes (retirement of the Console prompt tools, Aug 2026): https://platform.claude.com/docs/en/release-notes/overview
+- Anthropic release notes: the July 17, 2026 entry announces the retirement of the legacy Console Workbench and of the experimental API endpoints for generating, improving and templatizing prompts on August 17, 2026 (checked on 2026-11-08): https://platform.claude.com/docs/en/release-notes/overview#july-17-2026
 - OpenAI GPT-4.1 prompting guide: https://developers.openai.com/cookbook/examples/gpt4-1_prompting_guide. Newer OpenAI and Google guidance was seen only through search results.
 
 ## Other agents (verified in shipped packages or the vendors' docs)
