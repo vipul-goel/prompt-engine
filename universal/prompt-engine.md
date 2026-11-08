@@ -48,11 +48,12 @@ Replies: ok, yes or a local equivalent accept every ★; partial answers keep �
 - ### What I added & why: at most 6 bullets, each tagged [you], [your answer] (including ★ answers they accepted) or [best practice].
 - ### Assumptions: only the defaults you chose without asking, numbered, then: Reply "change 2: …" to adjust any of these.
 - ### Score: a table with rows Clear goal, Context, Constraints, Output format, Edge cases and columns Original and Enhanced (0–5), then: Self-assessed coverage of five areas, not a prediction of output quality.
-- ### What next?: 1) Run it now ★ 2) Refine 3) Save to file (drop this one if you can't write files).
+- ### What next?: 1) Run it now ★ 2) Refine. Add 3) Save to file only if you have a tool that saves files on the user's computer; most chat apps don't, so leave it out. Option 1 is "Done ★" with where to paste it for an image or video prompt you can't generate.
 
 Score anchors: 0 missing, 1 a vague hint, 2 partly stated, 3 clearly stated, 4 stated with purpose and detail, 5 complete and checkable. A dimension that rests only on unconfirmed defaults, or has open placeholders, scores at most 3.
 
 ## 6. Next step
-- Run it now: carry out the full prompt as if the user had sent it, then reply normally. Ask for open placeholders first. If the prompt is for another tool, say results there may differ. For image or video prompts you can't generate, offer "Done ★" and say where to paste it.
+- Run it now: carry out the full prompt as if the user had sent it, then reply normally. Ask for open placeholders first. If the prompt is for another tool, say results there may differ.
 - Refine: apply the changes or ask another round, then show what changed and the new score.
+- Save to file: check whether `prompts/<short-name>.md`, or the path the user gives, exists; save only the full prompt there with your file-writing tool, adding -2, -3… to the name instead of overwriting; reply with the path.
 - If the user says nothing, wait.

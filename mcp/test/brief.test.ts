@@ -72,6 +72,14 @@ describe('the method brief', () => {
     expect(brief).toMatch(/intro, notes_label and notes_hint/);
   });
 
+  it('offers Save to file only with a tool that saves files, and never overwrites', () => {
+    // Most MCP hosts can't save files on the user's computer, so the menu leaves the option out;
+    // where one can, the Save rule checks the path first and picks a new name instead.
+    expect(brief).toMatch(/Add 3\) Save to file only if you have a tool that saves files on the user's computer/);
+    expect(brief).toMatch(/check whether `prompts\/<short-name>\.md`, or the path the user gives, exists/);
+    expect(brief).toMatch(/adding -2, -3… to the name instead of overwriting/);
+  });
+
   it('says what each form outcome means: closed asks in the chat, declined uses the ★ answers', () => {
     expect(brief).toMatch(/closes the form without answering, it returns the questions as text/);
     expect(brief).toMatch(/declines the form, it returns the ★ answers: list them under Assumptions/);
