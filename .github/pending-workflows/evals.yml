@@ -2,7 +2,7 @@ name: Evals
 
 # Behavior evals with Claude Code's runner. These are real, billed model calls,
 # so this workflow only runs when started by hand. Secret: ANTHROPIC_API_KEY.
-# Each case pins its agent model in prompt.md (D28); the judge is pinned below.
+# Each case pins its agent model in prompt.md; the judge is pinned below.
 on:
   workflow_dispatch:
     inputs:
@@ -12,7 +12,7 @@ on:
         required: true
         default: 5
       runs:
-        description: Runs per case and arm (1 is the plan's cost guard; re-check a failing case at 3 before recording it, D31)
+        description: Runs per case and arm. The cost grows with it, so keep 1; re-check a failing case locally with --case and --runs 3
         type: number
         required: true
         default: 1
@@ -45,7 +45,7 @@ jobs:
             --runs "$RUNS" --max-cost-usd "$MAX_COST_USD" \
             --judge-model claude-haiku-5-5 \
             --allow-tools Write Edit --scaffold -j 3 --json eval-results.json
-      # In two-arm runs the with-only skill-fired checks are unscored indicators (D27),
+      # In two-arm runs the with-only skill-fired checks are unscored indicators,
       # so a run where the skill didn't start would still pass. This step fails it instead.
       - name: Check that the skill started wherever a case expects it
         if: ${{ !cancelled() }}
