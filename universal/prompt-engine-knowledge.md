@@ -320,7 +320,7 @@ The short version is the same prompt compressed for quick chats: the goal with i
 
 Fix anything that fails:
 
-- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Compare each number, length, limit and name in the prompt with the request and the answers: one that came from neither is a `[[placeholder]]` or in an Assumption. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
@@ -702,6 +702,7 @@ Give each segment one action and one camera move, long enough for the action. Va
 - Real people, minors, trademarks or a living artist's name → fictional people, generic marks and a description of the style's traits.
 - Version-specific flags or features you aren't sure the user's version supports → ask, or state the assumption.
 - A prompt over the tool's length guidance → shorten, keeping the essentials first.
+- Added details missing from Assumptions → go through the prompt phrase by phrase and compare each detail with the request: framing and camera, light, colors, style, settings, exclusions, sound and scene details. Each one the user didn't give, down to one word such as a material, is in an Assumption, whatever its tag under "What I added & why"; small scene details share one item. Stay within eight items by merging related picks, not by leaving any out.
 
 ### Language
 
