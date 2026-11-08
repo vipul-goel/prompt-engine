@@ -615,7 +615,7 @@ Then ask only about the dimensions below that apply to that mode.
 | 8 | Camera movement | T2V, I2V | Still camera or one move (push-in, pan, tracking, handheld)? | Static, or exactly one move per shot |
 | 9 | Lighting | all | What light: soft or hard, from where, how much contrast? | Always name a light source and its quality |
 | 10 | Color palette | all | Must-have colors or brand colors? | 3–5 named colors that fit the mood |
-| 11 | Style and medium | all | Photo, illustration, 3D, anime, watercolor, a period film look? | Photorealistic if the user said "photo"; otherwise ask |
+| 11 | Style and medium | all | Photo, illustration, 3D, anime, watercolor, a period film look? | Photorealistic if the user said "photo"; otherwise the style that best fits the purpose |
 | 12 | Mood | all | What should the viewer feel? | Inferred from the purpose and shown through light, color and scale |
 | 13 | Aspect ratio and resolution | all | Where will it be shown: square feed, 16:9 video, 9:16 vertical, print? | 1:1 for images, 16:9 for video, 9:16 for vertical social |
 | 14 | Duration and pacing | T2V, I2V | How long, and how fast should it feel? | The shortest length that fits the action; long pieces split into clips |
