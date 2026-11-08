@@ -60,7 +60,7 @@ Reply "change 2: formal tone" to adjust any of these.
 Self-assessed coverage of five areas, not a prediction of output quality.
 
 ### What next?
-1. Fill placeholders ★
+1. Fill placeholders ★ — reply with the missing values to see the filled prompt
 2. Refine — change any answer or assumption, or reply `deep` for more questions
 3. Save to file — `prompts/remote-work-blog.md`
 ````
@@ -90,8 +90,8 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 |---|---|
 | Normal | Run it now ★ · Refine · Save to file |
 | Placeholders other than secrets still open | Fill placeholders ★ · Refine · Save to file |
-| The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
 | Image or video prompt and you can't generate media | Done ★ (with where to paste it) · Refine · Save to file |
+| The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
 | You can't write files (chat apps) | Drop "Save to file" |
 
 When several rows apply, use the first that fits: open placeholders other than secrets, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
