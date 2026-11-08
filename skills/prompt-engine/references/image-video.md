@@ -7,7 +7,7 @@ Use this pack for prompts meant for image or video models: Midjourney, GPT Image
 Write the prompt in the target tool's own format, because these models read prompts differently from chat models:
 - no role, section headings, XML tags or "because" clauses inside the prompt — they become things to draw;
 - put explanations under "What I added & why", and settings where the tool expects them;
-- keep the user's subject, action, style words and layout intact, and add missing details only as labelled defaults.
+- keep the user's subject, action, style words and layout intact, and add missing details only as defaults listed under Assumptions.
 
 ## First: tool and mode
 

@@ -313,7 +313,7 @@ The short version is the same prompt compressed for quick chats: the goal with i
 
 Fix anything that fails:
 
-- Every requirement in the prompt traces back to the user, their answers, or a labelled default. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every requirement in the prompt traces back to the user, their answers, or a default listed under Assumptions. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
 - No capitalized pressure words, generic personas, magic phrases ("think step by step", "take a deep breath"), requests to expose internal reasoning, prefill instructions or API settings.
@@ -581,7 +581,7 @@ Use this pack for prompts meant for image or video models: Midjourney, GPT Image
 Write the prompt in the target tool's own format, because these models read prompts differently from chat models:
 - no role, section headings, XML tags or "because" clauses inside the prompt — they become things to draw;
 - put explanations under "What I added & why", and settings where the tool expects them;
-- keep the user's subject, action, style words and layout intact, and add missing details only as labelled defaults.
+- keep the user's subject, action, style words and layout intact, and add missing details only as defaults listed under Assumptions.
 
 ### First: tool and mode
 
