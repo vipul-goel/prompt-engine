@@ -64,7 +64,14 @@ export const STRUCTURE = [
   SCORE_TABLE,
   ['score caveat', has(/not a prediction of output quality/i)],
   ['what next menu', has(MENU)],
+  // Every tool is off, and the core offers Save to file only with a tool that saves files on the
+  // user's computer (finding 1). Only an option of the menu counts, with MENU's prefix, so a
+  // sentence after the menu that says why Save was left out still passes (finding 5's audit).
+  ['no Save to file (tools disabled)', (t) => !/What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Save to file/i.test(t)],
 ];
+// An image prompt, which can't be generated here: a starred Done option and no Run it now option
+// after "What next?" (findings 5 and 22), the pattern of image-midjourney-quick's 05 grader.
+export const DONE_NOT_RUN = ['Done ★, not Run it now', has(/^(?![\s\S]*What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Run it now)[\s\S]*?What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Done\b[^\n]*★/i)];
 export const QUESTIONS = [
   ['numbered questions', has(/(^|\n)\s*1[.)]\s/)],
   // A ★ on an a) to d) option line, as in coding-vague 03; the reply line holds a ★ too.
@@ -99,7 +106,7 @@ export const CASES = [
   { name: 'writing-quick', turns: ['prompt-engine: quick: write a launch email for my productivity app'], checks: [STRUCTURE] },
   { name: 'writing-quick-then-change', turns: ['prompt-engine: quick: write a launch email for my productivity app', 'change 1: readers are new users from a Product Hunt launch'], checks: [STRUCTURE, CHANGED] },
   { name: 'midjourney-quick', turns: ['prompt-engine: quick: a Midjourney prompt for a cozy cabin in the snow at night'],
-    checks: [[...STRUCTURE.filter(([n]) => n !== 'short version heading'), ['--ar parameter', has(/--ar\s+\d+:\d+/)]]] },
+    checks: [[...STRUCTURE.filter(([n]) => n !== 'short version heading'), ['--ar parameter', has(/--ar\s+\d+:\d+/)], DONE_NOT_RUN]] },
 ];
 
 function main() {

@@ -101,6 +101,40 @@ test('what next menu: a starred option the method allows after What next?, numbe
   ]) assert.ok(!menu(output({ menu: m })), m);
 });
 
+test('no Save to file: a Save option after What next? fails, a sentence about leaving it out passes', () => {
+  const noSave = check(U.STRUCTURE, 'no Save to file (tools disabled)');
+  for (const m of [
+    '1) Run it now ★\n2) Refine',
+    '1) Run it now ★ 2) Refine',
+    "1) Run it now ★\n2) Refine\n\n(I left out Save to file because I can't write files here.)",
+    '1) Done ★ (paste it into Midjourney)\n2) Refine',
+  ]) assert.ok(noSave(output({ menu: m })), m);
+  for (const m of [
+    '1) Run it now ★\n2) Refine\n3) Save to file',
+    '1) Run it now ★ 2) Refine 3) Save to file',
+    '1) **Run it now** ★\n2) **Refine**\n3) **Save to file**',
+    '1. Run it now ★\n2. Refine\n3. Save to file — `prompts/launch-email.md`',
+    '- Run it now ★\n- Refine\n- Save to file',
+  ]) assert.ok(!noSave(output({ menu: m })), m);
+  // Before the menu it is no option, such as in a What I added bullet.
+  assert.ok(noSave(output().replace('- Audience', '- Save to file is left out: no tool here writes files [best practice]\n- Audience')));
+});
+
+test('Done ★, not Run it now: the Midjourney case wants a starred Done option and no Run it now option', () => {
+  const [checks] = U.CASES.find((c) => c.name === 'midjourney-quick').checks;
+  const done = check(checks, 'Done ★, not Run it now');
+  const image = (menu) => output({ menu, prompt: 'A cozy cabin in the snow at night --ar 3:2' });
+  assert.deepEqual(failing(checks, image("1) Done ★ (paste it into Midjourney, since I can't generate images)\n2) Refine")), []);
+  assert.ok(done(image('- **Done** ★ — paste it into Midjourney\n- Refine')));
+  for (const m of [
+    '1) Run it now ★ (paste the Full prompt into Midjourney, since I can\'t generate images)\n2) Refine',
+    '1) Done\n2) Run it now ★\n3) Refine',
+    '1) Done ★\n2) Run it now\n3) Refine',
+    '1) Refine ★\n2) Done',
+  ]) assert.ok(!done(image(m)), m);
+  assert.deepEqual(failing(checks, image("1) Done ★ (paste it into Midjourney)\n2) Refine\n3) Save to file")), ['no Save to file (tools disabled)']);
+});
+
 test('after ok or an override: the full output, with the accepted answers tagged [your answer]', () => {
   assert.deepEqual(failing(U.ACCEPTED, output({ tag: '[your answer]' })), []);
   assert.deepEqual(failing(U.ACCEPTED, output({ tag: '[best practice]' })), ['accepted ★ tagged']);
