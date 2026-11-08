@@ -604,6 +604,26 @@ test('checkSuiteRules counts only a regex grader as a tools-granted check', () =
   assert.deepEqual(errors, ['evals/not-regex/graders/01-no-writes.md: with min: 0 this check passes when Write isn\'t granted, with zero calls; add a tools-granted regex grader (target: trace) that requires "Write" (repo rule)']);
 });
 
+test('checkSuiteRules wants an llm no-invention grader in every output case, the cases build.mjs lints', () => {
+  const JUDGE = '---\ntype: llm\n---\n\nPASS if nothing is invented.\n';
+  const NEED = (name) => `evals/${name}: an output case (LINT_GRADER_CASES in scripts/build.mjs) needs an llm grader named <n>-no-invention.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption (repo rule)`;
+  const output = (name, graders) => ({ [`evals/${name}/prompt.md`]: promptMd(), ...Object.fromEntries(Object.entries(graders).map(([f, t]) => [`evals/${name}/graders/${f}`, t])) });
+  const { schema, errors } = rules({
+    ...output('spanish-quick', { '01-x.md': REGEX, '02-no-invention.md': JUDGE }), // has one
+    ...output('video-veo-quick', { '01-x.md': REGEX }), // has none
+    ...output('image-midjourney-quick', { '08-no-invention.md': REGEX }), // a regex grader doesn't count
+    ...output('research-quick-vector-databases', { '06-no-invention-check.md': JUDGE }), // the name must end in -no-invention
+    ...output('demo', { '01-x.md': REGEX }), // not an output case
+    'evals/writing-quick-launch-email/prompt.md': promptMd(), // unread: its grader has no front matter
+    'evals/writing-quick-launch-email/graders/11-no-invention.md': 'type: llm\n',
+  });
+  assert.deepEqual(schema, [
+    'evals/writing-quick-launch-email/graders/11-no-invention.md: no front matter at the top, so claude plugin eval skips this file',
+    'evals/writing-quick-launch-email: needs at least one grader in graders/ with front matter',
+  ]);
+  assert.deepEqual(errors, [NEED('image-midjourney-quick'), NEED('research-quick-vector-databases'), NEED('video-veo-quick')]);
+});
+
 // ---------- checkConversations: the history cases ----------
 const CONTRACT = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'contract.json'), 'utf8'));
 const REPLY_LINE = 'Reply `ok` to accept every ★, or answer like `2b 3: get managers to pilot a 4-day week`. Anything you skip gets the ★.';
@@ -821,4 +841,50 @@ test('checkConversations lets a rubric quote what the user typed, even where an 
     '02-angle.md': judge('It doesn\'t "Argue for remote work".'),
   }));
   assert.deepEqual(errors, [notPicked('topic/graders/02-angle.md', '1b', 'Argue for remote work')]);
+});
+
+test('checkConversations wants a rubric that judges the answers of the round the recording ends in to quote one', () => {
+  const round = [
+    'A few questions (★ = recommended):',
+    '',
+    '1. Who will read it?',
+    '   a) Employees',
+    '   b) Team managers ★ (they decide remote-work policy)',
+    '2. How long? a) About 600 words · b) About 1,200 words. ★ (room for examples) · c) 2,000+ words',
+    '',
+    REPLY_LINE,
+  ].join('\n');
+  const recording = [userRow('write a post about remote work'), assistantRow(round)];
+  const quotesNone = (f) => `evals/${f}: judges the answers to the question round the recording ends in, but quotes none of its options; quote each answer it checks word for word, in double quotes (repo rule)`;
+  const { errors } = histories({
+    ...recordedCase('round', recording, 'ok', {
+      '01-quoted.md': judge('The user replied "ok", which accepts these answers: "Team managers" and "About 1,200 words".'),
+      // Curly quotes, code marks and case don't matter, nor does the period after option 2b's answer;
+      // the ★ alone marks an answer check.
+      '02-star.md': judge('The prompt follows each ★: \u{201C}team **managers**\u{201D} and "About 1,200 words."'),
+      '03-paraphrased.md': judge('The user replied "ok", which accepts every recommended answer: managers, about 1,200 words.'),
+      '04-unquoted.md': judge('PASS if the prompt uses every answer the user accepted.'),
+      // A part of an option isn't its answer.
+      '05-partial.md': judge('The answers include "1,200 words".'),
+      // A rubric that doesn't judge the answers needs no quote.
+      '06-topic.md': judge('The post stays on the user\'s topic, "remote work".'),
+      // Option 2b's answer without the period that ends it in the round.
+      '07-period.md': judge('The answer "About 1,200 words" is used.'),
+      // Other words for the answers, without "answer" or the ★: a recommended option, what the user
+      // accepted.
+      '08-recommended-option.md': judge('The user replied "ok", which accepts every recommended option of the round. PASS if the prompt reflects each one.'),
+      '09-accepted.md': judge('PASS if the prompt reflects every default the user accepted.'),
+      '10-options.md': judge('PASS if the prompt follows the options the user kept.'),
+      // A rubric about the round's questions, not its answers, needs no quote either.
+      '11-no-more-questions.md': judge('The reply asks no further questions.'),
+    }),
+    // A recording that ends in an output: the answers were used already.
+    ...recordedCase('output', [...recording, userRow('ok'), assistantRow('### Full prompt\n```text\nWrite the post.\n```\n\n### What next?\n1. Run it now ★')], 'Run it now', {
+      '01-unquoted.md': judge('PASS if the prompt uses every answer the user accepted.'),
+    }),
+  });
+  assert.deepEqual(errors, [
+    quotesNone('round/graders/03-paraphrased.md'), quotesNone('round/graders/04-unquoted.md'), quotesNone('round/graders/05-partial.md'),
+    quotesNone('round/graders/08-recommended-option.md'), quotesNone('round/graders/09-accepted.md'), quotesNone('round/graders/10-options.md'),
+  ]);
 });
