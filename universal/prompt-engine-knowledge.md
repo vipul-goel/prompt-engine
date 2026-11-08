@@ -286,7 +286,7 @@ Use the sections that carry task-specific content and drop the rest. A two-line 
 
 ### Adapting to the target model
 
-The method is the same for every model; only delimiters, placement and a few lines change. If you don't know the target, use the universal column. (The Claude, GPT and Gemini columns were checked against Anthropic's, OpenAI's and Google's prompting guidance on 2026-11-08, except one cell marked as the method's own inference. Model behavior changes, so recheck these notes when vendors publish new guidance.)
+The method is the same for every model; only delimiters, placement and a few lines change. If you don't know the target, use the universal column. (The Claude, GPT and Gemini columns were checked against Anthropic's, OpenAI's and Google's prompting guidance on 2026-11-08, except what is marked as the method's own inference. Model behavior changes, so recheck these notes when vendors publish new guidance.)
 
 | | Claude | GPT | Gemini | Universal (unknown, or a custom assistant) |
 |---|---|---|---|---|
@@ -294,7 +294,7 @@ The method is the same for every model; only delimiters, placement and a few lin
 | Placement | Long documents first, question last | Instructions first; repeat key instructions after long context | Critical constraints and format first; the question last | Goal first, inputs, instructions, task restated |
 | Clarifying behavior | Check in only when readings differ materially | Tell it to state assumptions and continue rather than ask | Invite questions only in interactive use (the method's own inference; Google's guide doesn't say) | Follow the user's choice |
 | Length | State it explicitly | State it explicitly | Ask explicitly for detail when you want it | State it explicitly |
-| Verification | A concrete check rather than a generic "double-check"; for Claude Opus 5, leave out separate verification steps and re-checks: it verifies its own work, and they cause over-verification | Completion criteria and stop rules | A validation step is fine | Concrete criteria |
+| Verification | A concrete check rather than a generic "double-check"; for Claude Opus 5, leave out added verification steps and re-check instructions: it verifies its own work, and they cause over-verification. Coding prompts still name the test command to run and report (the method's own inference from Claude Code's guidance) | Completion criteria and stop rules | A validation step is fine | Concrete criteria |
 
 **Coding agents** (Claude Code, Codex, Cursor, Copilot and similar):
 - name the files or areas involved;
