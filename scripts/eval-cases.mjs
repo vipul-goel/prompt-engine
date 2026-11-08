@@ -2,8 +2,8 @@
 // keys, values and referenced files of each case.yaml, prompt.md and graders/*.md. claude plugin
 // eval drops an unknown case.yaml key and skips a grader file without front matter, both without
 // a message; a missing baseline_file or a pattern that doesn't compile fails only after the
-// billed agent run; and `claude plugin validate` doesn't read evals/. scripts/validate.mjs runs
-// these checks. Zero dependencies.
+// billed agent run; and `claude plugin validate` doesn't read evals/. checkSuiteRules adds this
+// repo's rules for how the cases run and score. scripts/validate.mjs runs both. Zero dependencies.
 //
 // The rules follow claude plugin eval's code (read in versions 2.1.312, 2.1.317, 2.1.318 and
 // 2.1.319) and code.claude.com/docs/en/plugin-evals. Messages that end in "(repo rule)" are
@@ -470,4 +470,43 @@ export function checkEvalCases(root, err) {
     if (r.status === 0) for (const p of r.stdout.split('\0').filter(Boolean)) err(`${p}: ignored by .gitignore, so a clean checkout lacks it (git check-ignore -v ${p} names the rule)`);
   }
   return cases;
+}
+
+// ---------- this repo's rules for runs ----------
+// True when a file of the case didn't read (it didn't parse, or a grader has no front matter).
+// checkEvalCases has reported that file, and the rules below would misread the case without it.
+function unread(root, c) {
+  const abs = join(root, c.dir);
+  const gdir = join(abs, 'graders');
+  const graders = isDir(gdir) ? readdirSync(gdir).filter((f) => f.endsWith('.md')).length : 0;
+  return (isFile(join(abs, 'prompt.md')) && !c.prompt) || (isFile(join(abs, 'case.yaml')) && !c.caseYaml) || graders !== c.graders.length;
+}
+
+// A case's settings as claude plugin eval resolves them: a key in prompt.md's front matter wins
+// over the same key in case.yaml.
+function settings(c) {
+  const fm = c.prompt?.data ?? {};
+  const cy = c.caseYaml ?? {};
+  const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+  return { tags: strings(fm.tags ?? cy.tags) };
+}
+
+// This repo's rules for how the cases run and score, which claude plugin eval doesn't require.
+// cases is checkEvalCases's result; a case with a file that didn't read is skipped.
+export function checkSuiteRules(root, cases, err) {
+  for (const c of cases) {
+    if (unread(root, c)) continue;
+    const s = settings(c);
+    // Two-arm runs leave every tool_used grader on Skill out of the score unless it sets arm:
+    // both, so a trigger case would pass even when the skill never fires (D27). Requiring the
+    // grader keeps a deleted one from dropping the check without a message.
+    if (s.tags.includes('trigger')) {
+      const skill = c.graders.filter((g) => g.data.type === 'tool_used' && g.data.tool === 'Skill');
+      if (!skill.length) err(`${c.dir}: a case tagged trigger needs a tool_used grader on Skill (repo rule)`);
+      // checkGrader reports an arm value other than with-only or both.
+      for (const g of skill) {
+        if (g.data.arm === undefined || g.data.arm === 'with-only') err(`${g.file}: a trigger case's Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)`);
+      }
+    }
+  }
 }

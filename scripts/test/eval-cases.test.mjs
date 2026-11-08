@@ -10,7 +10,7 @@ import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { parseYaml, frontmatter, checkEvalCases } from '../eval-cases.mjs';
+import { parseYaml, frontmatter, checkEvalCases, checkSuiteRules } from '../eval-cases.mjs';
 
 // ---------- the YAML subset ----------
 const READS = [
@@ -280,4 +280,78 @@ test('checkEvalCases skips the git check when .git is not a repository (exit 128
   } finally {
     process.env.PATH = path;
   }
+});
+
+// ---------- checkSuiteRules: this repo's rules for how the cases run and score ----------
+// prompt.md with the given front matter lines.
+const promptMd = (front) => `---\n${front}---\n\n${PROMPT}`;
+const SKILL_CHECK = (extra = '') => `---\ntype: tool_used\ntool: Skill\n${extra}---\n`;
+// checkEvalCases's errors (schema) and checkSuiteRules's (errors) on a small tree.
+function rules(files) {
+  const dir = tree(files);
+  try {
+    const schema = [];
+    const errors = [];
+    checkSuiteRules(dir, checkEvalCases(dir, (m) => schema.push(m)), (m) => errors.push(m));
+    return { schema, errors };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('checkSuiteRules scores a trigger case\'s Skill grader in both arms', () => {
+  const trigger = (name, grader) => ({ [`evals/${name}/prompt.md`]: promptMd('tags: [trigger]\n'), [`evals/${name}/graders/01-skill.md`]: grader });
+  const { schema, errors } = rules({
+    ...trigger('unset', SKILL_CHECK()),
+    ...trigger('with-only', SKILL_CHECK('arm: with-only\n')),
+    ...trigger('both', SKILL_CHECK('arm: both\n')),
+    ...trigger('no-skill-grader', '---\ntype: llm\n---\n\nPASS if fine.\n'),
+    'evals/smoke/prompt.md': promptMd('tags: [smoke]\n'),
+    'evals/smoke/graders/01-skill.md': SKILL_CHECK(),
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, [
+    'evals/no-skill-grader: a case tagged trigger needs a tool_used grader on Skill (repo rule)',
+    'evals/unset/graders/01-skill.md: a trigger case\'s Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)',
+    'evals/with-only/graders/01-skill.md: a trigger case\'s Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)',
+  ]);
+});
+
+test('checkSuiteRules reads tags as claude plugin eval does: prompt.md\'s, else case.yaml\'s', () => {
+  const caseYaml = (name) => `schema_version: "1.1"\nname: ${name}\ntags: [trigger]\n`;
+  const { schema, errors } = rules({
+    'evals/from-case-yaml/case.yaml': caseYaml('from-case-yaml'),
+    'evals/from-case-yaml/prompt.md': PROMPT,
+    'evals/from-case-yaml/graders/01-skill.md': SKILL_CHECK(),
+    'evals/overridden/case.yaml': caseYaml('overridden'),
+    'evals/overridden/prompt.md': promptMd('tags: [smoke]\n'),
+    'evals/overridden/graders/01-skill.md': SKILL_CHECK(),
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, ['evals/from-case-yaml/graders/01-skill.md: a trigger case\'s Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)']);
+});
+
+test('checkSuiteRules skips a case with a file that did not read, and leaves an unknown arm to checkGrader', () => {
+  const { schema, errors } = rules({
+    // Unread, each case would break a rule: no Skill grader (the CLI skips a grader without front
+    // matter), case.yaml's tags in place of prompt.md's, and a Skill grader without arm: both.
+    'evals/no-front-matter/prompt.md': promptMd('tags: [trigger]\n'),
+    'evals/no-front-matter/graders/01-skill.md': 'type: tool_used\ntool: Skill\n',
+    'evals/bad-prompt/case.yaml': 'schema_version: "1.1"\nname: bad-prompt\ntags: [trigger]\n',
+    'evals/bad-prompt/prompt.md': promptMd('tags: [smoke]\ntags: [smoke]\n'),
+    'evals/bad-prompt/graders/01-skill.md': SKILL_CHECK(),
+    'evals/bad-case-yaml/case.yaml': 'schema_version: "1.1"\nname: bad-case-yaml\nname: again\n',
+    'evals/bad-case-yaml/prompt.md': promptMd('tags: [trigger]\n'),
+    'evals/bad-case-yaml/graders/01-skill.md': SKILL_CHECK(),
+    'evals/bad-arm/prompt.md': promptMd('tags: [trigger]\n'),
+    'evals/bad-arm/graders/01-skill.md': SKILL_CHECK('arm: bogus\n'),
+  });
+  assert.deepEqual(schema, [
+    'evals/bad-arm/graders/01-skill.md: arm must be with-only or both',
+    'evals/bad-case-yaml/case.yaml:3: duplicate key name',
+    'evals/bad-prompt/prompt.md:3: duplicate key tags',
+    'evals/no-front-matter/graders/01-skill.md: no front matter at the top, so claude plugin eval skips this file',
+    'evals/no-front-matter: needs at least one grader in graders/ with front matter',
+  ]);
+  assert.deepEqual(errors, []);
 });

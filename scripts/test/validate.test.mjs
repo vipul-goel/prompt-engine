@@ -381,6 +381,12 @@ const ROWS = [
     /spanish-quick\/prompt\.md: env key "FOO" must match EVAL_\[A-Z0-9_\]\* \(other keys fail the run\)/],
   ['rejects an env value that is not a string', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\nenv:\n  EVAL_X: 1')),
     /spanish-quick\/prompt\.md: env value of EVAL_X must be a string/],
+  // This repo's rules for how the cases run and score (checkSuiteRules). Two-arm runs leave a
+  // tool_used grader on Skill out of the score unless it sets arm: both (finding 46, D27).
+  ['rejects a trigger case whose Skill grader two-arm runs leave out of the score', (d) => edit(d, 'evals/trigger-natural-phrasing/graders/02-skill-fired.md', (t) => t.replace('arm: both\n', '')),
+    /error: evals\/trigger-natural-phrasing\/graders\/02-skill-fired\.md: a trigger case's Skill grader needs arm: both; without it, two-arm runs leave it out of the score \(repo rule\)/],
+  ['rejects a trigger case without a tool_used grader on Skill', (d) => rmSync(join(d, 'evals/no-trigger-plain-task/graders/01-skill-not-fired.md')),
+    /error: evals\/no-trigger-plain-task: a case tagged trigger needs a tool_used grader on Skill \(repo rule\)/],
   // The token is built at run time, so this file holds none. CI logs are public, so the
   // message names the line and kind but not the token.
   ['rejects a recorded history that looks private', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('handmade ceramic mug', `handmade ceramic mug, token gh${'p'}_${'R'.repeat(36)}`)),
