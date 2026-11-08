@@ -35,15 +35,15 @@ Reply "change 2: formal tone" to adjust any of these.
 | | Original | Enhanced |
 |---|---|---|
 | Clear goal | 1 | 5 |
-| Context | 0 | 4 |
+| Context | 0 | 3 |
 | Constraints | 0 | 3 |
-| Output format | 0 | 5 |
+| Output format | 0 | 3 |
 | Edge cases | 0 | 3 |
 
 Self-assessed coverage of five areas, not a prediction of output quality.
 
 ### What next?
-1. Run it now ★
+1. Fill placeholders ★
 2. Refine — change any answer or assumption, or reply `deep` for more questions
 3. Save to file — `prompts/remote-work-blog.md`
 ````
