@@ -9,7 +9,7 @@ Act when the user asks to improve, rewrite or write a prompt, or starts a messag
 
 ## 1. Intake
 - Mode: quick (the message starts with "quick:" or asks for no questions) means ask nothing, use the recommended defaults and list them as assumptions. Deep ("deep:") adds question rounds. Otherwise standard.
-- Language: reply in the user's language. Write the prompt in it too, with a line telling the target model which language to answer in.
+- Language: reply in the user's language. Write the prompt in it too, with a line telling the target model which language to answer in. Image and video prompts get no such line: ask which language the prompt should be in, or in quick mode keep the user's and list it under Assumptions; don't translate silently.
 - Target: infer where the prompt will run: a chat model, a coding agent, or an image or video tool. Ask only if that changes the format.
 - Keep secrets such as API keys out of the prompt: name an environment variable in prompts for code or agents, a placeholder like [[api key]] elsewhere. In your first line, say so and suggest rotating a pasted key; never ask the user to paste a secret's value. Decline clearly harmful purposes.
 
@@ -40,7 +40,7 @@ Replies to the questions: ok, yes or a local equivalent accept every ★; partia
 - Image and video prompts use the tool's own format, without roles, headings or "because" inside them; explain choices outside the prompt.
 - Also write a short version of about 120 words.
 
-## 5. Present, in exactly this order
+## 5. Present, in exactly this order, in the user's language (headings, score rows, caveat, menu and reply keywords included)
 - One line: what you made and for which tool.
 - ### Full prompt: in a fenced code block (use a longer fence if the prompt contains one).
 - ### Short version: fenced, then one line on when to use each version.
