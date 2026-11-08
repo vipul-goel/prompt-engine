@@ -282,6 +282,22 @@ describe('budgets and self-lint', () => {
       for (const text of own) expect(text.match(re)?.[0], rule.id).toBeUndefined();
     }
   });
+
+  // The references and checklists as served: the source files plus the text the server writes into
+  // them (the ask_user Format A, the menu sentence, the note before an unadapted reference). As in
+  // scripts/validate.mjs, text in `code spans` is skipped, because it names a pattern, often to
+  // warn against it (D11).
+  it('applies the self-check lint rules to the references and checklists it serves, skipping code spans', () => {
+    const unquoted = (t: string) => t.replace(/`[^`\n]*`/g, ' ');
+    const served: Array<[string, string]> = [
+      ...REFERENCE_RESOURCES.map((name): [string, string] => [name, buildReference(name)]),
+      ...DOMAINS.map((domain): [string, string] => [`checklists/${domain}`, buildChecklist(domain)]),
+    ];
+    for (const rule of LINT_RULES.filter((r) => r.selfCheck)) {
+      const re = new RegExp(rule.pattern, rule.flags);
+      for (const [name, text] of served) expect(unquoted(text).match(re)?.[0], `${rule.id} in ${name}`).toBeUndefined();
+    }
+  });
 });
 
 describe('generated content', () => {
