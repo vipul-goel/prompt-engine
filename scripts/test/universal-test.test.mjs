@@ -184,6 +184,24 @@ test('menu patterns: the Midjourney check is the media graders\' pattern, and wr
   assert.ok(pattern('writing-quick-launch-email/graders/08-what-next-menu.md').includes(`(?=[\\s\\S]*?${U.FILL_OPEN})`));
 });
 
+test('bold and heading forms: bold score-row labels, and bold or heading question numbers, as the eval graders accept', () => {
+  const boldScore = SCORE.replace('| Clear goal |', '| **Clear goal** |').replace('| Edge cases |', '| **Edge cases** |');
+  assert.deepEqual(failing(U.STRUCTURE, output().replace(SCORE, boldScore)), []);
+  assert.deepEqual(failing(U.MENU_ACK, `The prompt is ready.\n\n### Score\n${boldScore}`), ['no fenced block or score table']);
+  // Every question number in one form: '**1. Who?**', '### 1. Who?' or '**1.** Who?'.
+  const round = (form) => questions(REPLY_LINE).replace(/^(\d)\. (.*\?)$/gm, form);
+  for (const form of ['**$1. $2**', '### $1. $2', '**$1.** $2']) {
+    const t = round(form);
+    assert.notEqual(t, questions(REPLY_LINE));
+    assert.deepEqual(failing(U.QUESTIONS, t), [], t);
+    assert.deepEqual(failing(U.DEEP_ROUND, t), [], t);
+  }
+  // A number such as 1.5 starts no question.
+  const numbered = check(U.QUESTIONS, 'numbered questions');
+  assert.ok(!numbered('1.5 GB is the limit, so keep it short.'));
+  assert.deepEqual(failing(U.DEEP_ROUND, `1.5 GB is the limit?\n   a) Yes ★ (why)  b) No\n\n${REPLY_LINE}`), ['1-4 new questions']);
+});
+
 test('after ok or an override: the full output, with the accepted answers tagged [your answer]', () => {
   assert.deepEqual(failing(U.ACCEPTED, output({ tag: '[your answer]' })), []);
   assert.deepEqual(failing(U.ACCEPTED, output({ tag: '[best practice]' })), ['accepted ★ tagged']);

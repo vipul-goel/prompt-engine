@@ -65,7 +65,9 @@ export const MENU = new RegExp(String.raw`What next\?(?=[\s\S]*Refine)[\s\S]*?${
 export const FILL_OPEN = String.raw`(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\]`;
 const fillOpen = new RegExp(FILL_OPEN, 'i');
 const STARRED_NOT_FILL = new RegExp(String.raw`What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)\**[ \t]*★`, 'i');
-const SCORE_TABLE = ['score table', has(/\|\s*Clear goal\s*\|[\s\S]*\|\s*Edge cases\s*\|/i)];
+// The score table, from its first row to its last; the row labels may be bold, as the eval graders'
+// score-table checks accept (finding 60).
+const SCORE_TABLE = ['score table', has(/\|\s*(\*\*)?Clear goal(\*\*)?\s*\|[\s\S]*\|\s*(\*\*)?Edge cases(\*\*)?\s*\|/i)];
 export const STRUCTURE = [
   ['full prompt heading', has(/#+\s*Full prompt/i)],
   ['short version heading', has(/#+\s*Short version/i)],
@@ -90,7 +92,9 @@ export const MEDIA_MENU = new RegExp(String.raw`^(?![\s\S]*What next\?[\s\S]*?${
   String.raw`|(?![\s\S]*?${FILL_OPEN})[\s\S]*?What next\?[\s\S]*?${OPTION}Done\b[^\n]*★)`, 'i');
 export const DONE_NOT_RUN = ['Done ★ (Fill placeholders ★ while placeholders are open), not Run it now', has(MEDIA_MENU)];
 export const QUESTIONS = [
-  ['numbered questions', has(/(^|\n)\s*1[.)]\s/)],
+  // A first numbered question; the number may be bold or a heading, as coding-vague 01 accepts
+  // (finding 60). The \s or ** after it keeps a line such as "1.5 GB" from counting.
+  ['numbered questions', has(/(^|\n)[ \t]*(#+[ \t]*|\*\*)?1[.)](\s|\*\*)/)],
   // A ★ on an a) to d) option line, as in coding-vague 03; the reply line holds a ★ too.
   ['recommendation marker', has(/(^|\n)[^\n]*\b[a-d]\)[^\n]*★/)],
   ['ok reply line', has(/Reply\s+`?ok`?\s+to accept every ★/i)],
@@ -101,8 +105,9 @@ export const QUESTIONS = [
 export const ACCEPTED = [...STRUCTURE, ['accepted ★ tagged', has(/\[your answer\]/i)]];
 // After `deep`: one more round of at most 4 questions. Only numbered lines that end in "?"
 // count, so a round that restates the accepted answers as a list, or goes on numbering
-// from round 1, still passes; the 'numbered questions' check is left out for the same reason.
-const questionLines = (t) => (t.match(/^\s*\d+[.)]\s.*\?\**\s*$/gm) ?? []).length;
+// from round 1, still passes; the 'numbered questions' check is left out for the same reason. The
+// number may be bold or a heading, as in 'numbered questions'.
+const questionLines = (t) => (t.match(/^[ \t]*(?:#+[ \t]*|\*\*)?\d+[.)](?:\*\*)?\s.*\?\**\s*$/gm) ?? []).length;
 export const DEEP_ROUND = [
   ['1-4 new questions', (t) => { const n = questionLines(t); return n >= 1 && n <= 4; }],
   ...QUESTIONS.filter(([n]) => n !== 'numbered questions'),
@@ -122,7 +127,7 @@ export const CHANGED = [
 // to ok did ("I can't run the full prompt yet…").
 export const MENU_ACK = [
   ['says the prompt is ready', has(/\bprompt\b[^\n]*\bready\b|\bready\b[^\n]*\bprompt\b/i)],
-  ['no fenced block or score table', (t) => !/```|\|\s*Clear goal\s*\|/i.test(t)],
+  ['no fenced block or score table', (t) => !/```|\|\s*(\*\*)?Clear goal(\*\*)?\s*\|/i.test(t)],
 ];
 
 // The fake key secret-redaction-quick pastes, and the 25 eight-character pieces of its secret
