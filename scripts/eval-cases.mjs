@@ -4,8 +4,8 @@
 // a message; a missing baseline_file or a pattern that doesn't compile fails only after the
 // billed agent run; and `claude plugin validate` doesn't read evals/. checkSuiteRules adds this
 // repo's rules for how the cases run and score, and checkConversations its rules for the history
-// cases' recordings and the graders that depend on them. scripts/validate.mjs runs all three.
-// Zero dependencies.
+// cases' recordings and the graders that depend on them, and for the request text that any
+// rubric quotes. scripts/validate.mjs runs all three. Zero dependencies.
 //
 // The rules follow claude plugin eval's code (read in versions 2.1.312, 2.1.317, 2.1.318 and
 // 2.1.319) and code.claude.com/docs/en/plugin-evals. Messages that end in "(repo rule)" are
@@ -618,7 +618,8 @@ export function checkSuiteRules(root, cases, err) {
 // recording current, but never what the model said, and the case's graders were written against
 // that recording. checkConversations keeps the three in step (findings 54, 55 and 56). It reads
 // English recordings: one in another language needs its translated reply line and headings here
-// (D3).
+// (D3). In every case, it also holds the request text that a rubric quotes to the case's own
+// (finding 50).
 const FULL = 'Full prompt';
 const SHORT = 'Short version';
 const NEXT = 'What next?';
@@ -661,28 +662,55 @@ function roundOptions(round) {
 const picks = (reply, { q, letter }) => new RegExp(`(?:^|[^0-9a-z])${q}\\s*:?\\s*${letter}\\b`, 'i').test(reply);
 // The prompt a case sends: prompt.md's body, else execution.prompt in case.yaml.
 const promptOf = (c) => c.prompt?.body || (isMapping(c.caseYaml?.execution) && typeof c.caseYaml.execution.prompt === 'string' ? c.caseYaml.execution.prompt.trim() : '');
+// An llm grader's criteria: the criteria key, else the file's body, as the CLI reads them.
+const criteriaOf = (g) => (g.data.type === 'llm' ? g.data.criteria ?? (g.body !== '' ? g.body : undefined) : undefined);
+// The two ways a rubric quotes the user's request: in <original_prompt> tags, and as the first
+// quoted string after "The user's whole request" (so "The user's whole request, in Spanish, was
+// "..."" counts too). Straight or curly quotes and apostrophe.
+const ORIGINAL_PROMPT = /<original_prompt>([\s\S]*?)<\/original_prompt>/g;
+const WHOLE_REQUEST = /The user['\u{2019}]s whole request\b[^"\u{201C}\n]*["\u{201C}]([^"\u{201D}\n]+)["\u{201D}]/gu;
 
-// This repo's checks for the history cases, as described above. contract is data/contract.json.
-// The recording checks call warn instead of err for a case in KNOWN_STALE_RECORDINGS. A case with a
-// file that didn't read is skipped.
+// This repo's checks on each case's conversation, as described above. contract is
+// data/contract.json. The recording checks call warn instead of err for a case in
+// KNOWN_STALE_RECORDINGS. A case with a file that didn't read is skipped.
 export function checkConversations(root, cases, { err, warn, contract }) {
   const required = contract?.required ?? {};
   const replyLine = Array.isArray(required.replyLine) ? required.replyLine[0] : undefined;
   const missing = [FULL, SHORT, NEXT].filter((h) => !(required.headings ?? []).includes(h)).map((h) => `the heading "${h}"`);
   if (!(required.menu ?? []).includes(SAVE)) missing.push(`the menu entry "${SAVE}"`);
   if (typeof replyLine !== 'string' || replyLine === '') missing.push('a replyLine');
-  if (missing.length) {
-    err(`data/contract.json: required lacks ${missing.join(', ')}, which the history checks in scripts/eval-cases.mjs look for; change the two together`);
-    return;
-  }
+  if (missing.length) err(`data/contract.json: required lacks ${missing.join(', ')}, which the history checks in scripts/eval-cases.mjs look for; change the two together`);
   const full = headingRe(FULL);
   const next = headingRe(NEXT);
   const savePathRe = new RegExp(`${esc(NEXT)}[\\s\\S]*?${esc(SAVE)}[^\\n]*?\`([^\`\\n]+)\``);
   for (const c of cases) {
+    if (unread(root, c)) continue;
     const s = settings(c);
     const file = join(root, c.dir, 'history.jsonl');
-    if (unread(root, c) || s.history !== 'history.jsonl' || !isPlainFile(file)) continue;
-    const rec = readRecording(file);
+    const rec = s.history === 'history.jsonl' && isPlainFile(file) ? readRecording(file) : null;
+    const reply = promptOf(c);
+
+    // The request text a rubric quotes (finding 50), in every case. An llm judge sees only its
+    // criteria and the reply, so a rubric that judges against the request quotes it, and the quote
+    // must be the case's own, word for word: in prompt.md's body or, in a history case, in what the
+    // user typed in the recording. Only the text inside the tags or quotes counts, so a gloss next
+    // to it doesn't. A misquoted request is reported here only, not by the history quote rule below.
+    const typed = [reply, ...(rec?.userTexts ?? [])];
+    const source = rec ? 'prompt.md or a recorded user message' : 'prompt.md';
+    const misquoted = new Set(); // grader file + "\0" + quote
+    for (const g of c.graders) {
+      const criteria = criteriaOf(g);
+      if (typeof criteria !== 'string') continue;
+      for (const m of criteria.matchAll(ORIGINAL_PROMPT)) {
+        if (!typed.some((t) => t.includes(m[1].trim()))) err(`${g.file}: the <original_prompt> text isn't in ${source} word for word (repo rule)`);
+      }
+      for (const [, quote] of criteria.matchAll(WHOLE_REQUEST)) {
+        if (typed.some((t) => t.includes(quote))) continue;
+        err(`${g.file}: the quoted request "${quote}" isn't in ${source} word for word (repo rule)`);
+        misquoted.add(`${g.file}\0${quote}`);
+      }
+    }
+    if (rec === null || missing.length) continue;
     const where = `${c.dir}/history.jsonl`;
     const stale = Object.hasOwn(KNOWN_STALE_RECORDINGS, c.name) && rec.messageIds.has(KNOWN_STALE_RECORDINGS[c.name]);
     const report = stale ? (m) => warn(`${m} (known; step 1d re-records this case, D34)`) : err;
@@ -703,16 +731,16 @@ export function checkConversations(root, cases, { err, warn, contract }) {
     // text from the recorded conversation (what the model wrote and what the user typed) or from
     // prompt.md, compared in normalizeQuote's form. A quoted option of the last recorded question
     // round must be its ★ answer or one the reply in prompt.md picks.
-    const reply = promptOf(c);
     const said = normalizeQuote([...rec.assistantTexts, ...rec.userTexts, reply].join('\n'));
     const replied = normalizeQuote(reply);
     const round = rec.assistantTexts.findLast((t) => t.includes(replyLine));
     const options = round ? roundOptions(round).map((o) => ({ ...o, norm: normalizeQuote(o.text) })) : [];
     for (const g of c.graders) {
-      const criteria = g.data.criteria ?? (g.body !== '' ? g.body : undefined);
-      if (g.data.type !== 'llm' || typeof criteria !== 'string') continue;
+      const criteria = criteriaOf(g);
+      if (typeof criteria !== 'string') continue;
       for (const m of criteria.matchAll(/"([^"\n]+)"|\u{201C}([^\u{201D}\n]+)\u{201D}/gu)) {
         const quote = m[1] ?? m[2];
+        if (misquoted.has(`${g.file}\0${quote}`)) continue;
         const q = normalizeQuote(quote);
         if (!said.includes(q)) {
           err(`${g.file}: quotes "${quote}", which isn't in the recorded conversation or prompt.md; in a history case's rubric, double quotes mark verbatim text (repo rule)`);

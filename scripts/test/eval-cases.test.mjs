@@ -495,7 +495,7 @@ const recordedCase = (name, recording, reply, graders) => ({
 const judge = (criteria) => `---\ntype: llm\n---\n\n${criteria}\n`;
 const savedFile = (pattern, extra = '', path = 'out/notes.md') => `---\ntype: regex\ntarget:\n  source: file\n  path: ${path}\npattern: '${pattern}'\n${extra}---\n`;
 // The errors and warnings of the three checks on a small tree.
-function histories(files) {
+function histories(files, contract = CONTRACT) {
   const dir = tree(files);
   try {
     const errors = [];
@@ -503,7 +503,7 @@ function histories(files) {
     const err = (m) => errors.push(m);
     const cases = checkEvalCases(dir, err);
     checkSuiteRules(dir, cases, err);
-    checkConversations(dir, cases, { err, warn: (m) => warnings.push(m), contract: CONTRACT });
+    checkConversations(dir, cases, { err, warn: (m) => warnings.push(m), contract });
     return { errors, warnings };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -602,5 +602,40 @@ test('checkConversations checks regexes on the menu\'s save path against the rec
     'evals/no-path: 01-sections.md read a saved file, but the recording shows no output whose What next? menu names a save path to check them against (repo rule)',
     'evals/saved/graders/02-too-loose.md: pattern also matches the recorded Short version, so it can\'t tell the two apart (repo rule)',
     'evals/saved/graders/03-not-the-reply.md: not_contains pattern matches the recorded Full prompt, so a correct save would fail; derive it again from history.jsonl (repo rule)',
+  ]);
+});
+
+test('checkConversations holds the request text that a rubric quotes to the case, word for word', () => {
+  const request = 'Usa prompt-engine en modo r\u{E1}pido:\n\nescribe un post sobre mi trabajo';
+  const { errors } = histories({
+    'evals/quick/prompt.md': `---\nmodel: ${MODEL}\n---\n\n${request}\n`,
+    // Only the text inside the quotes counts, not the gloss after it.
+    'evals/quick/graders/01-gloss.md': judge('The user\'s whole request, in Spanish, was "escribe un post sobre mi trabajo" (write a post about my job), in quick mode.'),
+    'evals/quick/graders/02-curly.md': judge('The user\u{2019}s whole request was \u{201C}escribe un post sobre mi nuevo trabajo\u{201D}.'),
+    'evals/quick/graders/03-original.md': judge(`<original_prompt>\n${request}\n</original_prompt>\nPASS if its wording is kept.`),
+    'evals/quick/graders/04-spaces.md': judge('<original_prompt>escribe un post sobre mi  trabajo</original_prompt>'),
+    // In a history case, the request can be in the first recorded message. A misquote is reported
+    // once, not again by the rule for quotes in history cases.
+    ...recordedCase('followup', [userRow('Use prompt-engine on: write the launch notes'), assistantRow(`1. Who?\n   a) Me ★\n\n${REPLY_LINE}`)], 'ok', {
+      '01-request.md': judge('The user\'s whole request was "write the launch notes", and they replied "ok". <original_prompt>write the launch notes</original_prompt>'),
+      '02-misquoted.md': judge('The user\'s whole request was "write the release notes".'),
+    }),
+  });
+  assert.deepEqual(errors, [
+    'evals/followup/graders/02-misquoted.md: the quoted request "write the release notes" isn\'t in prompt.md or a recorded user message word for word (repo rule)',
+    'evals/quick/graders/02-curly.md: the quoted request "escribe un post sobre mi nuevo trabajo" isn\'t in prompt.md word for word (repo rule)',
+    'evals/quick/graders/04-spaces.md: the <original_prompt> text isn\'t in prompt.md word for word (repo rule)',
+  ]);
+});
+
+test('checkConversations reports a contract without what the history checks read, skips those checks, and still checks quoted requests', () => {
+  const { errors } = histories({
+    'evals/quick/prompt.md': `---\nmodel: ${MODEL}\n---\n\nwrite a post\n`,
+    'evals/quick/graders/01-request.md': judge('The user\'s whole request was "write a long post".'),
+    ...recordedCase('round', [userRow('write the notes'), assistantRow(`1. Who?\n   a) Me ★\n\n${REPLY_LINE}`)], 'ok', { '01-x.md': REGEX }),
+  }, { required: { headings: ['Full prompt'], menu: [], replyLine: [] } });
+  assert.deepEqual(errors, [
+    'data/contract.json: required lacks the heading "Short version", the heading "What next?", the menu entry "Save to file", a replyLine, which the history checks in scripts/eval-cases.mjs look for; change the two together',
+    'evals/quick/graders/01-request.md: the quoted request "write a long post" isn\'t in prompt.md word for word (repo rule)',
   ]);
 });

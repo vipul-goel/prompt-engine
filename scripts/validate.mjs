@@ -2,10 +2,10 @@
 // Validates the repository: Agent Skill format and portability rules, the shared
 // output contract, size budgets, plugin-root hygiene, data files, manifests,
 // eval cases (the keys, values and referenced files of case.yaml, prompt.md and
-// graders/*.md, this repo's rules for how the cases run and score, and the history
-// cases' recordings and what their graders quote from them, see scripts/eval-cases.mjs,
-// and the recorder's private-data scan of every committed history.jsonl) and
-// generated-file freshness. Zero dependencies (Node >= 22.19).
+// graders/*.md, this repo's rules for how the cases run and score, the history cases'
+// recordings, and what graders quote from a case's request or recording, see
+// scripts/eval-cases.mjs, and the recorder's private-data scan of every committed
+// history.jsonl) and generated-file freshness. Zero dependencies (Node >= 22.19).
 //
 //   node scripts/validate.mjs        # exit 1 on any error; warnings are printed
 //
@@ -330,7 +330,8 @@ for (const t of media.targets) {
 // scripts/eval-cases.mjs checks each case's case.yaml, prompt.md and graders/*.md, and returns
 // every case folder it found, including those whose files didn't parse. checkSuiteRules then
 // applies this repo's rules for how the cases run and score, and checkConversations checks each
-// history case's recording against the method and its graders against the recording.
+// history case's recording against the method and its graders against the recording, and the
+// request text that any case's rubric quotes against the case.
 const cases = checkEvalCases(root, err);
 checkSuiteRules(root, cases, err);
 checkConversations(root, cases, { err, warn, contract });

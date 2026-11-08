@@ -472,6 +472,16 @@ const ROWS = [
     /^error: evals\/followup-partial-answers\/graders\/06-accepted-not-assumed\.md: quotes option 4c \("Under 600 words, short and punchy"\)/m],
   ['accepts a quote that differs from the recording only in dashes and code marks', (d) => edit(d, OK6, (t) => t.replace('3\u{2013}5 ideas', '3-5 ideas').replace('`[[placeholders]]`', '[[placeholders]]')), /validate: OK/, 0],
   ['does not check the quotes of a case without a recording', (d) => edit(d, 'evals/writing-quick-launch-email/graders/11-no-invention.md', (t) => `${t}\nFor example "foo bar baz".\n`), /validate: OK/, 0],
+  // The request text a rubric quotes, in <original_prompt> tags or after "The user's whole
+  // request", is the case's own, word for word (finding 50). A gloss outside the quotes doesn't count.
+  ['rejects a rubric that misquotes the request', (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
+    '\nThe user\'s whole request, in Spanish, was "escribe un post de LinkedIn sobre mi trabajo nuevo" (write a LinkedIn post about my new job), in quick mode.\nPASS if no detail is invented. FAIL otherwise.\n')),
+  /^error: evals\/spanish-quick\/graders\/09-request\.md: the quoted request "escribe un post de LinkedIn sobre mi trabajo nuevo" isn't in prompt\.md word for word \(repo rule\)$/m],
+  ['rejects an <original_prompt> block that differs from prompt.md', (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
+    '\n<original_prompt>\nI\'m writing release notes for version 2.5.\n</original_prompt>\nPASS if its wording is kept. FAIL otherwise.\n')),
+  /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: the <original_prompt> text isn't in prompt\.md word for word \(repo rule\)$/m],
+  ['accepts a follow-up rubric that quotes the request from the recording', (d) => put(d, `${OK_CASE}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
+    '\nThe user\'s whole request was "write a blog post about remote work", and they replied "ok" to the questions.\nPASS if no detail is invented. FAIL otherwise.\n')), /validate: OK/, 0],
   // A regex grader on the file that the recorded menu offers to save must tell the recorded Full
   // prompt from the Short version (finding 55).
   ['rejects a saved-file regex that does not match the recorded Full prompt', (d) => edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe')),
