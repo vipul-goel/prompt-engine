@@ -22,7 +22,7 @@ The reply that delivers an enhanced prompt always has the same shape, so users l
 ### Template
 
 ````markdown
-<One line: what you made, for which tool, and the mode. For a strong prompt: "Your prompt is already strong — small edits below.">
+<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it. For a strong prompt: "Your prompt is already strong — small edits below.">
 
 ### Full prompt
 ```text
@@ -71,7 +71,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 **Short version.** At most about 120 words: the goal with its purpose, the 3–5 requirements that matter most, hard constraints and the output format. It carries the same assumptions as the full version. If the full prompt embeds long inputs, the short version may refer to them as a `[[placeholder]]` listed under "Fill before running", rather than repeating them.
 
-**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there.
+**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable), never ask for its value.
 
 **What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. Tag every bullet:
 - **[you]** — something the user said, restated or made precise;
@@ -89,7 +89,7 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 | Situation | Options |
 |---|---|
 | Normal | Run it now ★ · Refine · Save to file |
-| Placeholders still open | Fill placeholders ★ · Refine · Save to file |
+| Placeholders other than secrets still open | Fill placeholders ★ · Refine · Save to file |
 | The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
 | Image or video prompt and you can't generate media | Done ★ (with where to paste it) · Refine · Save to file |
 | You can't write files (chat apps) | Drop "Save to file" |

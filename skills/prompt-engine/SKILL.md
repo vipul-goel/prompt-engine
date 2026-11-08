@@ -28,7 +28,7 @@ Don't use it for ordinary requests such as "write me a cold email" — just do t
 - **Mode.** Use quick mode when the request starts with `quick:` or `--quick`, or the user asks in words ("quick mode", "no questions", "just write it"). Quick mode asks nothing: use the recommended defaults and list them under Assumptions. Use deep mode, with extra question rounds, for `deep:`, `--deep` or a request for a thorough interview. Otherwise use standard mode. A word like "quick" inside the prompt itself ("Quick sort in Rust") is content, not a mode.
 - **Language.** Talk to the user in their language. Write the enhanced prompt in that language too, unless the user or the target tool needs another one, and include a line telling the target model which language to answer in.
 - **Target.** Infer where the prompt will run: this assistant, another chat model, a coding agent, or an image or video tool. Ask only if the answer changes the format.
-- **Secrets and private data.** Replace API keys, passwords, tokens and other people's private details with placeholders such as `[[api key]]`, and say that you did.
+- **Secrets and private data.** Replace API keys, passwords, tokens and other people's private details with placeholders such as `[[api key]]`, and say that you did. In prompts for code or agents, name an environment variable for a secret instead. Suggest rotating a pasted key.
 - If the purpose is clearly harmful, decline as you normally would.
 
 ### 2. Diagnose
@@ -87,7 +87,7 @@ Show "What next?" with AskUserQuestion (header "Next step") when that tool is am
 
 ### 6. Next step (only after the user picks)
 
-- **Run it now** — carry out the full prompt as if the user had just sent it, then reply normally from then on (no more score or menu). If placeholders are still open, ask for their values first. If the prompt is meant for another tool, call the option "Try it here (results there may differ)". If it is an image or video prompt and you can't generate media, offer "Done" instead and explain where to paste it.
+- **Run it now** — carry out the full prompt as if the user had just sent it, then reply normally from then on (no more score or menu). If placeholders are still open, ask for their values first, except secrets: ask the user to set those where the tool reads them, never to paste them here. If the prompt is meant for another tool, call the option "Try it here (results there may differ)". If it is an image or video prompt and you can't generate media, offer "Done" instead and explain where to paste it.
 - **Refine** — apply "change N: …" or new details, or run a deep round, then show the updated prompt, what changed, and the new score.
 - **Save to file** — only where you can write files (Claude Code and other local coding agents). The menu shows the suggested path, `prompts/<short-name>.md`. Picking it saves the full prompt there, or at the path the user gives instead (for example `3 prompts/launch.md`), without asking again. Never overwrite an existing file; add `-2` to the name instead. Look the path up first, then create the file with your file-writing tool rather than a shell command, so the user sees a plain file-creation request. Then reply with the saved path.
 - If the user dismisses the menu or says nothing, stop and wait.
