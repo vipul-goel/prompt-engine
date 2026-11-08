@@ -63,7 +63,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 Defaults you chose without asking don't go here; they are listed once, under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
 
-**Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. List each number (count, length, limit), name, setting or style choice you picked as its own item, in text prompts as in image and video prompts; merge small formatting picks, or small scene details, into one item. At most 8; merge minor ones. End with the "change N" line. If there are no assumptions, write "None."
+**Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. List each number (count, length, limit), name, setting or style choice you picked as its own item, in text prompts as in image and video prompts; merge small formatting picks, or small scene details, into one item. At most 8: if more qualify, merge related ones into one item rather than leave any out. End with the "change N" line. If there are no assumptions, write "None."
 
 **Score.** One row per dimension, original and enhanced, scored with the anchors below. Write `n/a` where a dimension doesn't apply to this kind of prompt, in both columns. Always include the caveat line.
 

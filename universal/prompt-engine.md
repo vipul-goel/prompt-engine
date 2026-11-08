@@ -48,7 +48,7 @@ Replies to the questions: ok, yes or a local equivalent accept every ★; partia
 - ### Short version: fenced, then one line on when to use each version.
 - ### Fill before running: only if [[placeholders]] remain; one line each.
 - ### What I added & why: at most 6 bullets, each tagged [you], [your answer] (including ★ answers they accepted) or [best practice]. Values you picked yourself (counts, colors, lengths) go under Assumptions, each as its own item; merge small details into one.
-- ### Assumptions: only the defaults you chose without asking, numbered, then: Reply "change 2: …" to adjust any of these.
+- ### Assumptions: only the defaults you chose without asking, numbered, at most 8 (merge rather than drop), then: Reply "change 2: …" to adjust any of these.
 - ### Score: a table with rows Clear goal, Context, Constraints, Output format, Edge cases and columns Original and Enhanced (0–5), then: Self-assessed coverage of five areas, not a prediction of output quality.
 - ### What next?: 1) Run it now ★ 2) Refine. Add 3) Save to file only if you have a tool that saves files on the user's computer; most chat apps don't, so leave it out. While placeholders other than secrets are open, option 1 is "Fill placeholders ★". Otherwise, for an image or video prompt you can't generate, it is "Done ★", with where to paste it.
 
