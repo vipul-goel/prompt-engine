@@ -3,7 +3,7 @@
 //   data/media-targets.json              -> skills/prompt-engine/references/media-targets.md
 //   skills/prompt-engine/references/*.md -> universal/prompt-engine-knowledge.md
 //   skills/, universal/ and data/        -> mcp/src/generated/content.ts (when mcp/ exists)
-//   SKILL.md and references/            -> the skill text inside evals/*/history.jsonl
+//   SKILL.md and references/            -> the skill text and Read results inside evals/*/history.jsonl
 // Zero dependencies: Node >= 22.19 built-ins only. Output is deterministic (no timestamps),
 // so `node scripts/build.mjs && git diff --exit-code` detects stale generated files.
 // `node scripts/build.mjs --check` exits 1 instead of writing when anything is stale.
@@ -125,37 +125,79 @@ export function renderContentModule({ version, universal, refs, contract, media,
   ].join('\n');
 }
 
-const SKILL_HEADER = 'Base directory for this skill:';
+// How Claude Code starts the skill text it injects, with the plugin path that
+// scripts/eval/record-history.mjs writes in place of the real one.
+const SKILL_TEXT_HEAD = 'Base directory for this skill: /plugin/skills/prompt-engine\n\n';
+// The names a recording can invoke the skill by: the Skill tool's input.skill, and a typed slash command.
+const SKILL_NAMES = new Set(['prompt-engine', 'prompt-engine:prompt-engine']);
+const COMMAND_NAME = /<command-name>\/(prompt-engine(?::prompt-engine)?)<\/command-name>/;
+// Claude Code's Read result: each line prefixed with its number and a tab.
+const numberLines = (text) => text.split('\n').map((l, i) => `${i + 1}\t${l}`).join('\n');
 
 // Follow-up eval cases resume a recorded conversation (evals/*/history.jsonl), which
 // holds the skill text and the reference files as they were when it was recorded
 // (scripts/eval/record-history.mjs rewrites the plugin path to /plugin). Both are
 // refreshed here so the follow-up turn is tested against the current method; the
-// recorded questions and answers stay as they were.
+// recorded questions and answers stay as they were. The skill text is found by
+// prompt-engine's own header and ends where the line with the recorded invocation's
+// arguments starts. A reference file is refreshed both in the Read result and in Claude
+// Code's own copy of it (toolUseResult.file); a failed Read (is_error) stays as recorded.
+// A recording this can't refresh exactly throws, so it is recorded again instead of being
+// patched by guesswork: skill text without a recorded invocation, arguments without their
+// ARGUMENTS line, a plugin path that wasn't rewritten, a Read with offset or limit (D12:
+// Claude Code's partial-read format isn't verified), or a Read of a file that no longer exists.
 export function refreshHistory(jsonl, skillBody, readPluginFile) {
-  const readPaths = new Map();
+  const reads = new Map(); // Read tool_use id -> { rel, partial }
+  let args = null; // the arguments of the latest prompt-engine invocation; null before the first one
   return jsonl.split('\n').map((line) => {
     if (!line.trim()) return line;
     const row = JSON.parse(line);
-    const parts = Array.isArray(row.message?.content) ? row.message.content : [];
+    const content = row.message?.content;
+    // A typed slash command: "<command-name>/prompt-engine:prompt-engine</command-name>\n<command-args>…</command-args>".
+    const typed = typeof content === 'string' ? content
+      : Array.isArray(content) ? content.filter((p) => p.type === 'text').map((p) => p.text).join('\n') : '';
+    if (COMMAND_NAME.test(typed)) args = typed.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1] ?? '';
+    const parts = Array.isArray(content) ? content : [];
     let changed = false;
     for (const part of parts) {
-      if (part.type === 'tool_use' && part.name === 'Read') {
+      if (part.type === 'tool_use' && part.name === 'Skill' && SKILL_NAMES.has(part.input?.skill)) {
+        args = typeof part.input.args === 'string' ? part.input.args : '';
+      } else if (part.type === 'tool_use' && part.name === 'Read') {
         const m = String(part.input?.file_path ?? '').match(/^\/plugin\/(.+)$/);
-        if (m) readPaths.set(part.id, m[1]);
-      } else if (part.type === 'tool_result' && readPaths.has(part.tool_use_id) && typeof part.content === 'string') {
-        const current = readPluginFile(readPaths.get(part.tool_use_id));
-        // Claude Code's Read result: each line prefixed with its number and a tab.
-        const numbered = current?.split('\n').map((l, i) => `${i + 1}\t${l}`).join('\n');
-        if (numbered !== undefined && numbered !== part.content) { part.content = numbered; changed = true; }
-      } else if (part.type === 'text' && part.text.startsWith(SKILL_HEADER)) {
-        // "<header line>\n\n<SKILL.md body>\n\n\nARGUMENTS: <args>"
-        const start = part.text.indexOf('\n# ') + 1;
-        const args = part.text.lastIndexOf('ARGUMENTS:');
-        const end = args >= 0 ? args : part.text.length;
-        const gap = part.text.slice(0, end).match(/\s*$/)[0];
-        const text = `${part.text.slice(0, start)}${skillBody}${gap}${part.text.slice(end)}`;
-        if (start > 0 && text !== part.text) { part.text = text; changed = true; }
+        if (m) reads.set(part.id, { rel: m[1], partial: part.input.offset !== undefined || part.input.limit !== undefined });
+      } else if (part.type === 'tool_result' && reads.has(part.tool_use_id) && part.is_error !== true) {
+        const { rel, partial } = reads.get(part.tool_use_id);
+        if (partial) throw new Error(`reads part of ${rel} (offset/limit); re-record it`);
+        const current = readPluginFile(rel);
+        if (current === undefined) throw new Error(`reads ${rel}, which no longer exists; re-record it`);
+        if (typeof part.content !== 'string') throw new Error(`has a Read result for ${rel} that isn't text; re-record it`);
+        const numbered = numberLines(current);
+        if (numbered !== part.content) { part.content = numbered; changed = true; }
+        // Claude Code's own copy of the file, in the shape of a whole-file Read; the spread keeps the key order.
+        const file = row.toolUseResult?.file;
+        if (file?.filePath === `/plugin/${rel}`) {
+          const n = current.split('\n').length;
+          const fresh = { ...file, content: current, numLines: n, startLine: 1, totalLines: n };
+          if (JSON.stringify(fresh) !== JSON.stringify(file)) { row.toolUseResult.file = fresh; changed = true; }
+        }
+      } else if (part.type === 'text' && part.text.startsWith(SKILL_TEXT_HEAD)) {
+        if (args === null) throw new Error('skill text without a recorded prompt-engine invocation; re-record it');
+        // "<head><SKILL.md body>\n" and, when there are arguments, "\n\nARGUMENTS: <args>". Cut at
+        // that line when it holds exactly the recorded arguments (which may themselves contain
+        // "\n\nARGUMENTS: "); otherwise at the last such line, since Claude Code escapes some
+        // characters in it, such as "!". With no arguments, Claude Code appends no line.
+        const exact = `\n\nARGUMENTS: ${args}`;
+        let cut = part.text.length;
+        if (args && part.text.endsWith(exact)) cut -= exact.length;
+        else if (args) {
+          cut = part.text.lastIndexOf('\n\nARGUMENTS: ');
+          if (cut < SKILL_TEXT_HEAD.length) throw new Error('arguments were recorded, but the skill text has no ARGUMENTS line; re-record it');
+        }
+        const old = part.text.slice(SKILL_TEXT_HEAD.length, cut);
+        const text = `${SKILL_TEXT_HEAD}${skillBody}${old.match(/\s*$/)[0]}${part.text.slice(cut)}`;
+        if (text !== part.text) { part.text = text; changed = true; }
+      } else if (part.type === 'text' && /^Base directory for this skill: .*[\\/]skills[\\/]prompt-engine\n/.test(part.text)) {
+        throw new Error('the skill text names a plugin path other than /plugin; record it with scripts/eval/record-history.mjs');
       }
     }
     return changed ? JSON.stringify(row) : line;
@@ -176,7 +218,9 @@ export function buildAll() {
   const readPluginFile = (p) => outputs[p] ?? (existsSync(join(root, p)) ? read(p) : undefined);
   for (const entry of readdirSync(join(root, 'evals'), { withFileTypes: true })) {
     const p = `evals/${entry.name}/history.jsonl`;
-    if (entry.isDirectory() && existsSync(join(root, p))) outputs[p] = refreshHistory(read(p), skillBody, readPluginFile);
+    if (!entry.isDirectory() || !existsSync(join(root, p))) continue;
+    // Name the history in the error, so the build's one line says which file to record again.
+    try { outputs[p] = refreshHistory(read(p), skillBody, readPluginFile); } catch (e) { throw new Error(`${p}: ${e.message}`); }
   }
   if (existsSync(join(root, 'mcp', 'package.json'))) {
     const strip = ({ $comment, ...rest }) => rest;

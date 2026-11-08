@@ -1,16 +1,16 @@
-// Tests for scripts/build.mjs, mostly run against temporary copies of the repository: running
-// it from unusual paths, sources with CRLF line endings or a byte-order mark, and data it
-// can't render.
+// Tests for scripts/build.mjs: running it from unusual paths, sources with CRLF line endings or
+// a byte-order mark, data it can't render, and keeping the skill text and Read results inside
+// recorded histories up to date. Some run against temporary copies of the repository.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { renderMediaTargets } from '../build.mjs';
+import { normalize, refreshHistory, renderMediaTargets } from '../build.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Build output and tool state the checks don't read: copying them only slows the tests down.
@@ -144,6 +144,186 @@ test('build.mjs reports data it cannot render in one line, without a stack trace
       assert.equal(r.stdout, '', `build.mjs ${args.join(' ')}`);
       assert.equal(r.stderr, `build failed: media-targets: unknown status "verifed" for ${data.targets[0].id}\n`);
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- refreshHistory: the skill text and Read results inside recorded histories ----------
+const HEAD = 'Base directory for this skill: /plugin/skills/prompt-engine\n\n';
+const readText = (p) => normalize(readFileSync(join(repo, p), 'utf8'));
+const body = readText('skills/prompt-engine/SKILL.md').replace(/^---\n[\s\S]*?\n---\n/, '').trim();
+const readPluginFile = (p) => (existsSync(join(repo, p)) ? readText(p) : undefined);
+const history = (c) => readText(`evals/${c}/history.jsonl`);
+const refresh = (jsonl, b = body) => refreshHistory(jsonl, b, readPluginFile);
+const partsOf = (jsonl) => jsonl.split('\n').filter((l) => l.trim()).flatMap((l) => {
+  const c = JSON.parse(l).message?.content;
+  return Array.isArray(c) ? c : [];
+});
+const skillText = (jsonl) => partsOf(jsonl).find((p) => p.type === 'text' && p.text.startsWith(HEAD))?.text;
+// The skill text as Claude Code writes it: the head, the body, a newline and, when there are
+// arguments, a line with them.
+const expected = (b, args) => `${HEAD}${b}\n${args ? `\n\nARGUMENTS: ${args}` : ''}`;
+const ARGS = 'write a blog post about remote work';
+// A body that differs from the current one at its end.
+const OLD_BODY = `${body}\n\n- A rule that was removed later.`;
+
+// The arguments a recording invoked the skill with: a typed command's <command-args>, or the
+// Skill call's input.args.
+function recordedArgs(jsonl) {
+  for (const l of jsonl.split('\n').filter((x) => x.trim())) {
+    const c = JSON.parse(l).message?.content;
+    if (typeof c === 'string' && c.includes('<command-name>/prompt-engine')) return c.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1] ?? '';
+    for (const p of Array.isArray(c) ? c : []) if (p.type === 'tool_use' && p.name === 'Skill') return p.input.args ?? '';
+  }
+}
+
+// The follow-up recording with its skill text replaced, and the Skill call's arguments set
+// (or removed, for undefined).
+function variant(text, args) {
+  return history('followup-ok-accepts-recommendations').split('\n').map((l) => {
+    if (!l.trim()) return l;
+    const r = JSON.parse(l);
+    for (const p of Array.isArray(r.message?.content) ? r.message.content : []) {
+      if (p.type === 'tool_use' && p.name === 'Skill') { if (args === undefined) delete p.input.args; else p.input.args = args; }
+      if (p.type === 'text' && p.text.startsWith(HEAD)) p.text = text;
+    }
+    return JSON.stringify(r);
+  }).join('\n');
+}
+
+test('the committed histories hold exactly the current skill text, and refreshing them changes nothing', () => {
+  const cases = readdirSync(join(repo, 'evals')).filter((c) => existsSync(join(repo, 'evals', c, 'history.jsonl')));
+  assert.ok(cases.length >= 3, cases.join(', '));
+  for (const c of cases) {
+    const h = history(c);
+    assert.equal(skillText(h), expected(body, recordedArgs(h)), c);
+    assert.equal(refresh(h), h, c);
+  }
+});
+
+test('a recording without arguments gets the whole current body, whatever the old one was', () => {
+  const nearTop = body.replace(/^.*$/m, (line) => `${line} (old title)`);
+  for (const old of [OLD_BODY, nearTop, body]) {
+    const once = refresh(variant(`${HEAD}${old}\n`, undefined));
+    assert.equal(skillText(once), expected(body, ''));
+    assert.equal(refresh(once), once);
+  }
+  assert.notEqual(nearTop, body);
+});
+
+test('text before the H1 is copied once, and a body without an H1 still takes later edits', () => {
+  const noted = `<!-- note -->\n\n${body}`;
+  const once = refresh(variant(expected(body, ARGS), ARGS), noted);
+  assert.equal(skillText(once), expected(noted, ARGS));
+  assert.equal(refresh(once, noted), once);
+  const noH1 = body.replace(/^# .*\n+/, '');
+  assert.notEqual(noH1, body);
+  const edited = refresh(refresh(variant(expected(body, ARGS), ARGS), noH1), `${noH1}\nREVISED`);
+  assert.equal(skillText(edited), expected(`${noH1}\nREVISED`, ARGS));
+});
+
+test('arguments that contain "ARGUMENTS:" survive intact', () => {
+  const a = 'improve this: ARGUMENTS: list the steps\n\nARGUMENTS: and this';
+  const once = refresh(variant(expected(OLD_BODY, a), a));
+  assert.equal(skillText(once), expected(body, a));
+  assert.equal(refresh(once), once);
+});
+
+test('an ARGUMENTS line that Claude Code escaped is kept as it is', () => {
+  // Claude Code escapes some characters, such as a "!" after a space, in the line it appends.
+  const once = refresh(variant(`${HEAD}${OLD_BODY}\n\n\nARGUMENTS: mon nouveau poste \\!`, 'mon nouveau poste !'));
+  assert.equal(skillText(once), `${HEAD}${body}\n\n\nARGUMENTS: mon nouveau poste \\!`);
+  assert.equal(refresh(once), once);
+});
+
+test('a slash command with empty or no arguments is refreshed', () => {
+  for (const args of ['<command-args></command-args>', '']) {
+    const h = history('save-to-file').split('\n').map((l) => {
+      if (!l.trim()) return l;
+      const r = JSON.parse(l);
+      if (typeof r.message?.content === 'string') r.message.content = r.message.content.replace(/<command-args>[\s\S]*?<\/command-args>/, args);
+      for (const p of Array.isArray(r.message?.content) ? r.message.content : []) if (p.type === 'text' && p.text.startsWith(HEAD)) p.text = `${HEAD}OLD BODY\n`;
+      return JSON.stringify(r);
+    }).join('\n');
+    assert.match(h, /<command-name>\/prompt-engine/);
+    const once = refresh(h);
+    assert.equal(skillText(once), expected(body, ''), args || 'no <command-args>');
+    assert.equal(refresh(once), once);
+  }
+});
+
+test("another skill's text is left alone", () => {
+  for (const dir of ['/plugin/skills/other', '/home/u/.claude/skills/other']) {
+    const other = JSON.stringify({ type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: `Base directory for this skill: ${dir}\n\n# Other\n\nDo it.\n` }] } });
+    assert.equal(refresh(other), other, dir);
+  }
+});
+
+test('skill text it cannot refresh exactly is refused, so it is recorded again', () => {
+  assert.throws(() => refresh(variant(`${HEAD}${body}\n`, ARGS)), { message: 'arguments were recorded, but the skill text has no ARGUMENTS line; re-record it' });
+  const noCall = JSON.stringify({ type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: expected(body, ARGS) }] } });
+  assert.throws(() => refresh(noCall), { message: 'skill text without a recorded prompt-engine invocation; re-record it' });
+  for (const dir of ['/home/al/src/prompt-engine/skills/prompt-engine', 'C:\\dev\\prompt-engine\\skills\\prompt-engine']) {
+    const unrewritten = variant(expected(body, ARGS).replace('/plugin/skills/prompt-engine', dir), ARGS);
+    assert.throws(() => refresh(unrewritten), { message: 'the skill text names a plugin path other than /plugin; record it with scripts/eval/record-history.mjs' }, dir);
+  }
+});
+
+// A Read of a reference file and its result, with Claude Code's own copy of the file.
+const REL = 'skills/prompt-engine/references/questions.md';
+const jsonl = (...rows) => rows.map((r) => JSON.stringify(r)).join('\n');
+const readUse = (input) => ({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input }] } });
+const readResult = (content, extra = {}) => ({
+  type: 'user',
+  message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content, ...extra }] },
+  toolUseResult: { type: 'text', file: { filePath: `/plugin/${REL}`, content: 'OLD', numLines: 1, startLine: 1, totalLines: 1 } },
+});
+const files = (map) => (rel) => map[rel];
+
+test('refreshes the Read result and Claude Code\'s copy of the file together', () => {
+  const out = refreshHistory(jsonl(readUse({ file_path: `/plugin/${REL}` }), readResult('1\tOLD')), 'BODY', files({ [REL]: 'NEW\nTEXT\n' }));
+  const row = JSON.parse(out.split('\n')[1]);
+  assert.equal(row.message.content[0].content, '1\tNEW\n2\tTEXT\n3\t');
+  assert.deepEqual(row.toolUseResult.file, { filePath: `/plugin/${REL}`, content: 'NEW\nTEXT\n', numLines: 3, startLine: 1, totalLines: 3 });
+  assert.deepEqual(Object.keys(row.toolUseResult.file), ['filePath', 'content', 'numLines', 'startLine', 'totalLines']);
+  assert.equal(refreshHistory(out, 'BODY', files({ [REL]: 'NEW\nTEXT\n' })), out);
+});
+
+test('refuses a Read it cannot refresh exactly: part of a file, a file that no longer exists, a result that is not text', () => {
+  for (const extra of [{ offset: 4 }, { limit: 2 }, { offset: 4, limit: 2 }]) {
+    assert.throws(() => refreshHistory(jsonl(readUse({ file_path: `/plugin/${REL}`, ...extra }), readResult('4\tOLD')), 'BODY', files({ [REL]: 'NEW' })),
+      { message: `reads part of ${REL} (offset/limit); re-record it` }, JSON.stringify(extra));
+  }
+  assert.throws(() => refreshHistory(jsonl(readUse({ file_path: `/plugin/${REL}` }), readResult('1\tOLD')), 'BODY', files({})),
+    { message: `reads ${REL}, which no longer exists; re-record it` });
+  assert.throws(() => refreshHistory(jsonl(readUse({ file_path: `/plugin/${REL}` }), readResult([{ type: 'text', text: '1\tOLD' }])), 'BODY', files({ [REL]: 'NEW' })),
+    { message: `has a Read result for ${REL} that isn't text; re-record it` });
+});
+
+test('leaves a failed Read as it was recorded', () => {
+  const input = jsonl(readUse({ file_path: `/plugin/${REL}` }), readResult('File does not exist.', { is_error: true }));
+  assert.equal(refreshHistory(input, 'BODY', files({ [REL]: 'NEW' })), input);
+  assert.equal(refreshHistory(input, 'BODY', files({})), input);
+});
+
+test('build.mjs and validate.mjs name the history they cannot refresh, in one line', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-partial-read-'));
+  try {
+    copyTo(dir);
+    const p = join(dir, 'evals/followup-partial-answers/history.jsonl');
+    const read = `"file_path":"/plugin/${REL}"`;
+    const before = readFileSync(p, 'utf8');
+    assert.ok(before.includes(read));
+    writeFileSync(p, before.replace(read, `${read},"limit":2`));
+    const msg = `evals/followup-partial-answers/history.jsonl: reads part of ${REL} (offset/limit); re-record it`;
+    const check = node(join(dir, 'scripts', 'build.mjs'), ['--check']);
+    assert.equal(check.code, 1, check.out);
+    assert.equal(check.stdout, '');
+    assert.equal(check.stderr, `build failed: ${msg}\n`);
+    const validate = node(join(dir, 'scripts', 'validate.mjs'));
+    assert.equal(validate.code, 1, validate.out);
+    assert.ok(validate.stderr.includes(`error: build failed: ${msg}\n`), validate.out);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
