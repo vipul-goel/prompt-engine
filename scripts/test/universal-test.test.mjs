@@ -277,7 +277,24 @@ test('runs when started through a symlink in a folder with spaces, and not when 
     const imported = runScript({ args: ['--input-type=module', '-e', `await import(${JSON.stringify(pathToFileURL(script).href)});`] });
     assert.equal(imported.code, 0, imported.out);
     assert.deepEqual(imported.calls, []);
+    // Under -e, process.argv[1] is the first extra argument: here, this script's own path.
+    const evalArg = runScript({ args: ['--input-type=module', '-e', 'await import(process.argv[1]);', script] });
+    assert.equal(evalArg.code, 0, evalArg.out);
+    assert.deepEqual(evalArg.calls, [], evalArg.out);
+    assert.equal(U.isEntryPoint({ isMain: undefined, execArgv: [], argv1: link, self: script }), true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('isEntryPoint: import.meta.main decides where Node sets it; older Node never runs under -e or -p', () => {
+  assert.equal(U.isEntryPoint({ isMain: true, execArgv: ['-e', 'x'], argv1: undefined, self: script }), true);
+  assert.equal(U.isEntryPoint({ isMain: false, execArgv: [], argv1: script, self: script }), false);
+  // Without import.meta.main, as on Node 20:
+  assert.equal(U.isEntryPoint({ isMain: undefined, execArgv: [], argv1: script, self: script }), true);
+  for (const execArgv of [['-e', 'x'], ['--input-type=module', '--eval', 'x'], ['--eval=x'], ['-p', 'x'], ['-pe', 'x'], ['--print', 'x']]) {
+    assert.equal(U.isEntryPoint({ isMain: undefined, execArgv, argv1: script, self: script }), false, execArgv.join(' '));
+  }
+  assert.equal(U.isEntryPoint({ isMain: undefined, execArgv: [], argv1: join(repo, 'scripts', 'build.mjs'), self: script }), false);
+  assert.equal(U.isEntryPoint({ isMain: undefined, execArgv: [], argv1: undefined, self: script }), false);
 });

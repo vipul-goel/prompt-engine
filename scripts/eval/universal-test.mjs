@@ -141,8 +141,12 @@ function main() {
 }
 
 // Run only as the entry point, so the test can import the checks without starting billed
-// runs. Compare real paths, so a path with spaces or through a symlink still counts.
-const isEntry = () => {
-  try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); } catch { return false; }
-};
-if (isEntry()) main();
+// runs. Node 22.18+ and 24.2+ set import.meta.main. Older Node doesn't, so there: never
+// under -e or -p, where process.argv[1] is the first extra argument rather than this file,
+// and otherwise compare real paths, so a path with spaces or through a symlink still counts.
+export function isEntryPoint({ isMain, execArgv, argv1, self }) {
+  if (typeof isMain === 'boolean') return isMain;
+  if (execArgv.some((a) => /^(-e|-p|-pe|--eval|--print)(=|$)/.test(a))) return false;
+  try { return realpathSync(self) === realpathSync(argv1); } catch { return false; }
+}
+if (isEntryPoint({ isMain: import.meta.main, execArgv: process.execArgv, argv1: process.argv[1], self: fileURLToPath(import.meta.url) })) main();
