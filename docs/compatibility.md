@@ -61,7 +61,7 @@ Tuning held out 8 of the 24 requests. Both descriptions passed all 8, so the hel
 
 ## Known limits
 
-- In the eval runner and in headless runs, the question dialog isn't available, so automated tests exercise the numbered-list path. The dialog path is checked by an interactive smoke test.
+- In the eval runner and in headless runs, the question dialog isn't available, so automated tests exercise the numbered-list path. The dialog path is checked by hand, with the [Claude Code checklist](manual-checks.md#claude-code-interactive). The last recorded check, on 2026-10-29, predates the skill's current dialog, menu and save instructions (see the Claude Code row under [Surfaces](#surfaces)).
 - Scores in the output are the model's own coverage check against a fixed rubric. They are not a measurement of output quality.
 - Media tool details (flags, versions, limits) change often. Each entry in `data/media-targets.json` carries its own status and last-checked date.
 - **Files in the plugin's folder can load as project memory.** On 2026-11-07, with Claude Code 2.1.319, a session started in a folder that held a plugin cache loaded the cached plugin's `.claude/CLAUDE.md` (this repository's maintainer notes) as project memory once the skill read one of its reference files, and the model received the file's text. In that run the cache sat in a separate configuration folder; a session started in the home folder, whose own `~/.claude` holds the cache, wasn't run.
