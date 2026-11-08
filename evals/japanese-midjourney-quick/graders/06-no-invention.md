@@ -1,14 +1,16 @@
 ---
-# Finding 4's media rubric (its audit, fix_corrections 3) with D6: numbers, settings and style
-# choices are Assumptions of their own; small scene details are merged into one. The judge sees
-# only this text and the reply, so the head quotes the request; validate.mjs holds the quote (not
-# the English gloss) to prompt.md. D3 translates the Assumptions heading. Example phrases are in
-# single quotes.
+# Finding 4's media rubric (its audit, fix_corrections 3): every detail the reply picks is in an
+# Assumption. The method lists numbers, settings and style choices as items of their own and merges
+# small scene details (D6), but caps the list at eight and merges related picks rather than drop
+# any (output-format.md), so the judge checks that each pick is mentioned, not how the items are
+# grouped. The judge sees only this text and the reply, so the head quotes the request;
+# validate.mjs holds the quote (not the English gloss) to prompt.md. D3 translates the headings.
+# Example phrases are in single quotes.
 type: llm
 focus: last_message
 weight: 1
 ---
 
-The user's whole request, in Japanese, was "夜の雪山にある小さな山小屋" (a small hut on a snowy mountain at night), for a Midjourney prompt, in quick mode, so no questions were asked. It gives no style, palette or colors, light sources, number of objects, framing or camera angle, aspect ratio, version or other parameters, exclusions, or scene details beyond the hut, the snowy mountain and the night.
+The user's whole request, in Japanese, was "夜の雪山にある小さな山小屋" (a small hut on a snowy mountain at night), for a Midjourney prompt, in quick mode, so no questions were asked. It gives no style, palette or colors, light sources, number of objects, framing or camera angle, aspect ratio, version or other parameters, exclusions, or scene details beyond the small hut, the snowy mountain and the night.
 Check every detail the prompt adds that the request doesn't give: counts, colors, light sources, framing and camera angle, style, parameter values such as the aspect ratio or the excluded words, and small scene details.
-PASS if each one is listed under Assumptions (the heading may be in Japanese), with numbers, settings and style choices as items of their own and small scene details merged into one item. FAIL if any added detail appears in no Assumption, whatever tag the reply gives it; in particular, FAIL if a bullet under What I added tagged [best practice] names a specific value, such as a count or a color, that no Assumption mentions.
+PASS if each one is mentioned in a numbered item under Assumptions (the heading may be in Japanese); small scene details may share one item, and so may related picks merged to keep the list within eight items. FAIL if any added detail appears in no Assumption, whatever tag the reply gives it; in particular, FAIL if a bullet under What I added (the heading may be in Japanese) tagged [best practice] names a specific value, such as a count or a color, that no Assumption mentions.
