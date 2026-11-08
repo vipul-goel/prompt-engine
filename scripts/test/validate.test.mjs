@@ -1,8 +1,8 @@
 // Mutation tests for scripts/validate.mjs. Each row of ROWS changes a temporary copy of the
 // repository and validates it: the run must exit with the row's code (1 unless the row says
-// otherwise) and print every message the row expects. Every reachable err() call in
-// validate.mjs has a row, and some have several: each SUBSTITUTIONS pattern, each
-// FORBIDDEN_ROOT name, each way the frontmatter can fail to parse.
+// otherwise), print every message the row expects and none that it rules out. Every
+// reachable err() call in validate.mjs has a row, and some have several: each SUBSTITUTIONS
+// pattern, each FORBIDDEN_ROOT name, each way the frontmatter can fail to parse.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -39,11 +39,11 @@ function expectRun({ code: got, out }, expected, code, unexpected = []) {
   for (const re of [unexpected].flat()) assert.doesNotMatch(out, re);
 }
 
-function withMutation(mutate, expected, code = 1) {
+function withMutation(mutate, expected, code = 1, unexpected = []) {
   const dir = copyRepo();
   try {
     mutate(dir);
-    expectRun(validate(dir), expected, code);
+    expectRun(validate(dir), expected, code, unexpected);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -152,6 +152,7 @@ const FORBIDDEN_ROOT = ['package.json', 'package-lock.json', 'npm-shrinkwrap.jso
   'CLAUDE.md', '.mcp.json', '.lsp.json', 'commands', 'agents', 'hooks', 'settings.json', 'SKILL.md',
   'output-styles', 'monitors', 'workflows', 'themes'];
 
+// [name, mutate(dir), expected, code = 1, unexpected = []], as in expectRun.
 const ROWS = [
   // ---- frontmatter
   ...FRONTMATTER_REJECTED.map(([name, mutate, msg]) => [`rejects frontmatter with ${name}, and reports only that`, mutate, onlyError(msg)]),
@@ -261,6 +262,10 @@ const ROWS = [
   // ---- eval cases
   ['rejects an eval case without prompt.md or case.yaml', (d) => mkdirSync(join(d, 'evals/empty-case')), /evals\/empty-case: needs prompt\.md or case\.yaml/],
   ['rejects an eval case without graders', (d) => put(d, 'evals/no-graders/prompt.md', 'hello\n'), /evals\/no-graders: needs at least one grader in graders\//],
+  // The token is built at run time, so this file holds none. CI logs are public, so the
+  // message names the line and kind but not the token.
+  ['rejects a recorded history that looks private', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('handmade ceramic mug', `handmade ceramic mug, token gh${'p'}_${'R'.repeat(36)}`)),
+    /evals\/save-to-file\/history\.jsonl line 1: GitHub token \(looks private; remove it or record again\)/, 1, /ghp_/],
   // ---- generated files
   ['rejects a stale generated file', (d) => edit(d, `${REF}/media-targets.md`, (t) => `${t}\nhand edit\n`), /references\/media-targets\.md: stale; run node scripts\/build\.mjs/],
   // ---- text that must make no difference
@@ -326,7 +331,7 @@ test('copies a checkout in a folder named like a skipped entry, still without it
   }
 });
 
-for (const [name, mutate, expected, code] of ROWS) test(name, () => withMutation(mutate, expected, code));
+for (const [name, mutate, expected, code, unexpected] of ROWS) test(name, () => withMutation(mutate, expected, code, unexpected));
 for (const [name, mutate, expected, code, unexpected] of GIT_ROWS) {
   test(name, { skip: !hasGit && 'needs git' }, () => inGitCopy(mutate, expected, code, unexpected));
 }

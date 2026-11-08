@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Validates the repository: Agent Skill format and portability rules, the shared
 // output contract, size budgets, plugin-root hygiene, data files, manifests,
-// eval cases and generated-file freshness. Zero dependencies (Node >= 22.19).
+// eval cases (with the recorder's private-data scan of every committed
+// history.jsonl) and generated-file freshness. Zero dependencies (Node >= 22.19).
 //
 //   node scripts/validate.mjs        # exit 1 on any error; warnings are printed
 //
@@ -15,6 +16,7 @@ import { readFileSync, readdirSync, statSync, lstatSync, existsSync, openSync, r
 import { execFileSync } from 'node:child_process';
 import { join, relative, basename } from 'node:path';
 import { buildAll, root, normalize, OS_JUNK, KNOWLEDGE_ORDER } from './build.mjs';
+import { scanText, publicText } from './eval/sanitize.mjs';
 
 const errors = [];
 const warnings = [];
@@ -320,12 +322,20 @@ for (const t of media.targets) {
 
 // ---------- eval cases ----------
 if (exists('evals')) {
+  const allowText = publicText(root);
   for (const c of readdirSync(join(root, 'evals'))) {
     const dir = `evals/${c}`;
     if (c === 'results' || !statSync(join(root, dir)).isDirectory()) continue;
     if (!exists(`${dir}/prompt.md`) && !exists(`${dir}/case.yaml`)) { err(`${dir}: needs prompt.md or case.yaml`); continue; }
     const graders = exists(`${dir}/graders`) ? readdirSync(join(root, dir, 'graders')).filter((f) => f.endsWith('.md')) : [];
     if (!graders.length) err(`${dir}: needs at least one grader in graders/`);
+    // A recorded history is public once committed: the recorder's scan runs on each one (D9).
+    // No machine patterns here, since this machine's home folder and name say nothing about
+    // the one that recorded the file. The messages name the line and kind, never the match,
+    // because CI logs are public.
+    if (exists(`${dir}/history.jsonl`)) {
+      for (const hit of scanText(read(`${dir}/history.jsonl`), { allowText })) err(`${dir}/history.jsonl ${hit} (looks private; remove it or record again)`);
+    }
   }
 }
 
