@@ -1,8 +1,9 @@
 // Mutation tests for scripts/validate.mjs. Each row of ROWS changes a temporary copy of the
 // repository and validates it: the run must exit with the row's code (1 unless the row says
 // otherwise), print every message the row expects and none that it rules out. Every
-// reachable err() call in validate.mjs has a row, and some have several: each SUBSTITUTIONS
-// pattern, each FORBIDDEN_ROOT name, each way the frontmatter can fail to parse.
+// reachable err() call in validate.mjs and scripts/eval-cases.mjs has a row, and some have
+// several: each SUBSTITUTIONS pattern, each FORBIDDEN_ROOT name, each way the frontmatter can
+// fail to parse. scripts/test/eval-cases.test.mjs tests the eval-case YAML subset directly.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -147,6 +148,22 @@ const FRONTMATTER_REJECTED = [
   ['a control character in a quoted value', setFront('description', 'description: "Use to improve\u{7} a prompt"'), CONTROL_RULE('description: "Use to improve\u{7} a prompt"')],
 ];
 
+// Eval cases (scripts/eval-cases.mjs): a grader file with front matter, then its body.
+const grader = (type, extra = '', body = '') => `---\ntype: ${type}\n${extra}weight: 1\n---\n${body}`;
+// A fixture named like a session transcript, which .gitignore hides under evals/.
+const SESSION = '12345678-1234-4123-8123-123456789abc.jsonl';
+const SPANISH = 'evals/spanish-quick';
+const VEO = 'evals/video-veo-quick/graders';
+// Every case.yaml, prompt.md and grader of the copy, with CRLF line endings.
+const crlfEvalFiles = (d) => {
+  for (const c of readdirSync(join(d, 'evals'), { withFileTypes: true })) {
+    if (!c.isDirectory()) continue;
+    const dir = `evals/${c.name}`;
+    const graders = existsSync(join(d, dir, 'graders')) ? readdirSync(join(d, dir, 'graders')).filter((f) => f.endsWith('.md')).map((f) => `graders/${f}`) : [];
+    for (const f of ['case.yaml', 'prompt.md', ...graders]) if (existsSync(join(d, dir, f))) edit(d, `${dir}/${f}`, (t) => t.replace(/\n/g, '\r\n'));
+  }
+};
+
 // Same list as FORBIDDEN_ROOT in scripts/validate.mjs; keep the two in step. It is copied on
 // purpose: a name dropped from validate.mjs then fails its row.
 const FORBIDDEN_ROOT = ['package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'bun.lock', 'node_modules', 'bin',
@@ -263,6 +280,107 @@ const ROWS = [
   // ---- eval cases
   ['rejects an eval case without prompt.md or case.yaml', (d) => mkdirSync(join(d, 'evals/empty-case')), /evals\/empty-case: needs prompt\.md or case\.yaml/],
   ['rejects an eval case without graders', (d) => put(d, 'evals/no-graders/prompt.md', 'hello\n'), /evals\/no-graders: needs at least one grader in graders\//],
+  // claude plugin eval drops an unknown case.yaml key and skips a grader without front matter
+  // without a message, and a pattern that doesn't compile fails after the billed run (finding 65).
+  ['rejects a misspelled context key', (d) => edit(d, 'evals/imperative-coding-no-action/case.yaml', (t) => t.replace('scaffold_script:', 'scaffold:')),
+    /error: evals\/imperative-coding-no-action\/case\.yaml: unknown key "context\.scaffold" \(claude plugin eval drops it without a message\)/],
+  ['rejects a misspelled history_file', (d) => edit(d, 'evals/save-to-file/case.yaml', (t) => t.replace('history_file:', 'history:')), /save-to-file\/case\.yaml: unknown key "context\.history"/],
+  ['rejects a misspelled execution block', (d) => edit(d, 'evals/writing-quick-launch-email/case.yaml', (t) => `${t}executoin:\n  max_turns: 4\n`),
+    /writing-quick-launch-email\/case\.yaml: unknown key "executoin" \(claude plugin eval drops it without a message\)/],
+  ['rejects a misspelled prompt.md key', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns:', 'max-turns:')),
+    /spanish-quick\/prompt\.md: unknown front matter key "max-turns" \(claude plugin eval refuses to load the case\)/],
+  ['rejects a misspelled grader type', (d) => edit(d, 'evals/trigger-natural-phrasing/graders/02-skill-fired.md', (t) => t.replace('type: tool_used', 'type: tool-used')),
+    /02-skill-fired\.md: type must be one of regex, tool_used, tool_order, file_exists, llm, baseline/],
+  ['rejects a misspelled match mode', (d) => edit(d, 'evals/coding-vague-asks-questions/graders/02-at-most-eight-questions.md', (t) => t.replace('not_contains', 'not-contains')),
+    /02-at-most-eight-questions\.md: match must be contains, not_contains or count:N/],
+  ['rejects a pattern that does not compile', (d) => put(d, `${VEO}/05-bad-regex.md`, grader('regex', "pattern: '([unclosed'\n")), /05-bad-regex\.md: pattern: Invalid regular expression/],
+  ['rejects a grader file without front matter', (d) => put(d, 'evals/no-trigger-plain-task/graders/README.md', '# notes\n'),
+    /no-trigger-plain-task\/graders\/README\.md: no front matter at the top, so claude plugin eval skips this file/],
+  ['rejects a case.yaml name that differs from the folder', (d) => edit(d, `${SPANISH}/case.yaml`, (t) => t.replace('name: spanish-quick', 'name: spanish-quik')),
+    /spanish-quick\/case\.yaml: name "spanish-quik" must equal the folder name \(repo rule\)/],
+  // The YAML subset: anything else is an error naming file:line.
+  ['rejects unsupported indentation in case.yaml', (d) => edit(d, 'evals/save-to-file/case.yaml', (t) => t.replace('  history_file:', '    history_file:')),
+    /error: evals\/save-to-file\/case\.yaml:\d+: unsupported indentation/],
+  ['rejects a duplicate case.yaml key', (d) => edit(d, `${SPANISH}/case.yaml`, (t) => `${t}name: spanish-quick\n`), /spanish-quick\/case\.yaml:\d+: duplicate key name/],
+  ['rejects a front matter value that YAML reads as a mapping', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\ndescription: a: b')),
+    /spanish-quick\/prompt\.md:\d+: quote the value "a: b"/],
+  ['rejects a double-quoted escape that YAML reads differently from a regex', (d) => put(d, `${VEO}/05-esc.md`, grader('regex', 'pattern: "\\bveo"\n')),
+    /05-esc\.md:3: unsupported escape \\b/],
+  // Keys the CLI accepts but this repo doesn't use.
+  ['rejects a graders list in case.yaml', (d) => edit(d, `${SPANISH}/case.yaml`, (t) => `${t}graders:\n  - name: x\n    type: regex\n`),
+    /spanish-quick\/case\.yaml: graders: write each grader as graders\/<name>\.md, which validate\.mjs checks \(repo rule\)/],
+  ['rejects an undocumented execution key', (d) => edit(d, 'evals/writing-quick-launch-email/case.yaml', (t) => `${t}execution:\n  artifact_publish: false\n`),
+    /case\.yaml: execution\.artifact_publish: not used in this repo; claude plugin eval accepts it, but its docs don't list it \(repo rule\)/],
+  ['rejects an undocumented prompt.md key', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\ngrowthbook_overrides: {a: b}')),
+    /spanish-quick\/prompt\.md: growthbook_overrides: not used in this repo.*\(repo rule\)/],
+  ['rejects a grader name key', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('type: regex', 'type: regex\nname: other')),
+    /03-assumptions-heading\.md: name: the file name is the grader's name; don't override it \(repo rule\)/],
+  ['rejects a case.yaml without a name', (d) => edit(d, `${SPANISH}/case.yaml`, (t) => t.replace('name: spanish-quick\n', '')),
+    /spanish-quick\/case\.yaml: name is required \(claude plugin eval refuses the case without it\)/],
+  ['rejects an unquoted schema_version', (d) => edit(d, `${SPANISH}/case.yaml`, (t) => t.replace('"1.1"', '1.1')), /spanish-quick\/case\.yaml: schema_version must be a quoted 1\.x string/],
+  ['rejects a prompt.md name that differs from the folder', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\nname: other')),
+    /spanish-quick\/prompt\.md: name "other" must equal the folder name \(repo rule\)/],
+  ['rejects an empty prompt body', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace(/\n---\n[\s\S]*$/, '\n---\n')), /spanish-quick\/prompt\.md: the body \(the prompt\) is empty/],
+  ['rejects a case.yaml-only case without execution.prompt', (d) => rmSync(join(d, `${SPANISH}/prompt.md`)),
+    /error: evals\/spanish-quick: no prompt \(a prompt\.md body, or execution\.prompt in case\.yaml\)/],
+  ['rejects a context that is not a mapping', (d) => edit(d, 'evals/save-to-file/case.yaml', (t) => t.replace('context:\n  history_file: history.jsonl', 'context: history.jsonl')),
+    /save-to-file\/case\.yaml: context must be a mapping/],
+  ['rejects a value of the wrong type', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\nmodel: 5')), /spanish-quick\/prompt\.md: model must be a string/],
+  ['rejects tags that are not a list', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace(/^tags: .*$/m, 'tags: smoke')),
+    /spanish-quick\/prompt\.md: tags must be a list of strings, such as \[a, b\]/],
+  // Grader options.
+  ['rejects an option of another grader type', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('type: regex', 'type: regex\npath: x.md')),
+    /03-assumptions-heading\.md: key "path" is not a regex grader option/],
+  ['rejects weight 0', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('weight: 1', 'weight: 0')), /03-assumptions-heading\.md: weight must be a number above 0/],
+  ['rejects an unknown arm', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('weight: 1', 'weight: 1\narm: bogus')), /03-assumptions-heading\.md: arm must be with-only or both/],
+  ['rejects an unknown regex flag', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('flags: i', 'flags: iq')), /03-assumptions-heading\.md: flags may use only d g i m s u v y/],
+  ['rejects an unknown target', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('type: regex', 'type: regex\ntarget: reply')),
+    /03-assumptions-heading\.md: target must be trace, last_message, files, mock_calls or \{source: file, path: <a relative path>\}/],
+  ['rejects a regex grader without a pattern', (d) => put(d, `${VEO}/05-empty.md`, grader('regex')), /05-empty\.md: needs a pattern \(the pattern key, or the file's body\)/],
+  ['rejects a tool_used grader without a tool', (d) => put(d, `${VEO}/05-t.md`, grader('tool_used')), /05-t\.md: needs tool/],
+  ['rejects an input_match that does not compile', (d) => edit(d, `${VEO}/04-skill-fired.md`, (t) => t.replace(/input_match: .*/, "input_match: '(['")),
+    /04-skill-fired\.md: input_match: Invalid regular expression/],
+  ['rejects an input_match that is not a string', (d) => edit(d, `${VEO}/04-skill-fired.md`, (t) => t.replace(/input_match: .*/, 'input_match: 5')), /04-skill-fired\.md: input_match must be a string/],
+  ['rejects a negative min', (d) => put(d, `${VEO}/05-t.md`, grader('tool_used', 'tool: Write\nmin: -1\n')), /05-t\.md: min must be a whole number of 0 or more/],
+  ['rejects a min above max', (d) => put(d, `${VEO}/05-t.md`, grader('tool_used', 'tool: Write\nmin: 2\nmax: 1\n')), /05-t\.md: min \(2\) is above max \(1\), so the grader never passes/],
+  ['rejects a tool_order grader without before', (d) => put(d, `${VEO}/05-o.md`, grader('tool_order', 'after: Write\n')), /05-o\.md: before must be a tool name or \{tool, input_match\}/],
+  ['rejects a file_exists grader without a path', (d) => put(d, 'evals/save-to-file/graders/05-f.md', grader('file_exists')), /05-f\.md: needs path/],
+  ['rejects an exists that is not a boolean', (d) => put(d, 'evals/save-to-file/graders/05-f.md', grader('file_exists', "path: a.md\nexists: 'yes'\n")), /05-f\.md: exists must be true or false/],
+  ['rejects an llm grader without criteria', (d) => put(d, `${VEO}/05-l.md`, grader('llm', 'focus: last_message\n')), /05-l\.md: needs criteria \(the criteria key, or the file's body\)/],
+  ['rejects an unknown focus', (d) => put(d, `${VEO}/05-l.md`, grader('llm', 'focus: reply\n', '\nPASS if fine.\n')), /05-l\.md: focus must be trace, last_message, files, mock_calls or/],
+  ['rejects a missing baseline_file', (d) => put(d, `${VEO}/05-b.md`, grader('baseline', 'baseline_file: ref.jsonl\n', '\nPASS if as good.\n')),
+    /05-b\.md: baseline_file "ref\.jsonl" is not a plain file in the case folder/],
+  ['rejects a case whose only grader has no front matter', (d) => {
+    const g = 'evals/no-trigger-prompting-tips/graders';
+    for (const f of readdirSync(join(d, g))) rmSync(join(d, g, f));
+    put(d, `${g}/README.md`, 'notes\n');
+  }, /error: evals\/no-trigger-prompting-tips: needs at least one grader in graders\/ with front matter/],
+  // Folders under evals/ (claude plugin eval also reads case groups and suite-wide mocks).
+  ['rejects a group folder of cases', (d) => { put(d, 'evals/group/inner/prompt.md', 'hi\n'); put(d, 'evals/group/inner/graders/01.md', grader('regex', "pattern: 'x'\n")); },
+    /error: evals\/group: needs prompt\.md or case\.yaml; cases sit directly under evals\/, because scripts\/build\.mjs refreshes only evals\/<case>\/history\.jsonl \(repo rule\)/],
+  ['rejects a suite-wide mocks folder', (d) => put(d, 'evals/mocks/server/tool.md', 'result\n'),
+    /error: evals\/mocks: suite-wide mocks aren't used in this repo, and validate\.mjs doesn't check them \(repo rule\)/],
+  // Files a case names (finding 67 too).
+  ['rejects a missing scaffold_script', (d) => rmSync(join(d, 'evals/imperative-coding-no-action/place-files.sh')),
+    /imperative-coding-no-action\/case\.yaml: context\.scaffold_script "place-files\.sh" is not a plain file in the case folder/],
+  ['rejects a history_file with another name', (d) => {
+    put(d, 'evals/save-to-file/other.jsonl', read(d, 'evals/save-to-file/history.jsonl'));
+    edit(d, 'evals/save-to-file/case.yaml', (t) => t.replace('history_file: history.jsonl', 'history_file: other.jsonl'));
+  }, /save-to-file\/case\.yaml: context\.history_file must be history\.jsonl, the only name scripts\/build\.mjs refreshes \(repo rule\)/, 1, /is not a plain file/],
+  ['rejects a fixture outside the case folder', (d) => edit(d, 'evals/save-to-file/case.yaml', (t) => t.replace('history_file: history.jsonl', 'history_file: ../followup-partial-answers/history.jsonl')),
+    /context\.history_file "\.\.\/followup-partial-answers\/history\.jsonl" is not a plain file in the case folder/],
+  ['rejects a missing add_dirs folder', (d) => edit(d, 'evals/save-to-file/case.yaml', (t) => t.replace('history_file: history.jsonl', 'history_file: history.jsonl\n  add_dirs: [docs]')),
+    /save-to-file\/case\.yaml: add_dirs entry "docs" is not a fixture folder in the case folder/],
+  // Values, with the CLI's limits.
+  ['rejects runs out of range', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\nruns: 0')), /spanish-quick\/prompt\.md: runs must be a whole number from 1 to 50/],
+  ['rejects max_turns out of range', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 201')), /spanish-quick\/prompt\.md: max_turns must be a whole number from 1 to 200/],
+  ['rejects timeout_seconds out of range', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('timeout_seconds: 480', 'timeout_seconds: 0')),
+    /spanish-quick\/prompt\.md: timeout_seconds must be a whole number from 1 to 3600/],
+  ['rejects an env that is not a mapping', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\nenv: EVAL_X')), /spanish-quick\/prompt\.md: env must be a mapping/],
+  ['rejects an env key without the EVAL_ prefix', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\nenv:\n  FOO: bar')),
+    /spanish-quick\/prompt\.md: env key "FOO" must match EVAL_\[A-Z0-9_\]\* \(other keys fail the run\)/],
+  ['rejects an env value that is not a string', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\nenv:\n  EVAL_X: 1')),
+    /spanish-quick\/prompt\.md: env value of EVAL_X must be a string/],
   // The token is built at run time, so this file holds none. CI logs are public, so the
   // message names the line and kind but not the token.
   ['rejects a recorded history that looks private', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('handmade ceramic mug', `handmade ceramic mug, token gh${'p'}_${'R'.repeat(36)}`)),
@@ -285,6 +403,11 @@ const ROWS = [
   // ---- text that must make no difference
   ['passes with CRLF line endings', (d) => {
     for (const f of [SKILL, `${REF}/media-targets.md`, CORE, 'data/contract.json']) edit(d, f, (t) => t.replace(/\n/g, '\r\n'));
+  }, /validate: OK/, 0],
+  // claude plugin eval removes a BOM before it reads a grader's front matter.
+  ['passes with CRLF eval files and a BOM before a grader\'s front matter', (d) => {
+    crlfEvalFiles(d);
+    edit(d, `${VEO}/01-negative-prompt-block.md`, (t) => `\u{FEFF}${t}`);
   }, /validate: OK/, 0],
   ['ignores the files Finder and Explorer write into folders', (d) => {
     for (const f of ['.DS_Store', 'Thumbs.db', 'desktop.ini']) {
@@ -320,6 +443,17 @@ const GIT_ROWS = [
       new RegExp(`(^|\\n)error: ${reEsc(f)}: don't commit it at the plugin root: Claude Code can load it as project memory`), 1],
     [`ignores an untracked ${f} at the plugin root`, (d) => put(d, f, '# Notes\n'), /validate: OK/, 0],
   ]),
+  // A fixture a case names but git ignores works here and is missing from a clean checkout
+  // (finding 67). A tracked one is in every checkout, so it passes.
+  ['rejects a fixture that a case names but git ignores', (d) => {
+    put(d, `evals/no-trigger-plain-task/${SESSION}`, '{"type":"user"}\n');
+    put(d, 'evals/no-trigger-plain-task/graders/09-baseline.md', grader('baseline', `baseline_file: ${SESSION}\n`, '\nPASS if the reply is at least as good as the reference.\n'));
+  }, new RegExp(`(^|\\n)error: evals/no-trigger-plain-task/${reEsc(SESSION)}: ignored by \\.gitignore, so a clean checkout lacks it \\(git check-ignore -v evals/no-trigger-plain-task/${reEsc(SESSION)} names the rule\\)`)],
+  ['accepts a fixture that git ignores once it is tracked', (d, git) => {
+    put(d, `evals/no-trigger-plain-task/${SESSION}`, '{"type":"user"}\n');
+    put(d, 'evals/no-trigger-plain-task/graders/09-baseline.md', grader('baseline', `baseline_file: ${SESSION}\n`, '\nPASS if the reply is at least as good as the reference.\n'));
+    git(['add', '-f', `evals/no-trigger-plain-task/${SESSION}`]);
+  }, /validate: OK/, 0],
 ];
 
 test('the repository passes as-is', () => {

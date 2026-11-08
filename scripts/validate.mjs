@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Validates the repository: Agent Skill format and portability rules, the shared
 // output contract, size budgets, plugin-root hygiene, data files, manifests,
-// eval cases (with the recorder's private-data scan of every committed
-// history.jsonl) and generated-file freshness. Zero dependencies (Node >= 22.19).
+// eval cases (the keys, values and referenced files of case.yaml, prompt.md and
+// graders/*.md, see scripts/eval-cases.mjs, and the recorder's private-data scan of
+// every committed history.jsonl) and generated-file freshness. Zero dependencies
+// (Node >= 22.19).
 //
 //   node scripts/validate.mjs        # exit 1 on any error; warnings are printed
 //
@@ -10,12 +12,15 @@
 // claude.ai and the Skills API reject unknown frontmatter keys, Codex rejects
 // `compatibility`, Claude Code substitutes $ARGUMENTS/$N/${CLAUDE_*}/!`cmd`
 // inside skill text, and a plugin root must not hold package.json + lockfile,
-// bin/, CLAUDE.md or .mcp.json.
+// bin/, CLAUDE.md or .mcp.json. The eval-case rules follow claude plugin eval's code
+// (read in versions 2.1.312, 2.1.317, 2.1.318 and 2.1.319) and its documentation;
+// messages that end in "(repo rule)" are stricter than the CLI.
 
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, relative, basename } from 'node:path';
 import { buildAll, root, normalize, OS_JUNK, KNOWLEDGE_ORDER } from './build.mjs';
+import { checkEvalCases } from './eval-cases.mjs';
 import { scanText, publicText } from './eval/sanitize.mjs';
 
 const errors = [];
@@ -321,21 +326,18 @@ for (const t of media.targets) {
 }
 
 // ---------- eval cases ----------
-if (exists('evals')) {
+// scripts/eval-cases.mjs checks each case's case.yaml, prompt.md and graders/*.md, and returns
+// every case folder it found, including those whose files didn't parse.
+const cases = checkEvalCases(root, err);
+// A recorded history is public once committed: the recorder's scan runs on each one (D9).
+// No machine patterns here, since this machine's home folder and name say nothing about
+// the one that recorded the file. The messages name the line and kind, never the match,
+// because CI logs are public.
+const histories = cases.map((c) => `${c.dir}/history.jsonl`).filter(exists);
+if (histories.length) {
   const allowText = publicText(root);
-  for (const c of readdirSync(join(root, 'evals'))) {
-    const dir = `evals/${c}`;
-    if (c === 'results' || !statSync(join(root, dir)).isDirectory()) continue;
-    if (!exists(`${dir}/prompt.md`) && !exists(`${dir}/case.yaml`)) { err(`${dir}: needs prompt.md or case.yaml`); continue; }
-    const graders = exists(`${dir}/graders`) ? readdirSync(join(root, dir, 'graders')).filter((f) => f.endsWith('.md')) : [];
-    if (!graders.length) err(`${dir}: needs at least one grader in graders/`);
-    // A recorded history is public once committed: the recorder's scan runs on each one (D9).
-    // No machine patterns here, since this machine's home folder and name say nothing about
-    // the one that recorded the file. The messages name the line and kind, never the match,
-    // because CI logs are public.
-    if (exists(`${dir}/history.jsonl`)) {
-      for (const hit of scanText(read(`${dir}/history.jsonl`), { allowText })) err(`${dir}/history.jsonl ${hit} (looks private; remove it or record again)`);
-    }
+  for (const h of histories) {
+    for (const hit of scanText(read(h), { allowText })) err(`${h} ${hit} (looks private; remove it or record again)`);
   }
 }
 
