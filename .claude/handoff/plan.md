@@ -61,7 +61,7 @@ The repo review's owner decisions were accepted as recommended: D1-D26 on 2026-1
      - **research:** source policy, as-of date, citation and uncertainty rules, stop rule;
      - **writing:** audience, CTA, voice, banned phrases, length, claim limits.
    - **Media rule:** write in the target tool's own format, with no role, XML or "because" inside the prompt (explanations go in "What I added"). Midjourney gets one copyable line with parameters at the end. A separate Settings block appears only where the tool has request or UI fields. Recurring characters get an identity block. Version-specific flags are asked about or labelled as assumptions. Settings and style choices it picks are listed under Assumptions one by one; small scene details are merged into one item (D6). Settings never go into the prose, not even as a repeated clip length; timestamps in a timed shot list are part of the prompt (D45).
-   - **Honesty:** facts are never invented. Unknowns become `[[placeholders]]`, which are listed under "Fill before running", or labelled defaults. In text prompts too, each length, count, limit and name it picks is its own assumption, and small formatting picks are merged into one (D30). Contradictions are resolved or asked about. Secrets are redacted: a prompt for code or agents names an environment variable instead, the reply suggests rotating a pasted key, and the method never asks for a secret's value (D5).
+   - **Honesty:** facts are never invented. Unknowns become `[[placeholders]]`, which are listed under "Fill before running", or labelled defaults. In text prompts too, each length, count, limit and name it picks is its own assumption, and small formatting picks are merged into one (D30). Contradictions are resolved or asked about. Secrets are redacted: a prompt for code or agents names an environment variable instead, the reply suggests rotating a pasted key in its first line, and the method never asks for a secret's value (D5).
    - **Lint.** Before output, it removes requests for visible reasoning, prefill, magic phrases and pressure words.
 6. **Present** (with length budgets and no duplication):
    1. **Full prompt** in a copy-ready fence. The fence is longer if the prompt itself contains a fence.
@@ -89,7 +89,11 @@ data/*.json                                      # only what code consumes: rubr
                                                  #   (each with status verified|unverified + source URL), contract.json (required headings, modes, ★, placeholder syntax)
 universal/                                       # prompt-engine.md (hand-written core ≤7,500, contract-tested) · prompt-engine-knowledge.md (generated) · README.md
 mcp/                                             # standalone npm package prompt-engine-mcp with its own lockfile (nested, so the plugin loader ignores it)
-scripts/*.mjs                                    # zero-dependency Node: build, validate, release (--dry-run|--publish); smoke/*.sh (tmux, 2-turn, platforms)
+scripts/*.mjs                                    # zero-dependency Node: build, validate, release (builds dist/; release.yml publishes);
+                                                 #   scripts/eval/universal-test.mjs is the universal prompt's conversation test. No smoke
+                                                 #   scripts: Claude Code's dialogs get a manual checklist in docs/manual-checks.md (D25),
+                                                 #   and mcp/'s npm run test:pack installs and starts the packed npm package, in CI and in
+                                                 #   release.yml's build job
                                                  #   release --zip needs zip and unzip; without them it stops with a one-line error (D43)
 evals/<case>/{prompt.md,case.yaml,graders/}      # claude plugin eval format; evals/results/ gitignored;
                                                  #   graders/lint-prompt*.md are generated from data/lint-rules.json (D36)
@@ -128,7 +132,7 @@ Each phase is a workflow with independent reviewers and ends in a commit.
    2. Write about 14 eval cases.
    3. Run with and without the skill, then grade and benchmark.
    4. **Share the static viewer with you**, then iterate 2–3 rounds until the question protocol and output contract stabilize.
-2. **Freeze the contract.** Write `build`/`validate` and the universal core + knowledge file, with 2-turn headless tests.
+2. **Freeze the contract.** Write `build`/`validate` and the universal core + knowledge file, with headless conversation tests.
 3. **MCP server.**
    - Vitest coverage: transport × protocol era × elicitation (accept, decline, cancel, unsupported; legacy HTTP is expected to take the text path).
    - stdio end-to-end.
@@ -137,7 +141,7 @@ Each phase is a workflow with independent reviewers and ends in a commit.
    - The Worker, if its checks pass.
 4. **Distribution.**
    - Manifests.
-   - `release.mjs --dry-run`: version sync, `server.json` schema, `npm pack`, `mcpb validate/pack`, and the packed entry booting on Node 22 and 24 (the floor is Node 22.19, D26).
+   - Release checks that publish nothing (`release.mjs` has no `--dry-run`: it only builds `dist/`, and release.yml publishes): validate.mjs and the MCP tests check that every version agrees, and the MCP tests check `server.json` against its schema; `npm run pack:mcpb` runs `mcpb validate` and `mcpb pack`, then starts the packed server; `npm run test:pack` installs the packed npm package and starts it. CI runs both package checks on Node 22 and 24, and again on 22.19.0, the floor (D26); the release workflow's build job runs both before anything is published (finding 79).
    - CI/release/evals workflows, checked with actionlint.
    - Docs: a "Pick one" install table, a "don't install twice" note, prior art, privacy.
    - Platform smoke tests: `npx skills add . --list`, plus Codex and Gemini CLI if they install without accounts.
@@ -179,7 +183,7 @@ Reused utilities, from `/root/.claude/skills/synced/…/skill-creator/`:
   - the Save path (`file_exists`; its recording is redone in D14's batch, D34);
   - trigger and near-miss non-trigger cases (`arm: both`). The other cases' skill-fired checks stay unscored indicators, and a jq check in evals.yml and step 3 fails the run if one of them fails (D27).
 
-  Every output case also gets a **no-invention grader**: each name, number, date or URL must come from the user, or be a placeholder or assumption, read literally for text prompts too (D30). Questions are graded from the trace, so both the dialog path and the text path count.
+  Every output case also gets a **no-invention grader**: each name, number, date or URL must come from the user, or be a placeholder or assumption, read literally for text prompts too (D30). Question checks read the final reply, not the trace: with the skill, the trace holds the skill text and `questions.md`, so a check on it would pass on their wording. Eval runs have no question dialog, so they test the numbered text path; the manual Claude Code check covers the dialogs (D25).
 - **Real UI.** A manual checklist in `docs/manual-checks.md`, run before the PR to `main` (D25), checks:
   - questions arrive as dialogs (≤4 per dialog, Recommended first, short headers);
   - the "What next?" menu appears;
