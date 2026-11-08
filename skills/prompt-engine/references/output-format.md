@@ -1,6 +1,6 @@
 # Output format
 
-The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Write the headings, score rows, caveat line, menu labels and reply keywords (`change N`, `deep`) below in the user's language, like everything else. Add nothing before the first line and nothing after the menu.
+The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Write the headings, score rows, caveat line, menu labels and reply keywords (`change N`, `deep`) below in the user's language, like everything else. Only the tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language. Add nothing before the first line and nothing after the menu.
 
 ## Template
 
