@@ -1,6 +1,6 @@
 # Manual checks
 
-Some surfaces can't be tested from this repository's automation, because they need a personal account or an app you work in by hand, such as Claude Code's dialogs. Each check is a real session on your account, so it counts toward your plan's usage, or is billed if you use an API key. Record what you see in [compatibility.md](compatibility.md), including the app and its version, the plan, the date and the commit you tested, because results change as the apps and Prompt Engine change.
+Some surfaces can't be tested from this repository's automation, because they need a personal account or an app you work in by hand, such as Claude Code's dialogs. Each check is a real session on your account, so it counts toward your plan's usage, or is billed if you use an API key. Record what you see in [compatibility.md](compatibility.md), including the app and its version, the model, the plan, the date and the commit you tested, because results change as the apps, the models and Prompt Engine change.
 
 ## Universal prompt in ChatGPT and Gemini
 
@@ -149,4 +149,4 @@ In Claude Code, run the prompt below. Claude may read the files first. Accept th
 - [ ] Before the pick, Claude makes no Bash call, and no permission prompt appears.
 - [ ] `app.log` is still there, and `utils.py` is unchanged.
 
-Record the date, the Claude Code version (`claude --version`), the commit you tested and the URL you installed from in the Claude Code row of [compatibility.md](compatibility.md). Afterwards, `unset CLAUDE_CONFIG_DIR` returns the shell to your usual configuration.
+Record the date, the Claude Code version (`claude --version`), the model that `/status` shows, the commit you tested and the URL you installed from in the Claude Code row of [compatibility.md](compatibility.md). Afterwards, `unset CLAUDE_CONFIG_DIR` returns the shell to your usual configuration.
