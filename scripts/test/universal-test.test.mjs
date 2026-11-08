@@ -120,19 +120,68 @@ test('no Save to file: a Save option after What next? fails, a sentence about le
   assert.ok(noSave(output().replace('- Audience', '- Save to file is left out: no tool here writes files [best practice]\n- Audience')));
 });
 
-test('Done ★, not Run it now: the Midjourney case wants a starred Done option and no Run it now option', () => {
+// An output whose Fill before running section lists these placeholders.
+const withFill = (items, opts) => output(opts).replace('### What I added', `### Fill before running\n${items.map((i) => `- \`${i}\` — what goes there.`).join('\n')}\n\n### What I added`);
+
+test('Fill placeholders ★ while placeholders are open: no starred Run it now, Try it here or Done then', () => {
+  const fill = check(U.STRUCTURE, 'Fill placeholders ★ while placeholders are open');
+  for (const [items, menu] of [
+    [['[[app name]]', '[[sign-up link]]'], '1) Fill placeholders ★\n2) Refine'],
+    [['[[app name]]'], '1) Fill placeholders ★ 2) Refine'],
+    [['[[app name]]'], '1. **Fill in the placeholders** ★ — reply with the values\n2. Refine'],
+    // Only a secret's placeholder is open: D5's row stars Run it now.
+    [['[[api key]]'], '1) Run it now ★\n2) Refine'],
+    [['[[OPENAI_API_KEY]]', '[[access token]]'], '1) Run it now ★\n2) Refine'],
+    [['[[db password]]'], '1) Try it here ★ (results there may differ)\n2) Refine'],
+  ]) assert.ok(fill(withFill(items, { menu })), `${items} ${menu}`);
+  assert.ok(fill(output({ menu: '1) Run it now ★\n2) Refine' })));
+  assert.ok(fill(output({ menu: "1) Done ★ (paste it into Midjourney)\n2) Refine" })));
+  // A placeholder elsewhere, such as in the prompt or under the next heading, isn't listed there.
+  assert.ok(fill(output({ prompt: 'Write it for [[app name]].' })));
+  assert.ok(fill(withFill(['[[api key]]'], { tag: '[best practice] for [[app name]]' })));
+  for (const [items, menu] of [
+    [['[[app name]]'], '1) Run it now ★\n2) Refine'],
+    [['[[app name]]'], '1) Run it now ★ 2) Refine'],
+    [['[[app name]]'], '1) **Run it now** ★\n2) Refine'],
+    [['[[app name]]'], '1) Try it here ★ (results there may differ)\n2) Refine'],
+    [['[[sign text]]'], "1) Done ★ (paste it into Midjourney, since I can't generate images)\n2) Refine"],
+    [['[[api key]]', '[[email source]]'], '1) Run it now ★\n2) Refine'],
+    // key ends no placeholder here, and tokens isn't token.
+    [['[[key feature]]'], '1) Run it now ★\n2) Refine'],
+    [['[[max tokens]]'], '1) Run it now ★\n2) Refine'],
+  ]) assert.ok(!fill(withFill(items, { menu })), `${items} ${menu}`);
+  assert.deepEqual(failing(U.STRUCTURE, withFill(['[[app name]]'], { menu: '1) Run it now ★\n2) Refine' })), ['Fill placeholders ★ while placeholders are open']);
+});
+
+test('Done ★, not Run it now: the Midjourney case wants a starred Done option, or Fill placeholders ★ while placeholders are open', () => {
   const [checks] = U.CASES.find((c) => c.name === 'midjourney-quick').checks;
-  const done = check(checks, 'Done ★, not Run it now');
-  const image = (menu) => output({ menu, prompt: 'A cozy cabin in the snow at night --ar 3:2' });
+  const done = check(checks, 'Done ★ (Fill placeholders ★ while placeholders are open), not Run it now');
+  const image = (menu, items) => (items ? withFill : (_, o) => output(o))(items, { menu, prompt: 'A cozy cabin in the snow at night --ar 3:2' });
   assert.deepEqual(failing(checks, image("1) Done ★ (paste it into Midjourney, since I can't generate images)\n2) Refine")), []);
   assert.ok(done(image('- **Done** ★ — paste it into Midjourney\n- Refine')));
+  assert.deepEqual(failing(checks, image('1) Fill placeholders ★ — reply with the sign text\n2) Refine', ['[[sign text]]'])), []);
+  assert.deepEqual(failing(checks, image('1) Done ★ (paste it into Midjourney)\n2) Refine', ['[[api key]]'])), []);
   for (const m of [
     '1) Run it now ★ (paste the Full prompt into Midjourney, since I can\'t generate images)\n2) Refine',
     '1) Done\n2) Run it now ★\n3) Refine',
     '1) Done ★\n2) Run it now\n3) Refine',
     '1) Refine ★\n2) Done',
+    // Nothing is open, so Fill placeholders is not the ★.
+    '1) Fill placeholders ★\n2) Refine',
   ]) assert.ok(!done(image(m)), m);
+  // With a placeholder open, Fill placeholders comes first (D1).
+  assert.deepEqual(failing(checks, image('1) Done ★ (paste it into Midjourney)\n2) Refine', ['[[sign text]]'])),
+    ['Fill placeholders ★ while placeholders are open', 'Done ★ (Fill placeholders ★ while placeholders are open), not Run it now']);
+  assert.ok(!done(image('1) Fill placeholders ★\n2) Refine', ['[[api key]]'])));
+  assert.ok(!done(image('1) Fill placeholders ★\n2) Run it now\n3) Refine', ['[[sign text]]'])));
   assert.deepEqual(failing(checks, image("1) Done ★ (paste it into Midjourney)\n2) Refine\n3) Save to file")), ['no Save to file (tools disabled)']);
+});
+
+test('menu patterns: the Midjourney check is the media graders\' pattern, and writing 08 holds its open-placeholder condition', () => {
+  const pattern = (file) => readFileSync(join(repo, 'evals', file), 'utf8').match(/^pattern: '([^']*)'\r?$/m)[1];
+  assert.equal(U.MEDIA_MENU.source, pattern('image-midjourney-quick/graders/05-done-not-run.md'));
+  assert.equal(U.MEDIA_MENU.source, pattern('video-veo-quick/graders/05-done-menu.md'));
+  assert.ok(pattern('writing-quick-launch-email/graders/08-what-next-menu.md').includes(`(?=[\\s\\S]*?${U.FILL_OPEN})`));
 });
 
 test('after ok or an override: the full output, with the accepted answers tagged [your answer]', () => {
@@ -152,14 +201,24 @@ test('after deep: 1-4 new question lines, the reply line and still no draft', ()
   assert.deepEqual(failing(U.DEEP_ROUND, output()), ['1-4 new questions', 'recommendation marker', 'ok reply line', 'no full prompt yet']);
 });
 
-test('after change 1: the full prompt again, with the change inside its fenced block, and the score', () => {
+test('after change 1: the section 5 reply again, menu included, with the change inside a fenced block', () => {
   const changed = 'Write a launch email for new users who found the app through its Product Hunt launch.';
-  assert.deepEqual(failing(U.CHANGED, output({ prompt: changed })), []);
-  assert.deepEqual(failing(U.CHANGED, `Updated.\n\n### Full prompt\n\`\`\`\`text\nAudience: new users from the Product Hunt launch.\n\`\`\`json\n{}\n\`\`\`\n\`\`\`\`\n\n${SCORE}`), []);
-  assert.deepEqual(failing(U.CHANGED, `Got it: readers are new users from a Product Hunt launch. I updated the prompt.\n\n${SCORE}`), ['full prompt heading', 'change applied in the prompt']);
-  assert.deepEqual(failing(U.CHANGED, `### Full prompt\n\`\`\`text\n${changed}\n\`\`\``), ['score table']);
+  const refined = (opts) => `Changed: readers are now new users from the Product Hunt launch.\n\n${output({ prompt: changed, ...opts })}`;
+  const outputChecks = U.STRUCTURE.map(([name]) => name);
+  assert.deepEqual(U.CHANGED.map(([name]) => name), [...outputChecks, 'change applied in the prompt']);
+  assert.deepEqual(failing(U.CHANGED, refined()), []);
+  // A prompt that holds a code block, in a longer fence.
+  assert.deepEqual(failing(U.CHANGED, refined().replace(`\`\`\`text\n${changed}\n\`\`\``, '````text\nAudience: new users from the Product Hunt launch.\n```json\n{}\n```\n````')), []);
+  assert.deepEqual(failing(U.CHANGED, refined({ menu: '' })), ['what next menu']);
+  assert.deepEqual(failing(U.CHANGED, refined({ menu: '1) Run it now ★\n2) Refine\n3) Save to file' })), ['no Save to file (tools disabled)']);
+  assert.deepEqual(failing(U.CHANGED, withFill(['[[app name]]'], { prompt: changed })), ['Fill placeholders ★ while placeholders are open']);
+  // The change echoed in prose only, the prompt as before.
+  assert.deepEqual(failing(U.CHANGED, `Got it: readers are new users from a Product Hunt launch.\n\n${output()}`), ['change applied in the prompt']);
+  // Only the prompt and the score, as the check before this one allowed.
+  assert.deepEqual(failing(U.CHANGED, `### Full prompt\n\`\`\`text\n${changed}\n\`\`\`\n\n${SCORE}`),
+    outputChecks.filter((n) => !['full prompt heading', 'score table', 'Fill placeholders ★ while placeholders are open', 'no Save to file (tools disabled)'].includes(n)));
   // Only what changed, in a block of its own: the core asks for the updated full prompt.
-  assert.deepEqual(failing(U.CHANGED, `Changed:\n\`\`\`text\nReaders: new users from a Product Hunt launch.\n\`\`\`\n\n${SCORE}`), ['full prompt heading']);
+  assert.ok(failing(U.CHANGED, `Changed:\n\`\`\`text\nReaders: new users from a Product Hunt launch.\n\`\`\`\n\n${SCORE}`).includes('full prompt heading'));
 });
 
 test('ok or thanks at the menu: the prompt is ready, and no fenced block or score table follows', () => {

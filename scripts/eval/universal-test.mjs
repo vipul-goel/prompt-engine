@@ -51,29 +51,44 @@ function turn(message, sessionId, { system, model, cwd, env }) {
 }
 
 const has = (re) => (t) => re.test(t);
+// The option prefix that the eval graders' menu checks share, (^|\s)(\d[.)]|[-*•])[ \t]*\**
+// (findings 57 and 58).
+const OPTION = String.raw`(^|\s)(\d[.)]|[-*•])[ \t]*\**`;
 // After "What next?": a starred option output-format.md allows, numbered or bulleted, and
 // Refine anywhere after "What next?". It doesn't check that the starred option comes first.
-// The eval graders' menu checks use the same option prefix, (^|\s)(\d[.)]|[-*•])[ \t]*\**
-// (findings 57 and 58).
-export const MENU = /What next\?(?=[\s\S]*Refine)[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★/i;
+export const MENU = new RegExp(String.raw`What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★`, 'i');
+// A Fill before running section, up to the next line that starts with #, that lists a placeholder
+// that isn't a secret's. A placeholder is a secret's when key, token, secret or password ends it,
+// also after _, or when it says api key anywhere, as in secret-redaction-quick's 09, so
+// [[key feature]] is not one. writing-quick-launch-email's 08 and the media 05 graders hold the
+// same text.
+export const FILL_OPEN = String.raw`(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\]`;
+const fillOpen = new RegExp(FILL_OPEN, 'i');
+const STARRED_NOT_FILL = new RegExp(String.raw`What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)\**[ \t]*★`, 'i');
 const SCORE_TABLE = ['score table', has(/\|\s*Clear goal\s*\|[\s\S]*\|\s*Edge cases\s*\|/i)];
-const FULL_PROMPT = ['full prompt heading', has(/#+\s*Full prompt/i)];
 export const STRUCTURE = [
-  FULL_PROMPT,
+  ['full prompt heading', has(/#+\s*Full prompt/i)],
   ['short version heading', has(/#+\s*Short version/i)],
   ['what I added heading', has(/#+\s*What I added/i)],
   ['assumptions heading', has(/#+\s*Assumptions/i)],
   SCORE_TABLE,
   ['score caveat', has(/not a prediction of output quality/i)],
   ['what next menu', has(MENU)],
+  // While placeholders other than secrets are open, option 1 is Fill placeholders ★ (the core's
+  // section 5, D1): no starred Run it now, Try it here or Done then.
+  ['Fill placeholders ★ while placeholders are open', (t) => !(fillOpen.test(t) && STARRED_NOT_FILL.test(t))],
   // Every tool is off, and the core offers Save to file only with a tool that saves files on the
   // user's computer (finding 1). Only an option of the menu counts, with MENU's prefix, so a
   // sentence after the menu that says why Save was left out still passes (finding 5's audit).
   ['no Save to file (tools disabled)', (t) => !/What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Save to file/i.test(t)],
 ];
-// An image prompt, which can't be generated here: a starred Done option and no Run it now option
-// after "What next?" (findings 5 and 22), the pattern of image-midjourney-quick's 05 grader.
-export const DONE_NOT_RUN = ['Done ★, not Run it now', has(/^(?![\s\S]*What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Run it now)[\s\S]*?What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Done\b[^\n]*★/i)];
+// An image prompt, which can't be generated here: no Run it now option after "What next?", and a
+// starred Done option, or Fill placeholders ★ while placeholders other than secrets are open
+// (findings 5 and 22; D1). The pattern of image-midjourney-quick's 05 grader.
+export const MEDIA_MENU = new RegExp(String.raw`^(?![\s\S]*What next\?[\s\S]*?${OPTION}Run it now)` +
+  String.raw`(?:(?=[\s\S]*?${FILL_OPEN})[\s\S]*?What next\?[\s\S]*?${OPTION}Fill (in )?(the )?placeholders\**[ \t]*★` +
+  String.raw`|(?![\s\S]*?${FILL_OPEN})[\s\S]*?What next\?[\s\S]*?${OPTION}Done\b[^\n]*★)`, 'i');
+export const DONE_NOT_RUN = ['Done ★ (Fill placeholders ★ while placeholders are open), not Run it now', has(MEDIA_MENU)];
 export const QUESTIONS = [
   ['numbered questions', has(/(^|\n)\s*1[.)]\s/)],
   // A ★ on an a) to d) option line, as in coding-vague 03; the reply line holds a ★ too.
@@ -92,13 +107,12 @@ export const DEEP_ROUND = [
   ['1-4 new questions', (t) => { const n = questionLines(t); return n >= 1 && n <= 4; }],
   ...QUESTIONS.filter(([n]) => n !== 'numbered questions'),
 ];
-// After `change 1: …`: the updated full prompt under its heading, with the new detail inside a
-// fenced block, not only echoed in prose, and the score shown again. The core's Refine line asks
-// for the updated full prompt, what changed and the new score, as SKILL.md does (finding 5).
+// After `change 1: …`: the core's Refine line asks for one line on what changed and "the section 5
+// reply again", menu included, so the turn gets every output check, and the new detail must be
+// inside a fenced block, not only echoed in prose (finding 5).
 const fenced = (t) => [...t.matchAll(/```[^\n]*\n([\s\S]*?)\n```/g)].map((m) => m[1]);
 export const CHANGED = [
-  FULL_PROMPT,
-  SCORE_TABLE,
+  ...STRUCTURE,
   ['change applied in the prompt', (t) => fenced(t).some((b) => /Product Hunt/i.test(b))],
 ];
 // After a bare ok or thanks at the "What next?" menu (finding 3, D1): only a clear pick runs
