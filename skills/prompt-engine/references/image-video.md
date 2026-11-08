@@ -86,7 +86,7 @@ Negative: watermark, text, logo, blurry
 
 **E. Video paragraph with audio lines** (Veo and other video models with sound):
 ```text
-Medium close-up, slow dolly-in. An elderly lighthouse keeper sets a paint can down on the iron gallery at dawn and looks out to sea; wind tugs at his collar. Soft golden backlight, cool blue shadows, 35mm film look. He says quietly, "Another storm's coming." SFX: a gull cries overhead. Ambient noise: steady wind and distant surf.
+One continuous medium close-up, slow dolly-in. An elderly lighthouse keeper sets a paint can down on the iron gallery at dawn and looks out to sea; wind tugs at his collar. Soft golden backlight, cool blue shadows, 35mm film look. He says quietly, "Another storm's coming." SFX: a gull cries overhead. Ambient noise: steady wind and distant surf.
 ```
 
 **F. Timed shot list** (several shots in one clip):
@@ -101,7 +101,7 @@ Give each segment one action and one camera move, long enough for the action. Va
 
 **H. Edits: change plus keep list.** "Change only: the coat → a bright yellow oilskin. Keep exactly: face and identity, pose, ladder, framing, camera angle, lighting." Repeat the keep list on every turn.
 
-**Settings and exclusions.** For tools with separate fields, present them as separate blocks under "Full prompt": a `Negative prompt` block where the tool has that field, and a short `Settings` list (aspect ratio, duration, resolution, number of variations). Never write settings into the prose for those tools ("make it 4K"), because they're ignored there. Midjourney is the exception: its parameters belong at the end of the same line.
+**Settings and exclusions.** For tools with separate fields, present them as separate blocks under "Full prompt": a `Negative prompt` block where the tool has that field, and a short `Settings` list (aspect ratio, duration, resolution, number of variations). Never write settings into the prose for those tools ("make it 4K"), because they're ignored there; that includes repeating the clip length as pacing, so describe pacing against the whole clip. Segment timestamps in a timed shot list are part of the prompt, not settings. Midjourney is the exception: its parameters belong at the end of the same line.
 
 **Identity block.** When a character or product recurs, write a short block (name, age range, build, face, hair, clothing, distinguishing marks) and tell the user to paste it unchanged into every prompt. Small wording changes alter the result.
 
