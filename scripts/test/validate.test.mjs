@@ -505,6 +505,9 @@ const ROWS = [
   ['rejects a quoted option that the reply did not pick', (d) => edit(d, PARTIAL6, (t) => t.replace('"About 1,500\u{2013}2,000 words, in-depth"', '"Under 600 words, short and punchy"')),
     /^error: evals\/followup-partial-answers\/graders\/06-accepted-not-assumed\.md: quotes option 4c \("Under 600 words, short and punchy"\)/m],
   ['accepts a quote that differs from the recording only in dashes and code marks', (d) => edit(d, OK6, (t) => t.replace('3\u{2013}5 ideas', '3-5 ideas').replace('`[[placeholders]]`', '[[placeholders]]')), /validate: OK/, 0],
+  // "remote work" is in option 2b and in the user's request, which a rubric may quote.
+  ['accepts a quote from the user\'s request that an option also holds', (d) => put(d, `${OK_CASE}/graders/09-topic.md`, grader('llm', 'focus: last_message\n',
+    '\nThe post must stay on the user\'s topic, "remote work", and not drift.\nPASS if it does. FAIL otherwise.\n')), /validate: OK/, 0],
   ['does not check the quotes of a case without a recording', (d) => edit(d, 'evals/writing-quick-launch-email/graders/11-no-invention.md', (t) => `${t}\nFor example "foo bar baz".\n`), /validate: OK/, 0],
   // The request text a rubric quotes, in <original_prompt> tags or after "The user's whole
   // request", is the case's own, word for word (finding 50). A gloss outside the quotes doesn't count.
@@ -514,6 +517,12 @@ const ROWS = [
   ['rejects an <original_prompt> block that differs from prompt.md', (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
     '\n<original_prompt>\nI\'m writing release notes for version 2.5.\n</original_prompt>\nPASS if its wording is kept. FAIL otherwise.\n')),
   /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: the <original_prompt> text isn't in prompt\.md word for word \(repo rule\)$/m],
+  ['rejects an <original_prompt> tag without its closing tag', (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
+    '\n<original_prompt>\nI\'m writing release notes for version 2.5.\n</original-prompt>\nPASS if its wording is kept. FAIL otherwise.\n')),
+  /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: an <original_prompt> tag without its closing tag, or an empty block, which validate\.mjs can't check \(repo rule\)$/m],
+  ['rejects "The user\'s whole request" without the request in quotes on its line', (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
+    '\nThe user\'s whole request was:\n"escribe un post de LinkedIn sobre mi trabajo nuevo"\nPASS if no detail is invented. FAIL otherwise.\n')),
+  /^error: evals\/spanish-quick\/graders\/09-request\.md: "The user's whole request" isn't followed by the request in quotes on the same line, which validate\.mjs can't check \(repo rule\)$/m],
   ['accepts a follow-up rubric that quotes the request from the recording', (d) => put(d, `${OK_CASE}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
     '\nThe user\'s whole request was "write a blog post about remote work", and they replied "ok" to the questions.\nPASS if no detail is invented. FAIL otherwise.\n')), /validate: OK/, 0],
   // A regex grader on the file that the recorded menu offers to save must tell the recorded Full
@@ -531,6 +540,8 @@ const ROWS = [
     /^error: evals\/save-to-file\/graders\/06-file-is-not-the-whole-reply\.md: reads the saved file, but the recorded output has no fenced Full prompt/m,
   ]],
   ['does not check a saved-file regex on another path', (d) => edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe').replace('path: prompts/etsy-ceramic-mug-description.md', 'path: prompts/other.md')), /validate: OK/, 0],
+  ['checks a saved-file regex that spells the save path another way', (d) => edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe').replace('path: prompts/etsy-ceramic-mug-description.md', 'path: ./prompts/etsy-ceramic-mug-description.md')),
+    /^error: evals\/save-to-file\/graders\/05-file-is-the-full-prompt\.md: pattern doesn't match the recorded Full prompt/m],
   // A scaffold can put other text at the save path, such as a file the save must not overwrite.
   ['does not check saved-file regexes in a case with a scaffold_script', (d) => {
     edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe'));

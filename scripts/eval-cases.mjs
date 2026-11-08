@@ -15,7 +15,7 @@
 // Claude Code runs JavaScriptCore (Bun), so a rare pattern can compile in one and not the other.
 
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync } from 'node:fs';
-import { join, isAbsolute, win32 } from 'node:path';
+import { join, isAbsolute, win32, posix } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { normalize } from './build.mjs';
 
@@ -547,7 +547,8 @@ function requiresGrant(g, tool) {
 // - assistantTexts: the text parts of the assistant messages, in order;
 // - userTexts: what the user typed, from user rows that Claude Code didn't mark isMeta (it marks
 //   the skill text it injects), without tool results;
-// - dialogLines: the lines that call AskUserQuestion, or ToolSearch with an input that names it;
+// - dialogLines: the lines that call AskUserQuestion, or ToolSearch with an input that names it
+//   in any letter case, also as separate words (ask user question);
 // - last: the last assistant row, as { line, row };
 // - messageIds: the ids of the recorded API messages.
 function readRecording(file) {
@@ -560,7 +561,7 @@ function readRecording(file) {
   const parts = (row) => (Array.isArray(row.message?.content) ? row.message.content.filter(isMapping) : []);
   const texts = (row) => parts(row).filter((p) => p.type === 'text' && typeof p.text === 'string').map((p) => p.text);
   const assistant = rows.filter(({ row }) => row.type === 'assistant');
-  const dialog = (p) => p.type === 'tool_use' && (p.name === 'AskUserQuestion' || (p.name === 'ToolSearch' && JSON.stringify(p.input ?? null).includes('AskUserQuestion')));
+  const dialog = (p) => p.type === 'tool_use' && (p.name === 'AskUserQuestion' || (p.name === 'ToolSearch' && /ask[\s_-]*user[\s_-]*question/i.test(JSON.stringify(p.input ?? null))));
   return {
     models: new Set(assistant.map(({ row }) => row.message?.model).filter((m) => typeof m === 'string' && !m.startsWith('<'))),
     assistantTexts: assistant.flatMap(({ row }) => texts(row)),
@@ -677,6 +678,15 @@ function roundOptions(round) {
   }
   return options;
 }
+// The save path the recorded menu offers: on the line with the Save to file entry, the first
+// backticked token that looks like a file path (it has a / or \, or a file extension), so a reply
+// keyword such as `3` before it doesn't count.
+const savePathOf = (text, lineRe) => {
+  const line = text?.match(lineRe)?.[1];
+  return line === undefined ? undefined : [...line.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).find((t) => /[\\/]/.test(t) || /\.[A-Za-z0-9]+$/.test(t));
+};
+// A relative path in one form, so ./prompts/x.md, prompts//x.md and prompts\x.md name one file.
+const samePath = (a, b) => posix.normalize(a.replace(/\\/g, '/')) === posix.normalize(b.replace(/\\/g, '/'));
 // Whether a reply picks option q+letter, written as "2c" or "2: c".
 const picks = (reply, { q, letter }) => new RegExp(`(?:^|[^0-9a-z])${q}\\s*:?\\s*${letter}\\b`, 'i').test(reply);
 // The prompt a case sends: prompt.md's body, else execution.prompt in case.yaml.
@@ -688,6 +698,7 @@ const criteriaOf = (g) => (g.data.type === 'llm' ? g.data.criteria ?? (g.body !=
 // "..."" counts too). Straight or curly quotes and apostrophe.
 const ORIGINAL_PROMPT = /<original_prompt>([\s\S]*?)<\/original_prompt>/g;
 const WHOLE_REQUEST = /The user['\u{2019}]s whole request\b[^"\u{201C}\n]*["\u{201C}]([^"\u{201D}\n]+)["\u{201D}]/gu;
+const WHOLE_REQUEST_MARK = /The user['\u{2019}]s whole request\b/gu;
 
 // This repo's checks on each case's conversation, as described above. contract is
 // data/contract.json. The recording checks call warn instead of err for a case in
@@ -701,7 +712,7 @@ export function checkConversations(root, cases, { err, warn, contract }) {
   if (missing.length) err(`data/contract.json: required lacks ${missing.join(', ')}, which the history checks in scripts/eval-cases.mjs look for; change the two together`);
   const full = headingRe(FULL);
   const next = headingRe(NEXT);
-  const savePathRe = new RegExp(`${esc(NEXT)}[\\s\\S]*?${esc(SAVE)}[^\\n]*?\`([^\`\\n]+)\``);
+  const saveLineRe = new RegExp(`${esc(NEXT)}[\\s\\S]*?${esc(SAVE)}([^\\n]*)`);
   for (const c of cases) {
     if (unread(root, c)) continue;
     const s = settings(c);
@@ -720,10 +731,16 @@ export function checkConversations(root, cases, { err, warn, contract }) {
     for (const g of c.graders) {
       const criteria = criteriaOf(g);
       if (typeof criteria !== 'string') continue;
-      for (const m of criteria.matchAll(ORIGINAL_PROMPT)) {
-        if (!typed.some((t) => t.includes(m[1].trim()))) err(`${g.file}: the <original_prompt> text isn't in ${source} word for word (repo rule)`);
+      // A marker that doesn't parse would be skipped without a word: an opening tag without its
+      // closing tag, an empty block, or the request's quote on another line or across a line break.
+      const blocks = [...criteria.matchAll(ORIGINAL_PROMPT)];
+      if ((criteria.match(/<original_prompt>/g) ?? []).length !== blocks.length || blocks.some((m) => m[1].trim() === '')) err(`${g.file}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`);
+      for (const m of blocks) {
+        if (m[1].trim() !== '' && !typed.some((t) => t.includes(m[1].trim()))) err(`${g.file}: the <original_prompt> text isn't in ${source} word for word (repo rule)`);
       }
-      for (const [, quote] of criteria.matchAll(WHOLE_REQUEST)) {
+      const requests = [...criteria.matchAll(WHOLE_REQUEST)];
+      if ((criteria.match(WHOLE_REQUEST_MARK) ?? []).length !== requests.length) err(`${g.file}: "The user's whole request" isn't followed by the request in quotes on the same line, which validate.mjs can't check (repo rule)`);
+      for (const [, quote] of requests) {
         if (typed.some((t) => t.includes(quote))) continue;
         err(`${g.file}: the quoted request "${quote}" isn't in ${source} word for word (repo rule)`);
         misquoted.add(`${g.file}\0${quote}`);
@@ -749,9 +766,10 @@ export function checkConversations(root, cases, { err, warn, contract }) {
     // What the rubrics quote (finding 54). In a history case, double quotes in an llm grader mark
     // text from the recorded conversation (what the model wrote and what the user typed) or from
     // prompt.md, compared in normalizeQuote's form. A quoted option of the last recorded question
-    // round must be its ★ answer or one the reply in prompt.md picks.
+    // round must be its ★ answer or one the reply in prompt.md picks, unless the quote is also in
+    // what the user typed or in the reply (such as the request's topic).
     const said = normalizeQuote([...rec.assistantTexts, ...rec.userTexts, reply].join('\n'));
-    const replied = normalizeQuote(reply);
+    const replied = normalizeQuote([reply, ...rec.userTexts].join('\n'));
     const round = rec.assistantTexts.findLast((t) => t.includes(replyLine));
     const options = round ? roundOptions(round).map((o) => ({ ...o, norm: normalizeQuote(o.text) })) : [];
     for (const g of c.graders) {
@@ -775,14 +793,14 @@ export function checkConversations(root, cases, { err, warn, contract }) {
     // recorded Full prompt from the Short version: a contains pattern matches the Full prompt and
     // not the Short version, and a not_contains pattern doesn't match the Full prompt (count:N
     // isn't checked). A case with a scaffold_script is skipped, since the scaffold can put other
-    // text at that path; so are graders on other paths.
+    // text at that path; so are graders on other paths, compared in samePath's form.
     if (s.scaffold != null) continue;
     const output = rec.assistantTexts.findLast((t) => full.test(t));
-    const savePath = output?.match(savePathRe)?.[1];
+    const savePath = savePathOf(output, saveLineRe);
     const fileGraders = c.graders.filter((g) => g.data.type === 'regex' && isMapping(g.data.target) && g.data.target.source === 'file');
     if (fileGraders.length && savePath === undefined) err(`${c.dir}: ${fileGraders.map((g) => `${g.name}.md`).join(', ')} read a saved file, but the recording shows no output whose ${NEXT} menu names a save path to check them against (repo rule)`);
     for (const g of fileGraders) {
-      if (savePath === undefined || g.data.target.path !== savePath) continue;
+      if (savePath === undefined || !samePath(g.data.target.path, savePath)) continue;
       const fullPrompt = fencedAfter(output, FULL);
       if (fullPrompt === null) {
         err(`${g.file}: reads the saved file, but the recorded output has no fenced ${FULL} to check it against (repo rule)`);

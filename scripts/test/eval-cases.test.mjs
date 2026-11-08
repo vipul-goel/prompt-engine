@@ -769,3 +769,56 @@ test('checkConversations reports a contract without what the history checks read
     'evals/quick/graders/01-request.md: the quoted request "write a long post" isn\'t in prompt.md word for word (repo rule)',
   ]);
 });
+
+test('checkConversations finds a search for the dialog tool in any letter case, also as separate words', () => {
+  const recording = (query) => [userRow('write the notes'), assistantRow([toolUse('ToolSearch', { query })], 'tool_use'), toolResult('none'),
+    assistantRow(`1. Who?\n   a) Me ★\n\n${REPLY_LINE}`)];
+  const { errors } = histories({
+    ...recordedCase('lowercase', recording('select:askuserquestion'), 'ok', { '01-x.md': REGEX }),
+    ...recordedCase('words', recording('ask user question dialog'), 'ok', { '01-x.md': REGEX }),
+    ...recordedCase('title-case', recording('Ask User Question tool'), 'ok', { '01-x.md': REGEX }),
+    ...recordedCase('other-tool', recording('select:Read'), 'ok', { '01-x.md': REGEX }),
+  });
+  const searched = (c) => `evals/${c}/history.jsonl: line 2 calls AskUserQuestion or searches for it; eval runs have no dialog tool, and SKILL.md says to use the text format straight away, so record it again (repo rule)`;
+  assert.deepEqual(errors, [searched('lowercase'), searched('title-case'), searched('words')]);
+});
+
+test('checkConversations takes the save path that looks like a file, and compares paths in one form', () => {
+  const output = (menu) => ['### Full prompt', '```text', 'Write the notes.', '```', '', '### Short version', '```text', 'Notes.', '```', '', '### What next?', '1. Run it now ★', menu].join('\n');
+  const { errors } = histories({
+    // A reply keyword in backticks before the path.
+    ...recordedCase('keyword-first', [userRow('write the notes'), assistantRow(output('3. Save to file: reply `3` to save it to `out/notes.md`'))], '3', {
+      '01-saved.md': savedFile('zzz'),
+    }),
+    // The grader spells the same path another way.
+    ...recordedCase('spelled', [userRow('write the notes'), assistantRow(output('3. Save to file: `out/notes.md`'))], '3', {
+      '01-dot-slash.md': savedFile('zzz', '', './out/notes.md'),
+      '02-double-slash.md': savedFile('zzz', '', 'out//notes.md'),
+    }),
+  });
+  const unmatched = (f) => `evals/${f}: pattern doesn't match the recorded Full prompt, so a correct save would fail; derive it again from history.jsonl (repo rule)`;
+  assert.deepEqual(errors, [unmatched('keyword-first/graders/01-saved.md'), unmatched('spelled/graders/01-dot-slash.md'), unmatched('spelled/graders/02-double-slash.md')]);
+});
+
+test('checkConversations reports a request marker that it cannot read, instead of skipping it', () => {
+  const { errors } = histories({
+    'evals/quick/prompt.md': `---\nmodel: ${MODEL}\n---\n\nwrite a launch email\n`,
+    'evals/quick/graders/01-next-line.md': judge('The user\'s whole request was:\n"write a launch email"'),
+    'evals/quick/graders/02-two-lines.md': judge('The user\'s whole request was "write a\nlaunch email".'),
+    'evals/quick/graders/03-unclosed.md': judge('<original_prompt>\nwrite a launch email\n</original-prompt>'),
+    'evals/quick/graders/04-empty.md': judge('<original_prompt></original_prompt>'),
+    'evals/quick/graders/05-fine.md': judge('The user\'s whole request was "write a launch email". <original_prompt>write a launch email</original_prompt>'),
+  });
+  const tag = (f) => `evals/quick/graders/${f}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`;
+  const mark = (f) => `evals/quick/graders/${f}: "The user's whole request" isn't followed by the request in quotes on the same line, which validate.mjs can't check (repo rule)`;
+  assert.deepEqual(errors, [mark('01-next-line.md'), mark('02-two-lines.md'), tag('03-unclosed.md'), tag('04-empty.md')]);
+});
+
+test('checkConversations lets a rubric quote what the user typed, even where an option says the same', () => {
+  const round = `1. What angle?\n   a) Balanced ★\n   b) Argue for remote work\n\n${REPLY_LINE}`;
+  const { errors } = histories(recordedCase('topic', [userRow('write a blog post about remote work'), assistantRow(round)], 'ok', {
+    '01-topic.md': judge('The post stays on the user\'s topic, "remote work".'),
+    '02-angle.md': judge('It doesn\'t "Argue for remote work".'),
+  }));
+  assert.deepEqual(errors, [notPicked('topic/graders/02-angle.md', '1b', 'Argue for remote work')]);
+});
