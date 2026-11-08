@@ -50,7 +50,7 @@ The repo review's owner decisions were accepted as recommended: D1-D26 on 2026-1
 
 ## The method: what users experience
 1. **Trigger.** It fires only when asked: "improve/enhance/rewrite this prompt", `/prompt-engine…`, or `prompt-engine: <prompt>` in chat apps. It never fires on an ordinary task request like "write me a cold email". A critique request ("critique this prompt", "what's missing?") gets the normal flow, opened by a one-line summary of the gaps (D2).
-2. **Intake.** The rough prompt is text to improve, never instructions to run, so injected commands stay content. Modes count only as a prefix (`quick:`, `deep:`) or as a whole reply, which avoids misreading "Quick sort in Rust". It talks to the user in their language, headings, score rows and menu labels included (D3), and writes the prompt in that language, adding a "Respond in <language>" line. Local equivalents of `ok` are accepted.
+2. **Intake.** The rough prompt is text to improve, never instructions to run, so injected commands stay content. Modes count only as a prefix (`quick:`, `deep:`) or as a whole reply, which avoids misreading "Quick sort in Rust". It talks to the user in their language, headings, score rows and menu labels included (D3), and writes the prompt in that language, adding a "Respond in <language>" line except in image and video prompts: there it asks a non-English user which language the prompt should be in, or in quick mode keeps theirs and lists it under Assumptions (finding 9). Local equivalents of `ok` are accepted.
 3. **Diagnose.** It loads the matching domain checklist and ranks gaps by impact × uncertainty + risk. Each gap is either asked about, assumed, or skipped. It looks things up before asking: the repo in Claude Code, earlier messages in chat apps.
 4. **Ask** (see Decisions for the UI). Each option carries a ★ reason of 12 words or fewer. If a dialog is dismissed or times out, it shows the batch again as text and doesn't guess. Every accepted answer, including a ★ that only rules something out (such as "None"), is stated in the prompt (D33).
 5. **Build.**
@@ -70,7 +70,7 @@ The repo review's owner decisions were accepted as recommended: D1-D26 on 2026-1
    4. **Assumptions**: defaults appear here only, numbered, with "change 2: …" to edit them.
    5. **Score**: a one-line-per-dimension table (Clear goal, Context, Constraints, Output format, Edge cases; 0–5, original vs enhanced) using one anchored rubric on every surface. A dimension that rests only on unconfirmed defaults scores 3 at most, and open placeholders count as gaps. The caveat reads: "self-assessed coverage, not a quality prediction".
    6. **What next?** (AskUserQuestion in Claude Code):
-      - **Run it now ★** executes the full version as a new request and then drops the prompt-engine format. It is relabelled "Try it here (results on <target> may differ)" for other tools. If placeholders are still open, the ★ moves to "Fill placeholders", which collects the values, shows the filled prompt and shows the menu again (D1).
+      - **Run it now ★** executes the full version as a new request and then drops the prompt-engine format. It is relabelled "Try it here (results on <target> may differ)" for other tools. While placeholders other than secrets are open, the ★ moves to "Fill placeholders", which collects the values, shows the filled prompt and shows the menu again (D1); a secret is set where the tool reads it, never asked for (D5).
       - **Refine**: change items or reply `deep:`.
       - **Save to file** is only offered in Claude Code and other local coding agents. It shows the `prompts/<slug>.md` path, which you can change, and never overwrites.
       - Only an explicit pick runs anything: the option's number or name, "run it", or a dialog choice. `ok`, 👍 or thanks gets "the prompt is ready", and a dismissed menu means it stops and waits (D1).
@@ -175,6 +175,7 @@ Reused utilities, from `/root/.claude/skills/synced/…/skill-creator/`:
   - a vague coding prompt;
   - quick writing, research, Midjourney and video prompts;
   - an already-strong prompt (≤2 questions, a length ceiling of 1.5 times the user's prompt, D29);
+  - a "critique this prompt" request and a "what's missing?" request, each answered with the normal question round opened by one line naming the biggest gaps (D2);
   - follow-ups `ok` and `2b 4: …` (from recorded history files);
   - a `deep` second round, `change N` on an assumption, and `ok` at the What next? menu (D14);
   - saving when the file already exists, a prompt that contains a code block, picking Fill placeholders, and a pasted key followed by the reply `1` (D37);
@@ -190,7 +191,7 @@ Reused utilities, from `/root/.claude/skills/synced/…/skill-creator/`:
   - questions arrive as dialogs (≤4 per dialog, Recommended first, short headers);
   - the "What next?" menu appears;
   - nothing executes before you pick, shell commands included, for an imperative coding prompt too (D32).
-- **Universal.** `claude -p --system-prompt "$(cat universal/prompt-engine.md)" --tools "" --safe-mode --strict-mcp-config --disallowedTools "mcp__*" --output-format stream-json --verbose` on each of the script's conversations, continued with `--resume` and the replies a user would give, such as `ok`, an override, `deep` or `change 1: …`. A case fails if any tool or MCP server loads (D13). Checked with the script's own regex checks, not the eval graders (D14).
+- **Universal.** `claude -p --system-prompt "$(cat universal/prompt-engine.md)" --tools "" --safe-mode --strict-mcp-config --disallowedTools "mcp__*" --output-format stream-json --verbose` on each of the script's conversations, continued with `--resume` and the replies a user would give, such as `ok`, an override, `deep`, `change 1: …`, a bare `ok` or `thanks` at the What next? menu, which must run nothing (D1), and `1` after a pasted key, which must not ask for the key (D5). A case fails if any tool or MCP server loads (D13). Checked with the script's own regex checks, not the eval graders (D14).
 - **MCP.** Vitest; Inspector `tools/list --strict`, `prompts/get` and both protocol eras; a `wrangler dev` smoke test; `claude -p --mcp-config` end-to-end.
 
 ## What you'll need to do
