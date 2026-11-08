@@ -604,6 +604,26 @@ test('checkSuiteRules counts only a regex grader as a tools-granted check', () =
   assert.deepEqual(errors, ['evals/not-regex/graders/01-no-writes.md: with min: 0 this check passes when Write isn\'t granted, with zero calls; add a tools-granted regex grader (target: trace) that requires "Write" (repo rule)']);
 });
 
+test('checkSuiteRules wants an llm no-invention grader in every output case, the cases build.mjs lints', () => {
+  const JUDGE = '---\ntype: llm\n---\n\nPASS if nothing is invented.\n';
+  const NEED = (name) => `evals/${name}: an output case (LINT_GRADER_CASES in scripts/build.mjs) needs an llm grader named <n>-no-invention.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption (repo rule)`;
+  const output = (name, graders) => ({ [`evals/${name}/prompt.md`]: promptMd(), ...Object.fromEntries(Object.entries(graders).map(([f, t]) => [`evals/${name}/graders/${f}`, t])) });
+  const { schema, errors } = rules({
+    ...output('spanish-quick', { '01-x.md': REGEX, '02-no-invention.md': JUDGE }), // has one
+    ...output('video-veo-quick', { '01-x.md': REGEX }), // has none
+    ...output('image-midjourney-quick', { '08-no-invention.md': REGEX }), // a regex grader doesn't count
+    ...output('research-quick-vector-databases', { '06-no-invention-check.md': JUDGE }), // the name must end in -no-invention
+    ...output('demo', { '01-x.md': REGEX }), // not an output case
+    'evals/writing-quick-launch-email/prompt.md': promptMd(), // unread: its grader has no front matter
+    'evals/writing-quick-launch-email/graders/11-no-invention.md': 'type: llm\n',
+  });
+  assert.deepEqual(schema, [
+    'evals/writing-quick-launch-email/graders/11-no-invention.md: no front matter at the top, so claude plugin eval skips this file',
+    'evals/writing-quick-launch-email: needs at least one grader in graders/ with front matter',
+  ]);
+  assert.deepEqual(errors, [NEED('image-midjourney-quick'), NEED('research-quick-vector-databases'), NEED('video-veo-quick')]);
+});
+
 // ---------- checkConversations: the history cases ----------
 const CONTRACT = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'contract.json'), 'utf8'));
 const REPLY_LINE = 'Reply `ok` to accept every ★, or answer like `2b 3: get managers to pilot a 4-day week`. Anything you skip gets the ★.';

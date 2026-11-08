@@ -17,7 +17,7 @@
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync } from 'node:fs';
 import { join, isAbsolute, win32, posix } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { normalize } from './build.mjs';
+import { normalize, LINT_GRADER_CASES } from './build.mjs';
 
 // ---------- YAML subset ----------
 // Lines: blank, "# comment", "key: value" at indent 0, and under a "key:" line with no value
@@ -615,6 +615,12 @@ export function checkSuiteRules(root, cases, err) {
     if (gated.length) needs.push(`allowed_tools lists ${gated.join(', ')}, which only --allow-tools grants`);
     if (s.scaffold != null) needs.push('context.scaffold_script runs only with --scaffold');
     if (needs.length && !s.tags.includes('needs-write')) err(`${c.dir}: ${needs.join(', and ')}; tag it needs-write (repo rule)`);
+    // Every output case, one whose reply holds an enhanced prompt (the cases that scripts/build.mjs
+    // writes lint graders for), has a no-invention judge: each name, number, date or URL the user
+    // didn't give is a placeholder or an assumption (finding 49, D30).
+    if (Object.hasOwn(LINT_GRADER_CASES, c.name) && !c.graders.some((g) => g.data.type === 'llm' && g.name.endsWith('-no-invention'))) {
+      err(`${c.dir}: an output case (LINT_GRADER_CASES in scripts/build.mjs) needs an llm grader named <n>-no-invention.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption (repo rule)`);
+    }
     // A tool_used grader with min: 0, such as a max: 0 check, passes with zero calls, which is
     // all a run can make of a tool it doesn't grant. Listed in allowed_tools, the tool shows as
     // not granted in the progress output; a grader that requires it in the trace fails the case.
