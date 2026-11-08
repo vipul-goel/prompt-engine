@@ -68,7 +68,7 @@ In Claude Code, the questions and the "What next?" menu appear as clickable dial
 
 ## Real example
 
-From the test suite (Claude Sonnet 5.5, quick mode), for "a cozy cabin in the snow at night" as a Midjourney prompt:
+From the test suite (quick mode), for "a cozy cabin in the snow at night" as a Midjourney prompt:
 
 ```text
 small log cabin with warm glowing windows nestled in deep fresh snow at night, thin chimney smoke curling upward, three snow-laden pine trees beside it, clear sky full of stars with a crescent moon, soft blue moonlight on the snowdrifts, amber window light spilling across the snow, a single line of footprints leading to the front door, wide shot at eye level, photorealistic --ar 3:2 --no people text watermark
@@ -79,7 +79,7 @@ It explained the additions. For example, the amber window light against blue moo
 ## How it's tested
 
 - **Behavior evals** with Claude Code's official runner (`claude plugin eval`), run with and without the skill. The cases cover question rounds, quick mode, follow-up replies, Spanish and Japanese prompts, secret redaction, prompt injection, saving to a file, "nothing runs until you choose", and trigger and non-trigger cases. Eval runs don't grant shell commands, so the "nothing runs until you choose" and injection cases check file writes and edits only. Results are in [docs/compatibility.md](docs/compatibility.md).
-- **Trigger tests** of the skill description, run once during development: 24 requests, half of them near-misses such as "translate this prompt" or "run this prompt". With Claude Sonnet 5.5, it started on all 12 prompt requests and on none of the near-misses. The request set isn't in the repository.
+- **Trigger tests** of the skill description, run as a one-off during development: 24 requests, half of them near-misses such as "translate this prompt" or "run this prompt". With Claude Sonnet 5.5, it started on all 12 prompt requests and on none of the near-misses. The request set isn't in the repository.
 - **Conversation tests** of the universal prompt on Claude, through `claude -p` with no tools or MCP servers loaded, the way a chatbot would use it. They make billed calls, so they're run by hand.
 - **Static checks** (`node scripts/validate.mjs`) for portability rules, prompt lint, size budgets and the shared output contract, plus mutation tests for each rule it enforces.
 - **MCP server tests** covering both protocol versions, with and without form questions, over stdio and HTTP.

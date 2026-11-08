@@ -27,8 +27,8 @@ First version.
   - tool descriptions are at most 1,024 characters.
 - **Checks and tests**:
   - a zero-dependency build and validator with mutation tests;
-  - 17 behavior eval cases for `claude plugin eval`;
-  - a conversation test of the universal prompt, run on Claude with no tools or MCP servers loaded;
+  - behavior eval cases for `claude plugin eval`;
+  - a conversation test of the universal prompt that runs it on Claude with no tools or MCP servers loaded;
   - MCP server tests, and a check that the `.mcpb` bundle ships a 512×512 icon;
   - CI, release and weekly data re-verification workflows.
 
