@@ -24,6 +24,7 @@ jobs:
       - name: Find stale entries
         id: stale
         run: |
+          # shellcheck disable=SC2016 # The $ signs belong to JavaScript template literals.
           node -e '
             const d = require("./data/media-targets.json");
             const limit = Date.now() - 45 * 864e5;
