@@ -59,7 +59,10 @@ You:   ok
 - **Modes:** start your prompt with `quick:` for no questions, or `deep:` for extra question rounds.
 - **Answering questions:** `ok` accepts every ★; `2b 4: your own text` answers some questions and keeps ★ for the rest.
 - **After the prompt is ready:**
-  - `1` runs it here (a bare `ok` doesn't);
+  - `1` picks the ★ option (a bare `ok` picks nothing):
+    - Run it now, or Try it here for a prompt meant for another tool, runs the prompt here;
+    - Fill placeholders asks for the missing values, then shows the filled prompt and the menu again;
+    - Done, for an image or video prompt the assistant can't generate, says where to paste it;
   - `change 2: …` edits an assumption;
   - `deep` asks more questions;
   - in Claude Code, `3` saves it to `prompts/<name>.md`.
