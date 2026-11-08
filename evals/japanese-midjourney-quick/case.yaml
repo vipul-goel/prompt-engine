@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: japanese-midjourney-quick
 expected_outcome: |
-  Talks to the user in Japanese; the Midjourney prompt stays in Japanese (quick mode) and is listed as an assumption the user can change; parameters at the end.
+  Talks to the user in Japanese, with the section headings, score rows, caveat line and What next? menu in Japanese too (D3); the Midjourney prompt stays in Japanese (quick mode) and is listed as an assumption the user can change; parameters at the end.
