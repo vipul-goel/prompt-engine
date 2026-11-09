@@ -34,6 +34,7 @@ const READS = [
   ['a no-break space after a value and an ideographic space before one', 'a: x\u{A0}\nb: \u{3000}x\nc: [y\u{A0}, z]\nd: {e: f\u{A0}}\n',
     { a: 'x\u{A0}', b: '\u{3000}x', c: ['y\u{A0}', 'z'], d: { e: 'f\u{A0}' } }],
   ['a kept block with only blank lines, and one that ends the text', 'a: |+\n\n\nb: 1\nc: |+\n  x\n', { a: '\n\n', b: 1, c: 'x\n' }],
+  ['a kept block whose last line of spaces ends with a line break', 'a: |+\n  x\n \n', { a: 'x\n\n' }],
 ];
 for (const [name, text, want] of READS) {
   test(`parseYaml reads ${name}`, () => assert.deepEqual(parseYaml(text, 'f.yaml'), want));
@@ -73,6 +74,12 @@ const REFUSES = [
   ['a block whose last lines have more spaces than its text', 'a: |\n  x\n    \nb: 1\n', 'f.yaml:1: a line of spaces after the block\'s last line has more spaces than its first line'],
   ['a nested block whose last lines have more spaces than its text', 'execution:\n  prompt: |-\n    x\n       \n  max_turns: 4\n', 'f.yaml:2: a line of spaces after the block\'s last line'],
   ['a block line indented less than the first', 'a: |\n    x\n  y\n', 'f.yaml:1: a line of the block is indented less than its first line'],
+  // Without a line break, a last line of only spaces isn't a line to YAML: Bun.YAML (which claude
+  // plugin eval uses), js-yaml and yaml read each of these blocks as "x\n", and this subset read
+  // "x\n\n".
+  ['a kept block that ends in a line of only spaces without a line break', 'a: |+\n  x\n ', 'f.yaml:3: a line of only spaces at the end of the file, without a line break'],
+  ['a kept folded block that ends in a line of only spaces without a line break', 'a: >+\n  x\n  ', 'f.yaml:3: a line of only spaces at the end of the file, without a line break'],
+  ['a nested kept block that ends in a line of only spaces without a line break', 'execution:\n  prompt: |+\n    x\n  ', 'f.yaml:4: a line of only spaces at the end of the file, without a line break'],
   ['a more-indented line in a folded block', 'a: >\n  x\n    y\n', 'f.yaml:1: a more-indented line in a > block'],
   ['a block with an indentation indicator', 'a: |2\n  x\n', 'f.yaml:1: unsupported YAML value |2'],
   ['a comment right after a block header', 'a: |#c\n  x\n', 'f.yaml:1: unsupported YAML value |#c'],

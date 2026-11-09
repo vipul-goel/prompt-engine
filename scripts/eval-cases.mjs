@@ -185,8 +185,13 @@ function block(lines, style, chomp, where) {
 // Parses text in the subset. firstLine is the file line that the text starts on, for messages.
 export function parseYaml(text, file, firstLine = 1) {
   const lines = normalize(text).split('\n');
-  if (lines.at(-1) === '') lines.pop();
   const at = (i) => `${file}:${firstLine + i}`;
+  if (lines.at(-1) === '') lines.pop();
+  // Without a line break, a last line of only spaces isn't a line to YAML (a blank line needs its
+  // line break). Read as one, it added a line break to a |+ or >+ block that Bun.YAML, which claude
+  // plugin eval uses, doesn't read. Refused rather than dropped: past a block's indentation, YAML
+  // reads the extra spaces as text.
+  else if (/^ +$/.test(lines.at(-1))) throw new Error(`${at(lines.length - 1)}: a line of only spaces at the end of the file, without a line break; delete the spaces or end the file with a line break`);
   // Checked first, since a block's lines are read below as a whole.
   lines.forEach((line, i) => {
     if (line.includes('\t')) throw new Error(`${at(i)}: a tab; indent with spaces, and write \\t for a tab inside a double-quoted value`);
