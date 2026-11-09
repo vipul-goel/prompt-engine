@@ -157,13 +157,18 @@ jobs:
             # Skip only when the package is ours. A version someone else published must fail
             # the release here, or the registry job would point this server's entry at their code.
             owners="$(npm view prompt-engine-mcp maintainers --json)"
-            if ! printf '%s' "${owners}" | node -e '
+            # npm lists an e-mail address beside each maintainer. The check compares account names
+            # only, and prints just those for the error line. Output that isn't JSON fails it
+            # without a word, because Node's error would quote it into the log.
+            if ! accounts="$(printf '%s' "${owners}" | node -e '
               const want = process.argv[1] || "";
-              const list = [].concat(JSON.parse(require("fs").readFileSync(0, "utf8")));
+              let list;
+              try { list = [].concat(JSON.parse(require("fs").readFileSync(0, "utf8"))); } catch { process.exit(1); }
               const names = list.map((m) => (typeof m === "string" ? m.replace(/\s*<[^>]*>\s*$/, "") : m && m.name));
-              process.exit(want !== "" && names.includes(want) ? 0 : 1);
-            ' "${NPM_OWNER:-}"; then
-              echo "::error::prompt-engine-mcp@${version} is already on npm, but the package's maintainers don't include NPM_OWNER (${NPM_OWNER:-not set}): $(printf '%s' "${owners}" | tr -s '\n ' ' ')"
+              console.log(names.filter(Boolean).join(", ") || "none listed");
+              process.exitCode = want !== "" && names.includes(want) ? 0 : 1;
+            ' "${NPM_OWNER:-}")"; then
+              echo "::error::prompt-engine-mcp@${version} is already on npm, but the package's maintainers don't include NPM_OWNER (${NPM_OWNER:-not set}): ${accounts:-none could be read}"
               exit 1
             fi
             echo "prompt-engine-mcp@${version} is already on npm"

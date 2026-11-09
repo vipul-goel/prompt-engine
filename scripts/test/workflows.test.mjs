@@ -361,30 +361,74 @@ test('release.yml: npm publishes the packed tarball through trusted publishing, 
   assert.match(run, /^ *npm publish "\.\/dist\/prompt-engine-mcp-\$\{version\}\.tgz" --access public --ignore-scripts$/m);
 });
 
-test('release.yml: a version already on npm counts as published only when NPM_OWNER maintains the package (finding 37)', { skip: NO_BASH }, () => {
-  const s = step(release, 'npm', 'Publish to npm');
-  assert.equal(s.env?.NPM_OWNER, '${{ vars.NPM_OWNER }}');
+// The npm job's publish step, run with a stand-in npm: `npm view <pkg>@<v> version` finds the
+// version when ON_NPM is set, `npm view <pkg> maintainers --json` prints MAINTAINERS (or fails when
+// LOOKUP_FAILS is set), and a publish succeeds. The tag is v0.1.0.
+function npmStep(env) {
   const npm = `case "$1 $2" in
   "view prompt-engine-mcp@"*) [ -n "$ON_NPM" ] && { echo "\${2#*@}"; exit 0; }; echo "npm error 404" >&2; exit 1;;
-  "view prompt-engine-mcp") printf '%s\\n' "$MAINTAINERS"; exit 0;;
+  "view prompt-engine-mcp") [ -z "$LOOKUP_FAILS" ] || { echo "npm error code E500" >&2; exit 1; }; printf '%s\\n' "$MAINTAINERS"; exit 0;;
   "publish "*) exit 0;;
   *) exit 64;;
 esac`;
-  const go = (env) => runStep(s.run, { stubs: { npm }, env: { GITHUB_REF_NAME: 'v0.1.0', ...env } });
+  return runStep(step(release, 'npm', 'Publish to npm').run, { stubs: { npm }, env: { GITHUB_REF_NAME: 'v0.1.0', ...env } });
+}
+
+test('release.yml: a version already on npm counts as published only when NPM_OWNER maintains the package (finding 37)', { skip: NO_BASH }, () => {
+  const s = step(release, 'npm', 'Publish to npm');
+  assert.equal(s.env?.NPM_OWNER, '${{ vars.NPM_OWNER }}');
   const publish = 'npm [publish] [./dist/prompt-engine-mcp-0.1.0.tgz] [--access] [public] [--ignore-scripts]';
 
-  let r = go({ NPM_OWNER: 'vipul-goel' });
+  let r = npmStep({ NPM_OWNER: 'vipul-goel' });
   assert.equal(r.code, 0, r.out);
   assert.equal(r.calls.at(-1), publish, 'a new version is published');
   for (const MAINTAINERS of ['["vipul-goel <npm-address>"]', '"vipul-goel <npm-address>"', '[{"name":"vipul-goel"}]']) {
-    r = go({ ON_NPM: '1', MAINTAINERS, NPM_OWNER: 'vipul-goel' });
+    r = npmStep({ ON_NPM: '1', MAINTAINERS, NPM_OWNER: 'vipul-goel' });
     assert.equal(r.code, 0, `${MAINTAINERS}: ${r.out}`);
     assert.ok(!r.calls.includes(publish), `${MAINTAINERS}: skipped, as already published`);
   }
-  for (const env of [{ MAINTAINERS: '["someone-else <npm-address>"]', NPM_OWNER: 'vipul-goel' }, { MAINTAINERS: '["vipul-goel <npm-address>"]' }, { MAINTAINERS: '[]', NPM_OWNER: '' }]) {
-    r = go({ ON_NPM: '1', ...env });
+  for (const env of [
+    { MAINTAINERS: '["someone-else <npm-address>"]', NPM_OWNER: 'vipul-goel' },
+    { MAINTAINERS: '["vipul-goel <npm-address>"]' },
+    { MAINTAINERS: '[]', NPM_OWNER: '' },
+    { MAINTAINERS: '["vipul-goel-2 <npm-address>"]', NPM_OWNER: 'vipul-goel' },
+    { MAINTAINERS: '["vipul-goel <npm-address>"]', NPM_OWNER: 'Vipul-Goel' },
+    { LOOKUP_FAILS: '1', NPM_OWNER: 'vipul-goel' },
+  ]) {
+    r = npmStep({ ON_NPM: '1', ...env });
     assert.equal(r.code, 1, `${JSON.stringify(env)} fails the job: ${r.out}`);
     assert.ok(!r.calls.includes(publish));
+  }
+});
+
+// npm lists an e-mail address beside each maintainer's name, and the check compares the names
+// only. Whatever the step prints goes into the run log and its annotation, so the error names the
+// accounts and nothing more.
+test("release.yml: the NPM_OWNER error names the package's maintainers by account, without their e-mail addresses", { skip: NO_BASH }, () => {
+  const ADDRESS = /[\w.%+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}/;
+  for (const [MAINTAINERS, accounts] of [
+    // npm 11 prints "name <address>" strings, over several lines. The step also reads a single
+    // string, and objects, which npm 11 prints for an entry with fields other than a name, an
+    // address and a URL.
+    ['[\n  "someone-else <someone-else@example.com>",\n  "second-owner <second.owner@example.org>"\n]', 'someone-else, second-owner'],
+    ['"someone-else <someone-else@example.com>"', 'someone-else'],
+    ['[{"name":"someone-else","email":"someone-else@example.com"},{"name":"second-owner","email":"second.owner@example.org"}]', 'someone-else, second-owner'],
+    ['[]', 'none listed'],
+  ]) {
+    for (const [NPM_OWNER, shown] of [['vipul-goel', 'vipul-goel'], ['', 'not set']]) {
+      const r = npmStep({ ON_NPM: '1', MAINTAINERS, NPM_OWNER });
+      assert.equal(r.code, 1, r.out);
+      // One line, so that the annotation shows all of it.
+      assert.deepEqual(r.out.split('\n').filter((l) => l.startsWith('::error::')),
+        [`::error::prompt-engine-mcp@0.1.0 is already on npm, but the package's maintainers don't include NPM_OWNER (${shown}): ${accounts}`], r.out);
+      assert.doesNotMatch(r.out, ADDRESS, `no e-mail address in the step's output: ${r.out}`);
+    }
+  }
+  // Output that isn't JSON fails the check too, and isn't quoted back: Node's error for it would.
+  for (const MAINTAINERS of ['someone-else <someone-else@example.com>', '']) {
+    const r = npmStep({ ON_NPM: '1', MAINTAINERS, NPM_OWNER: 'vipul-goel' });
+    assert.equal(r.code, 1, r.out);
+    assert.equal(r.out, "::error::prompt-engine-mcp@0.1.0 is already on npm, but the package's maintainers don't include NPM_OWNER (vipul-goel): none could be read\n");
   }
 });
 
