@@ -16,7 +16,7 @@
 // Claude Code runs JavaScriptCore (Bun), so a rare pattern can compile in one and not the other.
 
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync } from 'node:fs';
-import { join, isAbsolute, win32, posix } from 'node:path';
+import { join, win32, posix } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { normalize, LINT_GRADER_CASES, OS_JUNK } from './build.mjs';
 
@@ -295,7 +295,8 @@ const isMapping = (v) => v !== null && typeof v === 'object' && !Array.isArray(v
 const whole = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 const compileError = (pattern, flags = '') => { try { new RegExp(pattern, flags); return null; } catch (e) { return e.message; } };
 // A relative path inside the case folder on any platform (D10 runs the checks on Windows too).
-const inside = (rel) => typeof rel === 'string' && rel !== '' && !isAbsolute(rel) && !win32.isAbsolute(rel) && !rel.split(/[\\/]/).includes('..');
+// win32.isAbsolute covers POSIX absolute paths as well, since each of them starts with "/".
+const inside = (rel) => typeof rel === 'string' && rel !== '' && !win32.isAbsolute(rel) && !rel.split(/[\\/]/).includes('..');
 // The CLI takes a plain file with one name. It also follows a link whose target stays in the
 // case folder; this check doesn't, since a link doesn't survive every checkout.
 const isPlainFile = (p) => { try { const s = lstatSync(p); return s.isFile() && s.nlink === 1; } catch { return false; } };

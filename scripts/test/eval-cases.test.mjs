@@ -275,10 +275,15 @@ test('checkEvalCases refuses an add_dirs entry the CLI refuses: the case folder,
 });
 
 test('checkEvalCases refuses a fixture path that leaves the case folder on any platform', () => {
+  // A plain file sits where joining each path to the case folder lands (<case>/tmp/ref.jsonl, and on
+  // POSIX a file named C:\setup.sh, which Windows can't hold), so only the path rule can refuse
+  // them: without the files, the plain-file check refused them whatever the path rule said.
   const { errors } = check({
     'evals/demo/case.yaml': 'schema_version: "1.1"\nname: demo\ncontext:\n  scaffold_script: C:\\setup.sh\n',
     'evals/demo/prompt.md': PROMPT,
     'evals/demo/graders/01-x.md': '---\ntype: baseline\nbaseline_file: /tmp/ref.jsonl\n---\nPASS if as good.\n',
+    'evals/demo/tmp/ref.jsonl': '{}\n',
+    ...(process.platform === 'win32' ? {} : { 'evals/demo/C:\\setup.sh': 'true\n' }),
   });
   assert.deepEqual(errors, [
     'evals/demo/case.yaml: context.scaffold_script "C:\\setup.sh" is not a plain file in the case folder',
