@@ -375,6 +375,10 @@ test('visible-reasoning-request catches a request to reason step by step, spelle
     'Lay out your thinking step-by-step.',
     'Show your step-by-step reasoning.',
     'Give your step by step thinking first.',
+    // The hyphen (U+2010) and the non-breaking hyphen (U+2011) count as hyphens.
+    'Think step\u{2011}by\u{2011}step.',
+    'Remember to think step\u{2010}by\u{2010}step before answering.',
+    'Show your step\u{2011}by\u{2011}step reasoning.',
   ]) {
     assert.ok(asksForReasoning(text), text);
   }
@@ -386,6 +390,7 @@ test('visible-reasoning-request catches a request to reason step by step, spelle
 test('visible-reasoning-request leaves step by step alone where it asks for a format or a procedure', () => {
   for (const text of [
     'Write step-by-step instructions for the installer.',
+    'Write step\u{2011}by\u{2011}step instructions for the installer.',
     'Give me a step-by-step guide to sourdough.',
     'Explain step by step how to set up the router.',
     // From the same Google template: a plan, not the model's reasoning.

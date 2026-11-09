@@ -341,7 +341,7 @@ export const LINT_RULES: ReadonlyArray<{ id: string; pattern: string; flags: str
   },
   {
     "id": "visible-reasoning-request",
-    "pattern": "(think|reason|(by|your) (reasoning|thinking)) step[- ]by[- ]step|your step[- ]by[- ]step (reasoning|thinking)|<thinking>|show your (reasoning|thinking)|chain[- ]of[- ]thought|scratchpad|explain your reasoning before",
+    "pattern": "(think|reason|(by|your) (reasoning|thinking)) step[-‐‑ ]by[-‐‑ ]step|your step[-‐‑ ]by[-‐‑ ]step (reasoning|thinking)|<thinking>|show your (reasoning|thinking)|chain[- ]of[- ]thought|scratchpad|explain your reasoning before",
     "flags": "i",
     "severity": "warning",
     "selfCheck": true,
