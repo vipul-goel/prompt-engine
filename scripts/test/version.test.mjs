@@ -92,6 +92,25 @@ test('changes nothing when a file has an unexpected "version" key', () => {
   }
 });
 
+// The lockfile is written back as JSON.stringify(lock, null, 2), so version.mjs refuses one in
+// any other format instead of reformatting it, and changes no file.
+test('changes nothing when mcp/package-lock.json has another format', () => {
+  const dir = copyRepo();
+  try {
+    const lock = join(dir, 'mcp', 'package-lock.json');
+    assert.ok(existsSync(lock), 'the copy has mcp/package-lock.json');
+    writeFileSync(lock, `${JSON.stringify(JSON.parse(readFileSync(lock, 'utf8')), null, 4)}\n`);
+    const files = ['.claude-plugin/plugin.json', 'skills/prompt-engine/SKILL.md', 'mcp/package.json', 'mcp/package-lock.json'];
+    const before = files.map((f) => read(dir, f));
+    const r = run(dir, 'version.mjs', '9.8.7');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /^mcp\/package-lock\.json: unexpected formatting; run `npm version 9\.8\.7 --no-git-tag-version` in mcp\/ instead$/m);
+    assert.deepEqual(files.map((f) => read(dir, f)), before, 'no file changed');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('sets the version in a CRLF checkout, changing only the version lines', () => {
   const dir = copyRepo();
   try {

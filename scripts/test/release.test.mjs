@@ -1,10 +1,12 @@
-// Tests for scripts/release.mjs that need no network and no npm: its command line, the tag check
-// and the skill zip.
+// Tests for scripts/release.mjs that need no network and no npm: its command line, the tag check,
+// the validate.mjs run before anything is built, the skill zip and its layout check, and the
+// checksums of a full run on a copy without the MCP server (so that it builds no MCPB bundle).
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -142,5 +144,45 @@ test('release.mjs --zip with the matching tag, in either form, builds the zip', 
     const r = zipCopy(() => {}, args);
     assert.equal(r.code, 0, `${JSON.stringify(args)}: ${r.out}`);
     assert.ok(r.entries.includes('prompt-engine/SKILL.md'), r.entries.join('\n'));
+  }
+});
+
+// ---------- what a run checks before and after it builds ----------
+test('release.mjs stops when validate.mjs fails, before it builds anything', { skip: NO_ZIP }, () => {
+  const r = zipCopy((dir) => writeFileSync(join(dir, '.mcp.json'), '{}\n'));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /^error: \.mcp\.json: not allowed at the repo root/m);
+  assert.deepEqual(r.entries, [], 'no zip');
+});
+
+test('release.mjs refuses a zip whose entries are not all under prompt-engine/', { skip: (process.platform === 'win32' && 'the stand-in for unzip is a shell script') || NO_ZIP }, () => {
+  const dir = copyRepo();
+  const bin = mkdtempSync(join(tmpdir(), 'pe-unzip-'));
+  try {
+    // An unzip that lists the skill's files at the archive's root; zip stays the real one.
+    writeFileSync(join(bin, 'unzip'), '#!/bin/sh\nprintf "SKILL.md\\nreferences/questions.md\\n"\n');
+    chmodSync(join(bin, 'unzip'), 0o755);
+    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'release.mjs'), '--zip'], { env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, PE_ROOT: dir }, encoding: 'utf8' });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /^zip layout is wrong: expected everything under prompt-engine\/$/m);
+    assert.doesNotMatch(r.stdout, /dist\/prompt-engine\.zip \(/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+test('release.mjs writes SHA256SUMS for every file it builds', { skip: NO_ZIP }, () => {
+  const dir = copyRepo();
+  try {
+    // Without mcp/package.json there is no MCPB bundle to build, so npm never runs.
+    rmSync(join(dir, 'mcp', 'package.json'));
+    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'release.mjs')], { env: { ...process.env, PE_ROOT: dir }, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const sums = ['prompt-engine.zip', 'prompt-engine.md', 'prompt-engine-knowledge.md']
+      .map((f) => `${createHash('sha256').update(readFileSync(join(dir, 'dist', f))).digest('hex')}  ${f}`);
+    assert.equal(readFileSync(join(dir, 'dist', 'SHA256SUMS'), 'utf8'), `${sums.join('\n')}\n`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

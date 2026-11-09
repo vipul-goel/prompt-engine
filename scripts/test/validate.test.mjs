@@ -747,6 +747,12 @@ const GIT_ROWS = [
     for (let i = 0; i < 520; i++) put(d, `many/${i}.md`, `${i}\n`);
     git(['add', '-f', 'many']);
   }, /warning: the plugin folder \(the repository root\) has \d+ tracked files; Anthropic's plugin directory holds a plugin with more than 512/, 0],
+  // A NUL byte anywhere in the first 8,000 bytes, which is what git's own text-or-binary test reads.
+  ['warns about a tracked file with a NUL byte at byte 8,000, but not about one with it just after', (d, git) => {
+    put(d, 'docs/late-nul.txt', Buffer.concat([Buffer.from('x'.repeat(7_999)), Buffer.from([0]), Buffer.from('x\n')]));
+    put(d, 'docs/later-nul.txt', Buffer.concat([Buffer.from('x'.repeat(8_000)), Buffer.from([0]), Buffer.from('x\n')]));
+    git(['add', '-f', 'docs/late-nul.txt', 'docs/later-nul.txt']);
+  }, /warning: docs\/late-nul\.txt: a binary file; Anthropic's plugin directory holds/, 0, /later-nul\.txt/],
   ['warns about a tracked binary file that is not an image or font, but not about the PNG icons', (d, git) => {
     put(d, 'docs/guide.pdf', Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00, 0x01]));
     git(['add', '-f', 'docs/guide.pdf']);
@@ -862,6 +868,31 @@ test('git copies leave alone the repository that GIT_DIR and GIT_INDEX_FILE name
     rmSync(other, { recursive: true, force: true });
   }
 });
+
+// The edges of the future-date rule for last_verified: one day of slack past today's UTC date, for
+// a date written in a time zone ahead of UTC. The dates come from the clock, so the rows keep
+// working; a run that crosses UTC midnight is tried once more, since its dates then name other days.
+const utcDay = (days) => new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
+for (const days of [1, 2]) {
+  test(`${days === 1 ? 'accepts' : 'refuses'} a last_verified date ${days} day${days === 1 ? '' : 's'} after today's UTC date`, () => {
+    for (let attempt = 1; ; attempt++) {
+      const today = utcDay(0);
+      const date = utcDay(days);
+      const dir = copyRepo();
+      try {
+        target((t) => { t.last_verified = date; })(dir);
+        rebuild(dir);
+        const r = validate(dir);
+        if (utcDay(0) !== today && attempt === 1) continue;
+        if (days === 1) expectRun(r, /validate: OK/, 0);
+        else expectRun(r, new RegExp(`^error: data/media-targets\\.json ${MEDIA_ID_RE}: last_verified ${date} is in the future\\n\\n1 error\\(s\\)$`, 'm'), 1);
+        return;
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+}
 
 // validate.mjs's own patterns take time in step with the text they read. Each pattern these
 // inputs reach took quadratic time on one long run of a character: tens of seconds at 80,000

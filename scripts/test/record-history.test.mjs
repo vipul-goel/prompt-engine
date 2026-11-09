@@ -14,6 +14,9 @@ import { spawnSync } from 'node:child_process';
 import { FIXED_SESSION } from '../eval/sanitize.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+// The model every eval case pins (D28), which a recording is made on unless --model says otherwise:
+// validate.mjs fails a history case recorded on another model.
+const PINNED = readFileSync(join(repo, 'evals', 'spanish-quick', 'prompt.md'), 'utf8').match(/^model: (\S+)$/m)[1];
 // The stand-in is a shell script, which Windows can't start by name.
 const STAND_IN = process.platform === 'win32' && 'the stand-in for claude is a shell script';
 
@@ -123,11 +126,12 @@ test('record-history.mjs reads --model before the file and the message too', { s
   try {
     const cfg = join(parent, 'cfg');
     mkdirSync(join(cfg, 'projects'), { recursive: true });
-    const r = record(['--model', 'claude-opus-5-5', out, 'write a blog post about remote work'], { CLAUDE_CONFIG_DIR: cfg });
+    const other = PINNED === 'claude-opus-5-5' ? 'claude-haiku-5-5' : 'claude-opus-5-5';
+    const r = record(['--model', other, out, 'write a blog post about remote work'], { CLAUDE_CONFIG_DIR: cfg });
     assert.equal(r.status, 0, r.stderr);
     const args = JSON.parse(readFileSync(started, 'utf8'));
     assert.equal(args[args.indexOf('-p') + 1], 'write a blog post about remote work');
-    assert.equal(args[args.indexOf('--model') + 1], 'claude-opus-5-5');
+    assert.equal(args[args.indexOf('--model') + 1], other);
     assert.ok(existsSync(out));
     assert.ok(!existsSync(join(parent, '--model')), 'no file named after the flag');
   } finally {
@@ -230,6 +234,9 @@ test('record-history.mjs limits Read to the skill folder, finds the transcript u
     assert.deepEqual(args.slice(args.indexOf('--allowedTools'), args.indexOf('--allowedTools') + 3), ['--allowedTools', 'Skill', `Read(/${dir}/skills/prompt-engine/**)`]);
     assert.ok(!args.includes('Read'), 'no rule pre-approves every Read');
     assert.equal(args[args.indexOf('--plugin-dir') + 1], dir);
+    // The billed call's spending cap, and the model the eval cases pin.
+    assert.equal(args[args.indexOf('--max-budget-usd') + 1], '1');
+    assert.equal(args[args.indexOf('--model') + 1], PINNED);
     const rows = readFileSync(out, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.deepEqual(rows.map((e) => e.type), ['user', 'assistant', 'user', 'assistant']);
     assert.equal(rows[1].message.content[0].input.file_path, '/plugin/skills/prompt-engine/references/questions.md');
