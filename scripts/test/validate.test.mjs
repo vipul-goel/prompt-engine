@@ -748,6 +748,10 @@ const ROWS = [
   ['rejects a rubric whose quoted request stops before the request does', (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
     '\nThe user\'s whole request, in Spanish, was "escribe un post de LinkedIn" (write a LinkedIn post), in quick mode.\nPASS if no detail is invented. FAIL otherwise.\n')),
   /^error: evals\/spanish-quick\/graders\/09-request\.md: the quoted request "escribe un post de LinkedIn" is in prompt\.md, but the request goes on after it; quote it to its end, word for word \(repo rule\)\n\n1 error\(s\)$/m],
+  // It starts a word, too: a quote cut inside one isn't the request either.
+  ['rejects a rubric whose quoted request starts inside a word of the request', (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
+    '\nThe user\'s whole request, in Spanish, was "scribe un post de LinkedIn sobre mi nuevo trabajo", in quick mode.\nPASS if no detail is invented. FAIL otherwise.\n')),
+  /^error: evals\/spanish-quick\/graders\/09-request\.md: the quoted request "scribe un post de LinkedIn sobre mi nuevo trabajo" is in prompt\.md, but starts inside a word there; quote the request from the start of a word, word for word \(repo rule\)\n\n1 error\(s\)$/m],
   ['rejects an <original_prompt> block that stops before the request does', (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
     `\n<original_prompt>\n${read(d, 'evals/strong-prompt-minimal-changes/prompt.md').match(/^I'm writing release notes\..*$/m)[0]}\n</original_prompt>\nPASS if its wording is kept. FAIL otherwise.\n`)),
   /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: the <original_prompt> text is in prompt\.md, but the request goes on after it; quote it to its end, word for word \(repo rule\)\n\n1 error\(s\)$/m],

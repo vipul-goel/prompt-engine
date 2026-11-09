@@ -1067,6 +1067,34 @@ test('checkConversations reports a request marker that it cannot read, instead o
   assert.deepEqual(errors, [mark('01-next-line.md'), mark('02-two-lines.md'), tag('03-unclosed.md'), tag('04-empty.md')]);
 });
 
+test('checkConversations reads the request markers in any letter case, and wants a quoted request to start a word', () => {
+  const request = 'escribe un post de LinkedIn sobre mi nuevo trabajo';
+  const { errors } = histories({
+    'evals/quick/prompt.md': `---\nmodel: ${MODEL}\n---\n\nUsa prompt-engine en modo r\u{E1}pido:\n\n${request}\n`,
+    // The phrase and the tags in other letter cases are read, not skipped.
+    'evals/quick/graders/01-lowercase.md': judge('In quick mode, the user\'s whole request, in Spanish, was "escribe un post de LinkedIn sobre mi trabajo nuevo".'),
+    'evals/quick/graders/02-tag-case.md': judge('<Original_Prompt>\nSomething the user never wrote.\n</Original_Prompt>\nPASS if its wording is kept.'),
+    'evals/quick/graders/03-tag-unclosed.md': judge(`<ORIGINAL_PROMPT>\n${request}\n`),
+    // The request in guillemets, then a double-quoted phrase that ends the request: the marker
+    // can't be read, rather than the phrase taken for the request.
+    'evals/quick/graders/04-guillemets.md': judge('The user\'s whole request was \u{AB}escribe un post de LinkedIn sobre mi trabajo nuevo\u{BB}, a "nuevo trabajo" post.'),
+    // Quotes that run to the end of the request but start inside a word.
+    'evals/quick/graders/05-mid-word.md': judge('The user\'s whole request was "ribe un post de LinkedIn sobre mi nuevo trabajo".'),
+    'evals/quick/graders/06-mid-word-block.md': judge('<original_prompt>\nost de LinkedIn sobre mi nuevo trabajo\n</original_prompt>'),
+    // Fine: the request from the start of a word, after a lead-in, with the markers in other cases.
+    'evals/quick/graders/07-fine.md': judge(`the user\u{2019}s whole request, in Spanish, was "${request}". <ORIGINAL_PROMPT>${request}</ORIGINAL_PROMPT>`),
+  });
+  const midWord = 'is in prompt.md, but starts inside a word there; quote the request from the start of a word, word for word (repo rule)';
+  assert.deepEqual(errors, [
+    'evals/quick/graders/01-lowercase.md: the quoted request "escribe un post de LinkedIn sobre mi trabajo nuevo" isn\'t in prompt.md word for word (repo rule)',
+    'evals/quick/graders/02-tag-case.md: the <original_prompt> text isn\'t in prompt.md word for word (repo rule)',
+    'evals/quick/graders/03-tag-unclosed.md: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can\'t check (repo rule)',
+    'evals/quick/graders/04-guillemets.md: "The user\'s whole request" isn\'t followed by the request in quotes on the same line, which validate.mjs can\'t check (repo rule)',
+    `evals/quick/graders/05-mid-word.md: the quoted request "ribe un post de LinkedIn sobre mi nuevo trabajo" ${midWord}`,
+    `evals/quick/graders/06-mid-word-block.md: the <original_prompt> text ${midWord}`,
+  ]);
+});
+
 test('checkConversations lets a rubric quote what the user typed, even where an option says the same', () => {
   const round = `1. What angle?\n   a) Balanced ★\n   b) Argue for remote work\n\n${REPLY_LINE}`;
   const { errors } = histories(recordedCase('topic', [userRow('write a blog post about remote work'), assistantRow(round)], 'ok', {

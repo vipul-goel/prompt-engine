@@ -752,10 +752,14 @@ const promptOf = (c) => c.prompt?.body || (isMapping(c.caseYaml?.execution) && t
 const criteriaOf = (g) => (g.data.type === 'llm' ? g.data.criteria ?? (g.body !== '' ? g.body : undefined) : undefined);
 // The two ways a rubric quotes the user's request: in <original_prompt> tags, and as the first
 // quoted string after "The user's whole request" (so "The user's whole request, in Spanish, was
-// "..."" counts too). Straight or curly quotes and apostrophe.
-const ORIGINAL_PROMPT = /<original_prompt>([\s\S]*?)<\/original_prompt>/g;
-const WHOLE_REQUEST = /The user['\u{2019}]s whole request\b[^"\u{201C}\n]*["\u{201C}]([^"\u{201D}\n]+)["\u{201D}]/gu;
-const WHOLE_REQUEST_MARK = /The user['\u{2019}]s whole request\b/gu;
+// "..."" counts too). Straight or curly quotes and apostrophe. The tags and the phrase count in any
+// letter case, so that no form of them is skipped without a word. Another quotation mark (« », ‹ ›,
+// „, 「 or 『) between the phrase and the double quotes makes the phrase unreadable: the request
+// quoted in that mark was passed over for a later double-quoted word.
+const ORIGINAL_PROMPT = /<original_prompt>([\s\S]*?)<\/original_prompt>/gi;
+const ORIGINAL_PROMPT_OPEN = /<original_prompt>/gi;
+const WHOLE_REQUEST = /The user['\u{2019}]s whole request\b[^"\u{201C}\u{AB}\u{BB}\u{2039}\u{203A}\u{201E}\u{300C}\u{300E}\n]*["\u{201C}]([^"\u{201D}\n]+)["\u{201D}]/giu;
+const WHOLE_REQUEST_MARK = /The user['\u{2019}]s whole request\b/giu;
 // Text in straight or curly double quotes, on one line. Curly quoted text holds no opening curly
 // quote: from each of a long run of unclosed ones, the match ran to the end of the line, which took
 // quadratic time. So in "\u{201C}a \u{201C}b\u{201D}" the quote is "b".
@@ -770,17 +774,34 @@ const ANSWER_CHECK = /\banswer(?:s|ed)?\b|★|\brecommend|\boptions?\b|\baccept/
 // long run inside the text, the match took quadratic time.
 const answerKey = (text) => normalizeQuote(text.replace(/★[\s\S]*$/u, '')).replace(/(?<![\s.,;:·•|])[\s.,;:·•|]+$/u, '');
 
-// Whether a quote of the request runs to the request's end in text: some occurrence of it is
-// followed only by white space to the end of the text, or right by </command-args>, where a
-// recorded slash command's arguments end. What comes before the quote isn't checked, so a lead-in
-// such as "Use prompt-engine (quick mode) to" can stay out of it; a request that grows at its start
-// therefore isn't caught, which would need the rubrics to quote their lead-ins too.
-const endsRequest = (text, quote) => {
+// Where a quote of the request stands in a text the user typed: 'whole' when some occurrence of it
+// runs to the end of the request (only white space follows it to the end of the text, or
+// </command-args> comes right after it, where a recorded slash command's arguments end) and starts
+// a word (a quote that starts with a letter, digit or _ doesn't follow one); else 'mid-word' when
+// one runs to the end but starts inside a word, 'short' when it occurs but the request goes on
+// after it, and undefined when it doesn't occur. What comes before a quote that starts a word isn't
+// checked, so a lead-in such as "Use prompt-engine (quick mode) to" can stay out of it; a request
+// that grows at its start therefore isn't caught, which would need the rubrics to quote their
+// lead-ins too.
+const REQUEST_END = /\s*$|<\/command-args>/y;
+const placeQuote = (text, quote) => {
+  let place;
   for (let i = text.indexOf(quote); i >= 0; i = text.indexOf(quote, i + 1)) {
-    if (/^(?:\s*$|<\/command-args>)/.test(text.slice(i + quote.length))) return true;
+    REQUEST_END.lastIndex = i + quote.length;
+    if (!REQUEST_END.test(text)) place ??= 'short';
+    else if (/^[\p{L}\p{M}\p{N}_]/u.test(quote) && /[\p{L}\p{M}\p{N}_]$/u.test(text.slice(Math.max(0, i - 2), i))) place = 'mid-word';
+    else return 'whole';
   }
-  return false;
+  return place;
 };
+// The best place of a quote in any of the texts the user typed, and what an error says about it.
+const placeIn = (typed, quote) => {
+  const places = typed.map((t) => placeQuote(t, quote));
+  return ['whole', 'mid-word', 'short'].find((p) => places.includes(p));
+};
+const misplaced = (place, source) => (place === 'short' ? `is in ${source}, but the request goes on after it; quote it to its end, word for word`
+  : place === 'mid-word' ? `is in ${source}, but starts inside a word there; quote the request from the start of a word, word for word`
+  : `isn't in ${source} word for word`);
 
 // This repo's checks on each case's conversation, as described above. contract is
 // data/contract.json. A case with a file that didn't read is skipped.
@@ -805,9 +826,10 @@ export function checkConversations(root, cases, { err, contract }) {
     // criteria and the reply, so a rubric that judges against the request quotes it, and the quote
     // must be the case's own, word for word: in prompt.md's body or, in a history case, in what the
     // user typed in the recording. Only the text inside the tags or quotes counts, so a gloss next
-    // to it doesn't. The quote also runs to the end of the request (endsRequest): a judge told that
-    // a shorter text is the whole request would count the rest as invented. A misquoted request is
-    // reported here only, not by the history quote rule below.
+    // to it doesn't. The quote also runs to the end of the request (placeQuote): a judge told that
+    // a shorter text is the whole request would count the rest as invented. It starts a word, too,
+    // so a quote cut inside one doesn't pass. A misquoted request is reported here only, not by the
+    // history quote rule below.
     const typed = [reply, ...(rec?.userTexts ?? [])];
     const source = rec ? 'prompt.md or a recorded user message' : 'prompt.md';
     const misquoted = new Set(); // grader file + "\0" + quote
@@ -817,19 +839,18 @@ export function checkConversations(root, cases, { err, contract }) {
       // A marker that doesn't parse would be skipped without a word: an opening tag without its
       // closing tag, an empty block, or the request's quote on another line or across a line break.
       const blocks = [...criteria.matchAll(ORIGINAL_PROMPT)];
-      if ((criteria.match(/<original_prompt>/g) ?? []).length !== blocks.length || blocks.some((m) => m[1].trim() === '')) err(`${g.file}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`);
+      if ((criteria.match(ORIGINAL_PROMPT_OPEN) ?? []).length !== blocks.length || blocks.some((m) => m[1].trim() === '')) err(`${g.file}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`);
       for (const m of blocks) {
         const block = m[1].trim();
-        if (block === '' || typed.some((t) => endsRequest(t, block))) continue;
-        if (typed.some((t) => t.includes(block))) err(`${g.file}: the <original_prompt> text is in ${source}, but the request goes on after it; quote it to its end, word for word (repo rule)`);
-        else err(`${g.file}: the <original_prompt> text isn't in ${source} word for word (repo rule)`);
+        const place = block === '' ? 'whole' : placeIn(typed, block);
+        if (place !== 'whole') err(`${g.file}: the <original_prompt> text ${misplaced(place, source)} (repo rule)`);
       }
       const requests = [...criteria.matchAll(WHOLE_REQUEST)];
       if ((criteria.match(WHOLE_REQUEST_MARK) ?? []).length !== requests.length) err(`${g.file}: "The user's whole request" isn't followed by the request in quotes on the same line, which validate.mjs can't check (repo rule)`);
       for (const [, quote] of requests) {
-        if (typed.some((t) => endsRequest(t, quote))) continue;
-        if (typed.some((t) => t.includes(quote))) err(`${g.file}: the quoted request "${quote}" is in ${source}, but the request goes on after it; quote it to its end, word for word (repo rule)`);
-        else err(`${g.file}: the quoted request "${quote}" isn't in ${source} word for word (repo rule)`);
+        const place = placeIn(typed, quote);
+        if (place === 'whole') continue;
+        err(`${g.file}: the quoted request "${quote}" ${misplaced(place, source)} (repo rule)`);
         misquoted.add(`${g.file}\0${quote}`);
       }
     }
