@@ -4,8 +4,10 @@
 # neither secrets nor removed private details). After What next?, with Refine later on: while
 # Fill before running lists a placeholder for something else, a starred Fill placeholders option,
 # as writing-quick-launch-email's 08 asks; otherwise a starred Run it now or Try it here, so Fill
-# placeholders ★ fails when the number's placeholder is the only one open. Not Done ★, which the
-# table keeps for image and video prompts. The ★ may follow more text on the option's line, as in
+# placeholders ★ fails when the number's placeholder is the only one open. Both Run it now ★ and
+# Try it here ★ pass: the table names the option Try it here for a prompt meant for another
+# tool, such as a custom GPT, but this case tests D46's rule for the ★, not that row. Not Done ★,
+# which the table keeps for image and video prompts. The ★ may follow more text on the option's line, as in
 # "Try it here (results there may differ) ★", up to 200 characters and before the next numbered
 # option on that line, so in "1. Try it here 2. Fill placeholders ★" the ★ is option 2's. A
 # placeholder is the number's by 02's rule, so
