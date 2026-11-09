@@ -81,18 +81,36 @@ export function machinePatterns({ home, host } = {}) {
   return extra;
 }
 
+// Escapes that end in a letter or digit, so that a token right after one has no word boundary
+// where it starts: a colour code (its escape character as itself or written out), a backslash
+// escape written out (\n, \t, =, \x3d; in a deeper JSON level its backslash is escaped too,
+// and the last backslash still matches) and a %XX escape. Each part is matched without
+// backtracking into a long run, so the scan stays linear.
+const ESCAPES = /(?:\x1b|\\(?:u001[bB]|x1[bB]|0?33|e))\[[0-9;?]*[ -/]*[@-~]|\\(?:[nrtfvb0]|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2})|%[0-9A-Fa-f]{2}/g;
+
 // The texts the patterns run on for one line. For a line of JSON, such as a history row,
-// every key and string value as decoded text, so that an escape such as \n or \t just before
-// a token can't hide where the token starts; for any other line, the line itself.
+// every key and string value as decoded text; for any other line, the line itself. Each text
+// that holds an escape from ESCAPES is read twice: as it is, and with each escape turned into
+// a space, so that an escape just before a token can't hide where the token starts, whether
+// it is a JSON escape of the row, one in a pasted snippet or first message, or one in text
+// that a tool printed.
 function textsOf(line) {
-  if (!/^\s*[[{]/.test(line)) return [line];
-  let value;
-  try { value = JSON.parse(line); } catch { return [line]; }
   const texts = [];
+  const add = (t) => {
+    texts.push(t);
+    const opened = t.replace(ESCAPES, ' ');
+    if (opened !== t) texts.push(opened);
+  };
+  let value;
+  if (/^\s*[[{]/.test(line)) try { value = JSON.parse(line); } catch { value = undefined; }
+  if (value === undefined) {
+    add(line);
+    return texts;
+  }
   const walk = (v) => {
-    if (typeof v === 'string') texts.push(v);
+    if (typeof v === 'string') add(v);
     else if (Array.isArray(v)) v.forEach(walk);
-    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { texts.push(k); walk(x); }
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { add(k); walk(x); }
   };
   walk(value);
   return texts;

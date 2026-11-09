@@ -168,6 +168,33 @@ test('a token right after an escaped newline or tab in a history row is found', 
   assert.deepEqual(scanText(JSON.stringify({ content: '1\tsupport@mailhost.invalid' }), { allowText: 'Write to support@mailhost.invalid.' }), []);
 });
 
+test('a token right after a written-out escape, a %XX escape or a colour code is found, also one JSON level down', () => {
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: '42' })}.${'s'.repeat(43)}`;
+  const KEY = ['line 1: Anthropic or OpenAI-style key'];
+  // Each escape ends in a letter or digit, which hides where the token starts from a pattern that
+  // begins at a word boundary: a pasted JSON or code snippet, a shell string, a URL, a tool result
+  // that printed a JSON file (decoded once, its text still holds the escape) or coloured output.
+  for (const [text, hits] of [
+    [`Improve this prompt: {"system":"Use the key:\\n${fake.anthropic}"}`, KEY],
+    [`Improve: print("token:\\t${fake.github}")`, ['line 1: GitHub token']],
+    [`Improve: echo $'\\n${fake.aws}'`, ['line 1: AWS key ID']],
+    [`Improve: {"auth":"Bearer\\n${jwt}"}`, ['line 1: JWT']],
+    [`Improve: {"s":"\\r\\nsession_${'A1b2'.repeat(6)}"}`, ['line 1: claude.ai session ID']],
+    [`Improve: {"key":"\\u003d${fake.anthropic}"}`, KEY],
+    [`curl https://api.example.com/v1?q=key%3D${fake.anthropic}`, KEY],
+    [`printf '\\033[32m${fake.anthropic}\\033[0m'`, KEY],
+    [`echo -e "\\x1b[1;32m${fake.anthropic}"`, KEY],
+    [JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: JSON.stringify({ note: `key:\n${fake.anthropic}` }) }] } }), KEY],
+    [JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: `\u{1b}[32m${fake.anthropic}\u{1b}[0m` }] } }), KEY],
+  ]) assert.deepEqual(scanText(text), hits, text.slice(0, 60));
+  // A key that public text holds passes after an escape too, and a line without one is read as it is.
+  const key = readFileSync(join(repo, 'evals/secret-redaction-quick/prompt.md'), 'utf8').match(/\bsk-[\w-]{20,}/)?.[0];
+  assert.ok(key, 'evals/secret-redaction-quick/prompt.md holds a fake key');
+  assert.deepEqual(scanText(`{"system":"Use the key:\\n${key}"}`, { allowText }), []);
+  assert.deepEqual(scanText('C:\\\\notes\\\\new and 100%25 done'), []);
+});
+
 test('the committed histories pass the scan', () => {
   const cases = readdirSync(join(repo, 'evals')).filter((c) => existsSync(join(repo, 'evals', c, 'history.jsonl')));
   assert.ok(cases.length >= 3, cases.join(', '));

@@ -114,6 +114,22 @@ test('record-history.mjs refuses a first message that looks private, before clau
   }
 });
 
+test('record-history.mjs refuses a key right after a written-out escape in the first message, before claude starts', () => {
+  const { parent, started, out, record, cleanup } = setup();
+  try {
+    const cfg = join(parent, 'cfg');
+    mkdirSync(join(cfg, 'projects'), { recursive: true });
+    // A pasted JSON snippet: the key follows the two characters \ and n, not a line break.
+    const r = record([out, `Improve this prompt: {"system":"Use the key:\\n${'sk'}-ant-api03-${'Q'.repeat(40)}"}`], { CLAUDE_CONFIG_DIR: cfg });
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /looks private, so nothing was sent:\n {2}line 1: Anthropic or OpenAI-style key/);
+    assert.ok(!existsSync(started), 'claude was not started');
+    assert.ok(!existsSync(out));
+  } finally {
+    cleanup();
+  }
+});
+
 test('record-history.mjs refuses to start without a transcript folder, naming both places it looks', () => {
   const { parent, started, out, record, cleanup } = setup();
   try {
