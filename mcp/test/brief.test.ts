@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import type { ElicitResult } from '@modelcontextprotocol/client';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -18,7 +19,7 @@ import {
 } from '../src/brief.js';
 import { CONTRACT, LINT_RULES, REFERENCES, UNIVERSAL_METHOD, VERSION } from '../src/generated/content.js';
 import { INSTRUCTIONS, TOOL_DESCRIPTIONS } from '../src/server.js';
-import { PKG, REPO, connectStdioInProcess } from './helpers.js';
+import { ERAS, PKG, REPO, SAMPLE_QUESTIONS, connectStdioInProcess, textOf } from './helpers.js';
 
 const RESULT_MAX_CHARS = 32_000;
 
@@ -340,13 +341,84 @@ describe('budgets and self-lint', () => {
     }
   });
 
+  // Everything the server sends the model, as a client receives it in both eras, rather than a
+  // list of texts picked by hand: the instructions and server info, tools/list with every schema
+  // description, the prompts and resources, the brief in each mode, the checklists,
+  // check_prompt's report in each of its forms, and each ask_user outcome, its errors and the form
+  // it sends included. The text the model and the user supply here is clean, so a match is the
+  // server's; check_prompt's evidence and excerpts quote the draft, so their lines are left out.
   // The brief embeds the universal core, which validate.mjs lints with code spans skipped, so a
   // pattern the core names in backticks passes both suites.
-  it('applies the self-check lint rules to the text the server adds, skipping code spans', () => {
-    const own = [INSTRUCTIONS, ...Object.values(TOOL_DESCRIPTIONS), buildBrief({ mode: 'standard' })];
-    for (const rule of LINT_RULES.filter((r) => r.selfCheck)) {
-      const re = new RegExp(rule.pattern, rule.flags);
-      for (const text of own) expect(unquoted(text).match(re)?.[0], rule.id).toBeUndefined();
+  it('applies the self-check lint rules to everything the server sends the model, skipping code spans', async () => {
+    const rules = LINT_RULES.filter((r) => r.selfCheck).map((r) => [r.id, new RegExp(r.pattern, r.flags)] as const);
+    // Each string on its own, so a JSON escape such as \n can't hide a word from \b.
+    const strings = (value: unknown): string[] =>
+      typeof value === 'string' ? [value] : value !== null && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
+    const sent: Array<[string, string[]]> = [];
+    const collect = (where: string, value: unknown) => sent.push([where, strings(value)]);
+    const reportLines = (result: { content?: unknown }) => textOf(result).split('\n').filter((line) => !line.startsWith('    · '));
+    const drafts = {
+      'a clean draft': ['Write a haiku about rain for a children book.', undefined],
+      'a German draft for an image tool': ['Ein kleines Holzhaus im Wald bei Nacht, warmes Licht in den Fenstern, Schnee auf dem Dach und eine ruhige Stimmung.', 'Midjourney'],
+      'a draft with a finding for each rule': ['You MUST think step by step. Take a deep breath and prefill the response.\nFill {{name}} for [[audience]], masterpiece, 8k.', undefined],
+    } as const;
+    // Breaks every rule the schema lets through: a repeated and reserved id, text the user can't
+    // see, a ★ in a label, a label twice and a recommended index past the options.
+    const badQuestions = [
+      { id: 'notes', question: '\u{200B}', options: [{ label: 'Four ★ hotels' }, { label: 'Same' }, { label: 'Same' }, { label: '\u{200B}' }], recommended: 0, why: '\u{200B}' },
+      { id: 'notes', question: 'Which one?', options: [{ label: 'One' }, { label: 'Two' }], recommended: 3, why: 'it fits' },
+    ];
+    const formAnswers: Array<[string, ElicitResult]> = [
+      ['accepted, with notes that get cut', { action: 'accept', content: { audience: 'Employees', length: 'About 600 words', notes: 'Keep it short. '.repeat(80) } }],
+      ['accepted in part', { action: 'accept', content: { length: 'About 600 words' } }],
+      ['declined', { action: 'decline' }],
+      ['closed', { action: 'cancel' }],
+    ];
+    for (const era of ERAS) {
+      const conn = await connectStdioInProcess(era);
+      try {
+        const { client } = conn;
+        collect(`${era}: instructions`, client.getInstructions());
+        collect(`${era}: server info`, client.getServerVersion());
+        collect(`${era}: tools/list`, (await client.listTools()).tools);
+        collect(`${era}: prompts/list`, (await client.listPrompts()).prompts);
+        const { resources } = await client.listResources();
+        collect(`${era}: resources/list`, resources);
+        collect(`${era}: resources/templates/list`, (await client.listResourceTemplates()).resourceTemplates);
+        for (const { uri } of resources) collect(`${era}: ${uri}`, (await client.readResource({ uri })).contents);
+        for (const mode of [undefined, ...MODES]) {
+          const args: Record<string, string> = mode ? { mode } : {};
+          collect(`${era}: enhance_prompt (${mode ?? 'no mode'})`, (await client.callTool({ name: 'enhance_prompt', arguments: args })).content);
+          collect(`${era}: the enhance prompt (${mode ?? 'no mode'})`, (await client.getPrompt({ name: 'enhance', arguments: args })).messages);
+        }
+        collect(`${era}: enhance_prompt with a target`, (await client.callTool({ name: 'enhance_prompt', arguments: { target: 'Midjourney' } })).content);
+        for (const domain of DOMAINS) collect(`${era}: get_checklist ${domain}`, (await client.callTool({ name: 'get_checklist', arguments: { domain } })).content);
+        for (const [label, [prompt, target]] of Object.entries(drafts)) {
+          const result = await client.callTool({ name: 'check_prompt', arguments: target ? { prompt, target } : { prompt } });
+          const report = result.structuredContent as { summary: string; issues: Array<{ message: string }> };
+          collect(`${era}: check_prompt on ${label}`, [reportLines(result), report.summary, report.issues.map((i) => i.message)]);
+        }
+        const errors = await client.callTool({ name: 'ask_user', arguments: { questions: badQuestions } });
+        expect(textOf(errors)).toMatch(/appears twice/);
+        collect(`${era}: ask_user errors`, errors.content);
+        collect(`${era}: ask_user without a form`, await client.callTool({ name: 'ask_user', arguments: { questions: SAMPLE_QUESTIONS } }));
+      } finally {
+        await conn.close();
+      }
+      for (const [outcome, answer] of formAnswers) {
+        const form = await connectStdioInProcess(era, { elicit: () => answer });
+        try {
+          collect(`${era}: ask_user, form ${outcome}`, await form.client.callTool({ name: 'ask_user', arguments: { questions: SAMPLE_QUESTIONS } }));
+          expect(form.elicitCalls, `${era}: form ${outcome}`).toHaveLength(1);
+          collect(`${era}: the form (${outcome})`, form.elicitCalls);
+        } finally {
+          await form.close();
+        }
+      }
+    }
+    for (const [where, texts] of sent) {
+      expect(texts.length, where).toBeGreaterThan(0);
+      for (const text of texts) for (const [id, re] of rules) expect(unquoted(text).match(re)?.[0], `${id} in ${where}`).toBeUndefined();
     }
   });
 
