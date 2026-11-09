@@ -574,6 +574,14 @@ const ROWS = [
   ['rejects an <original_prompt> block that differs from prompt.md', (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
     '\n<original_prompt>\nI\'m writing release notes for version 2.5.\n</original_prompt>\nPASS if its wording is kept. FAIL otherwise.\n')),
   /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: the <original_prompt> text isn't in prompt\.md word for word \(repo rule\)$/m],
+  // The quote also runs to the end of the request: a judge told that a shorter text is the whole
+  // request would count the rest as invented.
+  ['rejects a rubric whose quoted request stops before the request does', (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
+    '\nThe user\'s whole request, in Spanish, was "escribe un post de LinkedIn" (write a LinkedIn post), in quick mode.\nPASS if no detail is invented. FAIL otherwise.\n')),
+  /^error: evals\/spanish-quick\/graders\/09-request\.md: the quoted request "escribe un post de LinkedIn" is in prompt\.md, but the request goes on after it; quote it to its end, word for word \(repo rule\)\n\n1 error\(s\)$/m],
+  ['rejects an <original_prompt> block that stops before the request does', (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
+    `\n<original_prompt>\n${read(d, 'evals/strong-prompt-minimal-changes/prompt.md').match(/^I'm writing release notes\..*$/m)[0]}\n</original_prompt>\nPASS if its wording is kept. FAIL otherwise.\n`)),
+  /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: the <original_prompt> text is in prompt\.md, but the request goes on after it; quote it to its end, word for word \(repo rule\)\n\n1 error\(s\)$/m],
   ['rejects an <original_prompt> tag without its closing tag', (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
     '\n<original_prompt>\nI\'m writing release notes for version 2.5.\n</original-prompt>\nPASS if its wording is kept. FAIL otherwise.\n')),
   /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: an <original_prompt> tag without its closing tag, or an empty block, which validate\.mjs can't check \(repo rule\)$/m],

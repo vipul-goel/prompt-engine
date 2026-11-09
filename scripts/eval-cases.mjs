@@ -710,6 +710,18 @@ const ANSWER_CHECK = /\banswer(?:s|ed)?\b|★|\brecommend|\boptions?\b|\baccept/
 // it, in normalizeQuote's form, without trailing punctuation or the · between options on one line.
 const answerKey = (text) => normalizeQuote(text.replace(/★[\s\S]*$/u, '')).replace(/[\s.,;:·•|]+$/u, '');
 
+// Whether a quote of the request runs to the request's end in text: some occurrence of it is
+// followed only by white space to the end of the text, or right by </command-args>, where a
+// recorded slash command's arguments end. What comes before the quote isn't checked, so a lead-in
+// such as "Use prompt-engine (quick mode) to" can stay out of it; a request that grows at its start
+// therefore isn't caught, which would need the rubrics to quote their lead-ins too.
+const endsRequest = (text, quote) => {
+  for (let i = text.indexOf(quote); i >= 0; i = text.indexOf(quote, i + 1)) {
+    if (/^(?:\s*$|<\/command-args>)/.test(text.slice(i + quote.length))) return true;
+  }
+  return false;
+};
+
 // This repo's checks on each case's conversation, as described above. contract is
 // data/contract.json. A case with a file that didn't read is skipped.
 export function checkConversations(root, cases, { err, contract }) {
@@ -733,7 +745,9 @@ export function checkConversations(root, cases, { err, contract }) {
     // criteria and the reply, so a rubric that judges against the request quotes it, and the quote
     // must be the case's own, word for word: in prompt.md's body or, in a history case, in what the
     // user typed in the recording. Only the text inside the tags or quotes counts, so a gloss next
-    // to it doesn't. A misquoted request is reported here only, not by the history quote rule below.
+    // to it doesn't. The quote also runs to the end of the request (endsRequest): a judge told that
+    // a shorter text is the whole request would count the rest as invented. A misquoted request is
+    // reported here only, not by the history quote rule below.
     const typed = [reply, ...(rec?.userTexts ?? [])];
     const source = rec ? 'prompt.md or a recorded user message' : 'prompt.md';
     const misquoted = new Set(); // grader file + "\0" + quote
@@ -745,13 +759,17 @@ export function checkConversations(root, cases, { err, contract }) {
       const blocks = [...criteria.matchAll(ORIGINAL_PROMPT)];
       if ((criteria.match(/<original_prompt>/g) ?? []).length !== blocks.length || blocks.some((m) => m[1].trim() === '')) err(`${g.file}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`);
       for (const m of blocks) {
-        if (m[1].trim() !== '' && !typed.some((t) => t.includes(m[1].trim()))) err(`${g.file}: the <original_prompt> text isn't in ${source} word for word (repo rule)`);
+        const block = m[1].trim();
+        if (block === '' || typed.some((t) => endsRequest(t, block))) continue;
+        if (typed.some((t) => t.includes(block))) err(`${g.file}: the <original_prompt> text is in ${source}, but the request goes on after it; quote it to its end, word for word (repo rule)`);
+        else err(`${g.file}: the <original_prompt> text isn't in ${source} word for word (repo rule)`);
       }
       const requests = [...criteria.matchAll(WHOLE_REQUEST)];
       if ((criteria.match(WHOLE_REQUEST_MARK) ?? []).length !== requests.length) err(`${g.file}: "The user's whole request" isn't followed by the request in quotes on the same line, which validate.mjs can't check (repo rule)`);
       for (const [, quote] of requests) {
-        if (typed.some((t) => t.includes(quote))) continue;
-        err(`${g.file}: the quoted request "${quote}" isn't in ${source} word for word (repo rule)`);
+        if (typed.some((t) => endsRequest(t, quote))) continue;
+        if (typed.some((t) => t.includes(quote))) err(`${g.file}: the quoted request "${quote}" is in ${source}, but the request goes on after it; quote it to its end, word for word (repo rule)`);
+        else err(`${g.file}: the quoted request "${quote}" isn't in ${source} word for word (repo rule)`);
         misquoted.add(`${g.file}\0${quote}`);
       }
     }

@@ -790,6 +790,41 @@ test('checkConversations holds the request text that a rubric quotes to the case
   ]);
 });
 
+test('checkConversations wants a quoted request to run to the end of the request', () => {
+  const round = assistantRow(`1. Who?\n   a) Me ★\n\n${REPLY_LINE}`);
+  const command = (args) => `<command-message>prompt-engine:prompt-engine</command-message>\n<command-name>/prompt-engine:prompt-engine</command-name>\n<command-args>${args}</command-args>`;
+  const quick = (request) => `---\nmodel: ${MODEL}\n---\n\nUse prompt-engine in quick mode on this prompt:\n\n${request}\n`;
+  // Passed: a quote that ends where the request ends, after a lead-in on its line, at the end of a
+  // recorded message, or right before </command-args>.
+  const fine = histories({
+    'evals/lead-in/prompt.md': `---\nmodel: ${MODEL}\n---\n\nUse prompt-engine (quick mode) to write a Midjourney prompt: a cabin at night\n`,
+    'evals/lead-in/graders/01-no-invention.md': judge('The user\'s whole request was "write a Midjourney prompt: a cabin at night", in quick mode.'),
+    ...recordedCase('typed', [userRow('Use prompt-engine to improve this prompt:\nwrite a blog post about remote work\n'), round], 'ok', {
+      '01-request.md': judge('The user\'s whole request was "write a blog post about remote work". <original_prompt>write a blog post about remote work</original_prompt>'),
+    }),
+    ...recordedCase('command', [userRow(command('quick: write the launch notes for v2')), round], 'ok', {
+      '01-request.md': judge('The user\'s whole request was "write the launch notes for v2", and they replied "ok".'),
+    }),
+  });
+  assert.deepEqual(fine.errors, []);
+  // Reported: a request that goes on past the quote, which tells the judge it is shorter than it is.
+  const { errors } = histories({
+    'evals/quick/prompt.md': quick('write a launch email for my productivity app, 120 words, for existing users, with a 20% discount'),
+    'evals/quick/graders/01-no-invention.md': judge('The user\'s whole request was "write a launch email for my productivity app", in quick mode. It gives no length, audience or discount.'),
+    'evals/block/prompt.md': quick('Summarize the notes below in a table.\nKeep it under 200 words.'),
+    'evals/block/graders/01-kept.md': judge('<original_prompt>\nSummarize the notes below in a table.\n</original_prompt>\nPASS if the wording is kept.'),
+    ...recordedCase('followup', [userRow(command('quick: write the launch notes for v2, in French')), round], 'ok', {
+      '01-request.md': judge('The user\'s whole request was "write the launch notes for v2", and they replied "ok".'),
+    }),
+  });
+  const rest = 'but the request goes on after it; quote it to its end, word for word (repo rule)';
+  assert.deepEqual(errors, [
+    `evals/block/graders/01-kept.md: the <original_prompt> text is in prompt.md, ${rest}`,
+    `evals/followup/graders/01-request.md: the quoted request "write the launch notes for v2" is in prompt.md or a recorded user message, ${rest}`,
+    `evals/quick/graders/01-no-invention.md: the quoted request "write a launch email for my productivity app" is in prompt.md, ${rest}`,
+  ]);
+});
+
 test('checkConversations reports a contract without what the history checks read, skips those checks, and still checks quoted requests', () => {
   const { errors } = histories({
     'evals/quick/prompt.md': `---\nmodel: ${MODEL}\n---\n\nwrite a post\n`,
