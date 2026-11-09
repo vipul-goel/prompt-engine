@@ -73,7 +73,7 @@ Follow `references/blueprint.md` and the domain pack. In short:
 
 ### 5. Present
 
-Use the structure in `references/output-format.md`, with every label in the user's language: the headings below, score rows, caveat line, menu options, `change N` and `deep` (a French reply has `### Prompt complet`, `modifier 2` and `approfondir`; the tags, ★ and `[[` stay as written). Show these parts in this order and nothing else:
+Use the structure in `references/output-format.md`, with every label in the user's language: the headings below, score rows, caveat line, menu options, `change N` and `deep` (a French reply has `### Prompt complet` and `modifier 2`; the tags, ★ and `[[` stay as written). Show these parts in this order and nothing else:
 
 1. One line saying what you made and for which tool.
 2. **Full prompt** in a fenced block.
