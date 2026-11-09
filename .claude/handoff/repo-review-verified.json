@@ -1726,7 +1726,7 @@
         "asksForKey (universal-test.mjs) misses an ask after a dash that opens no aside, a key named only in brackets, and a key named only in rotation advice; it flags a question about the key's type. The residuals are listed in its comment.",
         "The translated fence graders fail a reply with a heading before the Full prompt heading; the translated tag graders pass a What I added section with no tags when another section is tagged (both named in their comments).",
         "The universal core has 5 characters left and lacks the second pass's rules (one-sentence critique line, the strong-prompt length cue, media fields in their own blocks, the compare-each-detail check, the bullet-merge rule); the knowledge file carries them.",
-        "SKILL.md has 81 characters left before ### 5. Present; the image-video get_checklist result is about 1,700 characters under integration.test.ts's 24,000.",
+        "SKILL.md had 81 characters left before ### 5. Present at the end of step 1d, and 61 after T1's fix pass, which named the removed detail in Intake's never-ask sentence; the image-video get_checklist result is about 1,700 characters under integration.test.ts's 24,000.",
         "The new MCP text and the trigger for critique requests need a live host check."
       ],
       "step_3": [
