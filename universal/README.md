@@ -1,6 +1,6 @@
 # Use Prompt Engine in any chatbot
 
-These files let you use Prompt Engine in any chat app by pasting it in, with nothing to install: ChatGPT, Gemini, Microsoft Copilot, Perplexity, Grok, Le Chat and others. (On Claude, Claude Code, Codex, Gemini CLI, Copilot in VS Code and most coding agents, install the skill instead. See the main [README](../README.md).)
+These files let you use Prompt Engine in any chat app by pasting `prompt-engine.md` in, with nothing to install: ChatGPT, Gemini, Microsoft Copilot, Perplexity, Grok, Le Chat and others. (On Claude, Claude Code, Codex, Gemini CLI, Copilot in VS Code and most coding agents, install the skill instead. See the main [README](../README.md).)
 
 | File | What it is | Size |
 |---|---|---|
@@ -50,6 +50,6 @@ Use the app's custom instructions or space or agent instructions field, and atta
   - Questions arrive as a numbered list rather than clickable dialogs.
   - "Run it now" carries out the prompt in the same chat.
   - "Save to file" appears only when the app has a tool that saves files on your computer; most chat apps don't.
-  - Secrets such as API keys are kept out of the prompt, but the instructions have no rule for other people's private details, which the skill replaces with placeholders. [Known limits](../docs/compatibility.md#known-limits) has the details.
+- **Other people's private details.** With these instructions, on Claude too, secrets such as API keys are kept out of the prompt, but there is no rule for other people's private details, which the skill replaces with placeholders. [Known limits](../docs/compatibility.md#known-limits) has the details.
 - **Privacy.** Prompt Engine is just instructions: your prompts go only to the AI app you're already using.
 - **Testing status.** A conversation test checks these instructions on Claude through `claude -p`, with no tools or MCP servers loaded. It makes billed calls and is run by hand; [docs/compatibility.md](../docs/compatibility.md) has the date and result of the last run. Results in other apps may differ.
