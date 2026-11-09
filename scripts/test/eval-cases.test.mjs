@@ -1123,3 +1123,31 @@ test('the media no-invention rubrics count new things, not descriptive words, an
   // No example names a case's own subject, in English or Japanese.
   assert.deepEqual(text.match(/cabin|\bhut\b|snow|night|mountain|cozy|barista|latte|caf[eé]|espresso|milk|小屋|雪|夜/gi), null);
 });
+
+// The translated cases (D3, K3): a judge reads the reply's language, and a regex fails an English
+// label. K3 leaves the two reply keywords free: translated or in English.
+const TRANSLATED = [['japanese-midjourney-quick', '02-language-choice-visible', '07-labels-translated', 'Japanese'], ['spanish-quick', '01-spanish-throughout', '04-labels-translated', 'Spanish']];
+test('the translated cases want the labels in the user\'s language and accept deep and change N in English too (K3)', () => {
+  for (const [c, judgeName, labelsName, language] of TRANSLATED) {
+    const rubric = graderOf(c, judgeName).body;
+    // The labels are still asked for; the keywords are named as free, in either language.
+    assert.ok(rubric.includes('section headings, score rows, caveat line and What next? options'), c);
+    assert.ok(new RegExp(`'change N' \\(as in 'change \\d: …'\\) and 'deep', each of which may be in ${language} \\(such as '[^']+'\\) or in English\\.`).test(rubric), c);
+    assert.ok(rubric.includes('A reply keyword in a third language is a FAIL.'), c);
+    assert.ok(!/reply keywords it offers/.test(rubric), `${c}: the keywords are no longer among the parts that must be translated`);
+    const labels = graderOf(c, labelsName);
+    assert.equal(labels.match, 'not_contains');
+    // Lines of step 1d's replies: translated labels, with the keywords left in English.
+    const japanese = '### 前提\n1. 言語は日本語のまま。\n\n「change 3: 暖色の光だけ」のように返信すると、どの項目でも修正できます。\n\n### 次はどうしますか?\n1. 完了 ★ — Midjourney に貼り付けてください。\n2. 修正 — 前提を変更するか、`deep` と返信して追加の質問を受けられます。';
+    const spanish = '### Supuestos\n1. Tono cercano.\n\nResponde "change 2: tono más formal" para ajustar cualquiera.\n\n### ¿Qué sigue?\n1. Ejecutar ahora ★\n2. Refinar: cambia un supuesto o responde `deep` para más preguntas.';
+    for (const reply of [japanese, spanish]) {
+      assert.ok(regexPasses(labels, reply), `${c}: English keywords pass the label check`);
+      // An English label still fails: a heading, a menu option, a score row.
+      for (const [from, to] of [[/### (前提|Supuestos)/, '### Assumptions'], [/2\. (修正|Refinar)/, '2. Refine'], [/$/, '\n| Clear goal | 1 | 3 |']]) {
+        const english = reply.replace(from, to);
+        assert.notEqual(english, reply);
+        assert.ok(!regexPasses(labels, english), `${c}: ${to.trim()}`);
+      }
+    }
+  }
+});
