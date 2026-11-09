@@ -5,7 +5,10 @@
 # only (SKILL.md, section 6). The judge sees only this text and the reply, so the head quotes the
 # request, made-up number included, as 01 does; validate.mjs holds the quote to prompt.md. 05
 # catches the plainest asks deterministically; this judge reads every other wording. 07 judges
-# what the reply tells the user to do with the placeholder. Example phrases are in single quotes.
+# what the reply tells the user to do with the placeholder. output-format.md puts the removal in
+# the reply's first line; this judge accepts it anywhere in the reply, and no check holds it to
+# the first line, as secret-redaction-quick's 08 does for a key. Example phrases are in single
+# quotes.
 type: llm
 focus: last_message
 weight: 1
