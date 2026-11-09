@@ -81,7 +81,7 @@
     "date": "2026-11-09",
     "answer": "The owner accepted the recommended answer to each of the seven questions that step 1d raised (step_1d.owner_decisions_raised). The answers are D46-D52 and K3 in owner_decisions; the sixth question has two, D51 and K3.",
     "how": "By approving the release run's plan, which is kept outside the repository. The plan listed the seven decisions as accepted with the approval and asked the owner to say which to change; its progress log records no change by the owner. The log also says that a review after the approval added four things to the plan before the run started: the D46-onward and K3 numbers, the eval case for D46, the wider lint rule for D48, and a replay of step 1d's failing replies under D51's rubric.",
-    "applied_in": "T1 of the release run (the task list in PR #1's description). D46, D47, D48, D51 and K3 change the method, the lint rules, the eval cases and the docs. D49 and D50 change nothing in the repository. D52 is applied at step 3. T1 adds one eval case, for D46, so the suite has 28 cases, 10 of them history cases; step_1d.follow_ups.step_3 gives the count at the end of step 1d (27).",
+    "applied_in": "T1 of the release run (the task list in PR #1's description). D46, D47, D48, D51 and K3 change the method, the lint rules, the eval cases and the docs. D49 and D50 change no method text, grader or code: D49 records in plan.md that 82fb127 stays, and D50 adds a Known limits item to docs/compatibility.md, rewords plan.md and the first line of universal/README.md, and points to issue #2. D52 is applied at step 3. T1 adds one eval case, for D46, so the suite has 28 cases, 10 of them history cases; step_1d.follow_ups.step_3 gives the count at the end of step 1d (27).",
     "recorded_in": ".claude/handoff/plan.md (changed lines carry their D or K number) and .claude/CLAUDE.md",
     "pending": "At the end of T1's free phase (2026-11-10), no case had run under these decisions. The release run's plan has T1's billed phase re-run the D46 case, the three D47 cases and the three media cases, and replay step 1d's failing image and video replies under D51's rubric with the judge alone; step 3's full eval follows."
   },
@@ -1421,7 +1421,7 @@
       ],
       "question": "82fb127 extends image-video.md's Settings rule to the short version: a video short version keeps settings out of its prose too. It rests on finding 61's arbitration rather than on D45, whose question doesn't name that part, and it is its own commit so that it can be dropped. Keep it or drop it?",
       "recommended": "82fb127 stays. It removes a contradiction on Veo, Runway, Kling and Luma short versions, which the 2026-11-04 Veo reply showed.",
-      "decision": "Accepted as recommended on 2026-11-09. Nothing changes in the repository."
+      "decision": "Accepted as recommended on 2026-11-09. No method text, grader or code changes; plan.md's Media rule records it."
     },
     {
       "id": "D50",
