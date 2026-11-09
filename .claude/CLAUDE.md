@@ -88,6 +88,11 @@ On 2026-11-09 the owner approved an automated run of everything below, and answe
        - D51: the media no-invention rubrics count new things (objects, people, actions, sounds, numbers, settings) that the user didn't give and Assumptions doesn't list, a merged item (D6) included. Descriptive words added to something the user named, such as "wooden" on "cabin", don't count. As applied, words for the picture's light, colors, mood, style, framing and camera don't count either; the method still asks for them under Assumptions.
        - K3: the graders accept `deep` and `change N` either translated or in English. The method still asks for the translation. K2 allowed English only next to a translation.
        - D52: at step 3, the README's real example is replaced with that run's `image-midjourney-quick` reply, naming the model and date the results record.
+     - Owner questions raised in T1's fix pass, with nothing changed for them yet:
+       - A removed private detail that the user sends back later, in an answer, a `change N` or a Fill placeholders reply: keep its placeholder, as D46's reason suggests, or use it, since the user chose to give it? No rule covers it, and `questions.md` says to use a new detail.
+       - Does a name alone count as another person's private detail? `output-format.md` now gives a home address and a health condition as examples, and SKILL.md keeps the user's names intact.
+       - The output template, Format B in `questions.md` and the universal core's sample question use the remote-work blog post that three history cases, two universal-test conversations and three manual checks ask for. Move them to a request no check uses? The core has 5 characters left, and the universal test would need a billed re-run.
+       - D51 as applied treats clothing as a descriptive word of the person who wears it, and counts no light, color, style, framing or camera picks, though the method still asks for them under Assumptions. Confirm, or say which should count.
      - Not verified in 1d:
        - the MCP server's new text with a live host (critique and what's-missing requests, a round's opening line as ask_user's intro);
        - the cases not re-run after the method changes (their last run is 0f65705's full suite);
