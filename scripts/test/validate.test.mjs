@@ -8,7 +8,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -771,6 +771,14 @@ const GIT_ROWS = [
   ]),
   ...[['agents.md', 'AGENTS.md'], ['Claude.local.md', 'CLAUDE.local.md']].map(([f, name]) => [`rejects a tracked ${f} at the plugin root, which macOS and Windows open for ${name}`,
     (d, git) => { put(d, f, '# Notes\n'); git(['add', '-f', f]); }, new RegExp(`(^|\\n)error: ${reEsc(f)}: don't commit it at the plugin root: Claude Code can load it as project memory`), 1]),
+  // .git is there, but git can't read it (here, a worktree whose repository has gone): the rules on
+  // tracked files can't run, and the run says so instead of passing as if they had.
+  ['warns that the rules on tracked files were skipped when git can\'t read the repository', (d, git) => {
+    put(d, 'AGENTS.md', '# Notes\n');
+    git(['add', '-f', 'AGENTS.md']);
+    renameSync(join(d, '.git'), join(d, '.git-moved'));
+    writeFileSync(join(d, '.git'), `gitdir: ${join(d, 'gone').replaceAll('\\', '/')}\n`);
+  }, /^warning: the rules on tracked files \(memory files at the plugin root, and the plugin directory's limits on tracked files\) were skipped: git ls-files failed: \S/m, 0, /AGENTS\.md/],
   // A fixture a case names but git ignores works here and is missing from a clean checkout
   // (finding 67). A tracked one is in every checkout, so it passes.
   ['rejects a fixture that a case names but git ignores', (d) => {
@@ -886,6 +894,21 @@ test('git copies leave alone the repository that GIT_DIR and GIT_INDEX_FILE name
     assert.equal(git('ls-files', '--stage').stdout, before, 'the other repository\'s index is unchanged');
   } finally {
     rmSync(other, { recursive: true, force: true });
+  }
+});
+
+// With .git there but no git command, the rules on tracked files are skipped with a warning too.
+test('warns that the rules on tracked files were skipped when git isn\'t on PATH', { skip: !hasGit && 'needs git' }, () => {
+  const { dir } = gitCopy();
+  const empty = mkdtempSync(join(tmpdir(), 'pe-nogit-'));
+  try {
+    // PATH in any spelling (Windows has Path), replaced by an empty folder.
+    const env = Object.fromEntries(Object.entries(gitEnv()).filter(([k]) => k.toUpperCase() !== 'PATH'));
+    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'validate.mjs')], { env: { ...env, PATH: empty, PE_ROOT: dir }, encoding: 'utf8' });
+    expectRun({ code: r.status, out: r.stdout + r.stderr }, /^warning: the rules on tracked files \([^)]*\) were skipped: git isn't on PATH$/m, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(empty, { recursive: true, force: true });
   }
 });
 

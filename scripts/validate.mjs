@@ -340,15 +340,20 @@ for (const f of readdirSync(root)) if (FORBIDDEN_ROOT_ANY_CASE.has(f.toLowerCase
 
 // Every committed file reaches each Claude Code install twice: in the marketplace clone
 // and in the plugin cache. The rules below read the tracked files from git, because
-// untracked files (build output, a maintainer's own notes) never ship. Without git, or
-// in a copy without .git, they are skipped.
+// untracked files (build output, a maintainer's own notes) never ship. In a copy without
+// .git, they are skipped. With .git, a run that can't list the tracked files skips them with a
+// warning that gives the reason: no git on PATH, or a repository git can't read, such as a
+// worktree whose repository has moved or one owned by another user. A run that only skipped them
+// passed as if they had run.
 function trackedFiles() {
   if (!exists('.git')) return null; // a folder, or the file a worktree has instead
   try {
-    const out = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
+    const out = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
     return out.split('\0').filter(Boolean);
-  } catch {
-    return null; // no git on PATH, or not a work tree
+  } catch (e) {
+    const why = e.code === 'ENOENT' ? 'git isn\'t on PATH' : `git ls-files failed: ${String(e.stderr ?? '').trim().split('\n')[0] || e.message}`;
+    warn(`the rules on tracked files (memory files at the plugin root, and the plugin directory's limits on tracked files) were skipped: ${why}`);
+    return null;
   }
 }
 const tracked = trackedFiles();
