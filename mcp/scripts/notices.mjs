@@ -6,8 +6,10 @@
 // The MCP SDK's own dist already inlines more packages (ajv and others) without their
 // license files, and they aren't installed as runtime dependencies. Their texts are vendored
 // in third-party/<name>@<version>/LICENSE, each copied unchanged from that package's npm
-// tarball, and SDK_INLINED is pinned to the SDK version that inlines them: when the SDK
-// changes, the bundle stops until the list and the vendored texts are reviewed.
+// tarball. SDK_INLINED is pinned to the SDK version that inlines them, and each vendored text
+// to the SHA-256 of the LICENSE in that tarball: when the SDK changes, or a text isn't the
+// one pinned, the bundle stops until the list and the vendored texts are reviewed.
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +18,19 @@ const pkg = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const SDK = '@modelcontextprotocol/server';
 export const SDK_VERSION = '2.4.0';
-export const SDK_INLINED = ['ajv@8.18.0', 'ajv-formats@3.0.1', 'content-type@1.0.5', 'fast-deep-equal@3.1.3', 'fast-uri@3.1.8', 'json-schema-traverse@1.0.0'];
+// Each package SDK_VERSION inlines, with the SHA-256 of the LICENSE in its npm tarball, which
+// its text in third-party/ must match byte for byte. To pin one:
+//   curl -sL "$(npm view <name>@<version> dist.tarball)" | tar -xzO package/LICENSE | shasum -a 256
+// fast-deep-equal and json-schema-traverse ship the same text.
+export const VENDORED_LICENSE_SHA256 = {
+  'ajv@8.18.0': 'a05350a88e318e4f5f2c2a1ff1e2e88daa4dd38e6e78b71cccae422bdc762cc3',
+  'ajv-formats@3.0.1': '9df3bb69929a3b650ed73b3bfa1756725aaff0ac296461605753547004eafeaf',
+  'content-type@1.0.5': '257aed98914108e91a337912727b6a802eef218248507f74b76faffaff517a38',
+  'fast-deep-equal@3.1.3': '7bf9b2de73a6b356761c948d0e9eeb4be6c1270bd04c79cd489c1e400ffdfc1a',
+  'fast-uri@3.1.8': 'b010b0dfdfdb23d7396e03b82cd4621fc9bb8f95d6b0aea70b9c24e12074c786',
+  'json-schema-traverse@1.0.0': '7bf9b2de73a6b356761c948d0e9eeb4be6c1270bd04c79cd489c1e400ffdfc1a',
+};
+export const SDK_INLINED = Object.keys(VENDORED_LICENSE_SHA256);
 
 const RULE = '='.repeat(72);
 
@@ -35,11 +49,14 @@ export function pnpmVersion(segment) {
 
 // esbuild's metafile -> [{ name, version, text, via? }], sorted by name. `via` names the
 // package whose own dist inlines this one. Throws one error that lists every problem: a
-// package without a license text or with an empty one, an SDK other than SDK_VERSION, or an
-// SDK that inlines a set other than SDK_INLINED (this also catches //#region comments that
-// stop naming them).
+// package without a license text or with an empty one, a vendored text without a pin or with
+// another hash, an SDK other than SDK_VERSION, or an SDK that inlines a set other than
+// SDK_INLINED (this also catches //#region comments that stop naming them).
 // The options exist for the tests.
-export function collectNotices(metafile, { root = pkg, thirdParty = join(root, 'third-party'), sdkVersion = SDK_VERSION, sdkInlined = SDK_INLINED } = {}) {
+export function collectNotices(
+  metafile,
+  { root = pkg, thirdParty = join(root, 'third-party'), sdkVersion = SDK_VERSION, sdkInlined = SDK_INLINED, licenseSha256 = VENDORED_LICENSE_SHA256 } = {},
+) {
   const packages = new Map(); // package folder -> { name, version, text }
   const inlined = new Map(); // name@version -> { name, version, text, via }
   const problems = [];
@@ -80,11 +97,19 @@ export function collectNotices(metafile, { root = pkg, thirdParty = join(root, '
     if (unseen.length) problems.push(`SDK_INLINED in scripts/notices.mjs lists ${unseen.join(', ')}, which ${SDK}'s //#region comments don't name`);
   }
   for (const p of inlined.values()) {
-    const dir = join(thirdParty, `${p.name}@${p.version}`);
+    const spec = `${p.name}@${p.version}`;
+    const dir = join(thirdParty, spec);
     const file = licenseFile(dir);
-    if (file) p.text = readFileSync(join(dir, file), 'utf8').trim();
-    if (!file) problems.push(`${p.name}@${p.version} (inlined in ${p.via}): no license text in third-party/${p.name}@${p.version}/`);
-    else if (!p.text) problems.push(`${p.name}@${p.version} (inlined in ${p.via}): third-party/${p.name}@${p.version}/${file} is empty`);
+    const bytes = file ? readFileSync(join(dir, file)) : undefined;
+    if (bytes) p.text = bytes.toString('utf8').trim();
+    const pinned = Object.hasOwn(licenseSha256, spec) ? licenseSha256[spec] : undefined;
+    const hash = bytes && createHash('sha256').update(bytes).digest('hex');
+    if (!file) problems.push(`${spec} (inlined in ${p.via}): no license text in third-party/${spec}/`);
+    else if (!p.text) problems.push(`${spec} (inlined in ${p.via}): third-party/${spec}/${file} is empty`);
+    else if (!pinned) problems.push(`${spec} (inlined in ${p.via}): no SHA-256 pinned for third-party/${spec}/${file} in VENDORED_LICENSE_SHA256 in scripts/notices.mjs`);
+    else if (hash !== pinned) {
+      problems.push(`${spec} (inlined in ${p.via}): third-party/${spec}/${file} has SHA-256 ${hash}, not the ${pinned} pinned in scripts/notices.mjs; copy the LICENSE from the package's npm tarball unchanged`);
+    }
   }
   if (problems.length) throw new Error(`third-party notices:\n  ${problems.join('\n  ')}`);
 

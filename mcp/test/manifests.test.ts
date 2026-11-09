@@ -3,7 +3,7 @@
 // the MCPB bundle's third-party notices cover what it bundles.
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -299,6 +299,32 @@ describe('third-party notices (MCPB bundle)', () => {
     } finally {
       rmSync(thirdParty, { recursive: true, force: true });
     }
+  });
+
+  it('fails, naming the package, when a vendored license text is not the one pinned for it', async () => {
+    const { VENDORED_LICENSE_SHA256, collectNotices } = await notices();
+    const { metafile } = await bundle();
+    const thirdParty = temp();
+    try {
+      cpSync(join(PKG, 'third-party'), thirdParty, { recursive: true });
+      // Another license's header and copyright holder: a long text, but not fast-uri's.
+      const file = join(thirdParty, 'fast-uri@3.1.8', 'LICENSE');
+      writeFileSync(file, readFileSync(file, 'utf8').replace(/^Copyright[^\n]*\n/, 'The MIT License (MIT)\n\nCopyright (c) 2015-2021 Someone Else\n'));
+      expect(() => collectNotices(metafile, { thirdParty })).toThrow(
+        /fast-uri@3\.1\.8 \(inlined in @modelcontextprotocol\/server\): third-party\/fast-uri@3\.1\.8\/LICENSE has SHA-256 [0-9a-f]{64}, not the b010b0df[0-9a-f]{56} pinned in scripts\/notices\.mjs/,
+      );
+      // An inlined package with no pin stops the bundle too.
+      const unpinned = Object.fromEntries(Object.entries(VENDORED_LICENSE_SHA256).filter(([spec]) => spec !== 'fast-uri@3.1.8'));
+      expect(() => collectNotices(metafile, { licenseSha256: unpinned })).toThrow(/fast-uri@3\.1\.8 \(inlined in @modelcontextprotocol\/server\): no SHA-256 pinned/);
+    } finally {
+      rmSync(thirdParty, { recursive: true, force: true });
+    }
+  });
+
+  it('pins a text for each package SDK_INLINED lists, and third-party/ holds only those', async () => {
+    const { SDK_INLINED, VENDORED_LICENSE_SHA256 } = await notices();
+    expect(Object.keys(VENDORED_LICENSE_SHA256).sort()).toEqual([...SDK_INLINED].sort());
+    expect(readdirSync(join(PKG, 'third-party')).sort()).toEqual([...SDK_INLINED].sort());
   });
 
   it('fails when the SDK is not the version its inlined list was reviewed for, or inlines another set', async () => {
