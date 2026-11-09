@@ -24,7 +24,9 @@ One method ships in four formats, so most changes start in one place and flow ou
 
 ## Checks
 
-Run these before opening a pull request. CI runs them too, with the script checks on both Linux and Windows. It also builds the skill zip and runs `claude plugin validate` with `--profile directory` added.
+Run these before opening a pull request. CI runs them too, with the script checks on both Linux and Windows. It also builds the skill zip, runs `claude plugin validate` with `--profile directory` added, and lints the workflow files with [actionlint](https://github.com/rhysd/actionlint) and shellcheck.
+
+If you change a file in `.github/workflows/`, also run `actionlint` on it. One of the script tests, `scripts/test/workflows.test.mjs`, checks the safeguards the workflows keep, such as each release job's permissions, the checksum check of each downloaded tool and the eval workflow's input checks; update it with the workflow when a change is deliberate.
 
 ```bash
 node scripts/build.mjs --check && node scripts/validate.mjs && node --test scripts/test/*.test.mjs
