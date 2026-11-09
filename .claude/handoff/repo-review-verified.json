@@ -1733,7 +1733,7 @@
         "Follow docs/manual-checks.md's Claude Code checklist; record the model /status shows; decide there whether a read-only Bash call before the pick is acceptable (record 52)."
       ],
       "owner": [
-        "The owner decisions raised above, D20, NPM_OWNER and the trusted publisher, and D38(b)."
+        "The owner decisions raised above, D20, NPM_OWNER and the trusted publisher, and D38(b). Since then, the raised decisions were answered on 2026-11-09 (owner_decisions_answered), and D20 and NPM_OWNER were done the same day, before T1."
       ]
     },
     "cost": "Billed: $14.05 (above). Subagent work: the free phase used about 9.1M tokens (24 agents), the consistency phase about 4.8M (17), the second method pass about 1.0M (4), the recording batch about 1.4M (4 in the completed run, after a stopped first attempt), plus one reviewer of the third pass."
