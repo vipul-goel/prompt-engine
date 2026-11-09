@@ -117,6 +117,19 @@ test('the graders check only fenced blocks: the full prompt, the short version a
   assert.ok(passes(plain, 'A few questions (★ = recommended):\n\n1. IMPORTANT question?\n   a) yes ★  b) no'), 'a question round has no fence');
 });
 
+test('the graders catch a request to reason step by step in its hyphenated spellings, and pass the phrase as a format (D48)', () => {
+  const i = renderLintGraders(rules)['lint-prompt-i.md'];
+  // The first line ends the Gemini 3 example template in Google's prompt design guide.
+  for (const line of ['Remember to think step-by-step before answering.', 'Reason step by-step, then answer.', 'Show your step-by-step reasoning.']) {
+    assert.ok(!passes(i, reply(line)), line);
+  }
+  for (const line of ['Write step-by-step instructions for the installer.', 'Analyze the task and create a step-by-step plan.', 'Explain design thinking step by step.']) {
+    assert.ok(passes(i, reply(line)), line);
+  }
+  assert.ok(!passes(i, reply('Write a launch email.').replace('Short.', 'Short. Think step-by-step.')), 'short version');
+  assert.ok(passes(i, reply('Write a launch email.', '\n- **No reasoning request** [best practice]: left out "think step-by-step".')), 'the same words in the commentary');
+});
+
 test('secret-redaction-quick leaves template-leftover out, for ${{ secrets.NAME }} in GitHub Actions', () => {
   const out = buildAll();
   const gha = reply('In the workflow, pass the key as env: OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}');

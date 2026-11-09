@@ -8,6 +8,8 @@
 // mcp/src/check.ts, which check_prompt applies to every rule.
 // Each scan runs under a vm timeout, so a catastrophic pattern fails the test
 // instead of hanging it. Zero dependencies.
+// The last two tests are about one rule's words, not its speed: what
+// visible-reasoning-request matches around "step by step".
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -341,4 +343,66 @@ test('fragments samples characters that two classes both match', () => {
   assert.ok(!fragments(String.raw`\p{Script=Cyrillic}`, 'u').chars.includes('\u0430'));
   assert.ok(!fragments(String.raw`\p{Ll}`, 'u').chars.includes('\u0430'));
   assert.ok(fragments(String.raw`\p{Script=Cyrillic}{1,30}\p{Ll}{10}!`, 'u').chars.includes('\u0430'));
+});
+
+// What visible-reasoning-request matches around "step by step" (D48). It takes
+// the phrase with spaces, hyphens or a mix, and only where the words around it
+// make it a request for the model's own reasoning: after "think" or "reason",
+// after "by" or "your" with "reasoning" or "thinking" ("by thinking step by
+// step", "your reasoning step-by-step"), and between "your" and one of those
+// two words ("your step-by-step reasoning"). Next to other words the phrase
+// asks for an ordered answer or procedure.
+// Known limit: a sentence in which "think" or "reason" only happens to stand
+// before the phrase, such as "I think step-by-step instructions would help",
+// is flagged too.
+const reasoningRule = rules.find((r) => r.id === 'visible-reasoning-request');
+const asksForReasoning = (text) => new RegExp(reasoningRule.pattern, reasoningRule.flags).test(text);
+
+test('visible-reasoning-request catches a request to reason step by step, spelled with spaces, hyphens or a mix', () => {
+  for (const text of [
+    'Think step by step.',
+    "Let's think step by step.",
+    // The line that ends the Gemini 3 example template in Google's prompt design guide.
+    'Remember to think step-by-step before answering.',
+    'THINK STEP-BY-STEP',
+    'Please think step by-step.',
+    'Please think step-by step.',
+    "Let's reason step by step.",
+    'Reason step-by-step, then give the answer.',
+    'Solve the problem by thinking step by step.',
+    'Answer by reasoning step-by-step.',
+    'Explain your reasoning step by step.',
+    'Lay out your thinking step-by-step.',
+    'Show your step-by-step reasoning.',
+    'Give your step by step thinking first.',
+  ]) {
+    assert.ok(asksForReasoning(text), text);
+  }
+  // The match is the request alone: validate.mjs quotes it in its error.
+  const match = new RegExp(reasoningRule.pattern, reasoningRule.flags).exec('Think step-by-step before answering.');
+  assert.equal(match?.[0], 'Think step-by-step');
+});
+
+test('visible-reasoning-request leaves step by step alone where it asks for a format or a procedure', () => {
+  for (const text of [
+    'Write step-by-step instructions for the installer.',
+    'Give me a step-by-step guide to sourdough.',
+    'Explain step by step how to set up the router.',
+    // From the same Google template: a plan, not the model's reasoning.
+    'Analyze the task and create a step-by-step plan.',
+    'Walk the user through the form step by step.',
+    'I think a step-by-step guide would help.',
+    'Think about the audience, then write step-by-step instructions.',
+    'Follow the checklist step by step before you reply.',
+    // Thinking and reasoning as a subject to explain, or someone else's.
+    'Explain design thinking step by step for beginners.',
+    'Teach deductive reasoning step-by-step, with one example per rule.',
+    "Check the student's step-by-step reasoning and name the first error.",
+    'List the reasons step by step.',
+    'The reader thinks step-by-step guides are too long.',
+    // The wording the rule's message recommends.
+    'Explain your reasoning in two sentences after the answer.',
+  ]) {
+    assert.ok(!asksForReasoning(text), text);
+  }
 });
