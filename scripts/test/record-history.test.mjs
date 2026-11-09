@@ -72,7 +72,8 @@ function setup() {
   const base = { ...process.env };
   for (const k of Object.keys(base)) if (k.toUpperCase() === 'PATH' || k === 'CLAUDE_CONFIG_DIR') delete base[k];
   const env = { ...base, PATH: bin, HOME: home, USERPROFILE: home, TMPDIR: tmp, TMP: tmp, TEMP: tmp, FAKE_ARGS: started };
-  const record = (args, extra = {}) => spawnSync(process.execPath, [join(dir, 'scripts', 'eval', 'record-history.mjs'), ...args], { encoding: 'utf8', env: { ...env, ...extra } });
+  // From the parent folder, so that a file the recorder writes by mistake can't land in the checkout.
+  const record = (args, extra = {}) => spawnSync(process.execPath, [join(dir, 'scripts', 'eval', 'record-history.mjs'), ...args], { cwd: parent, encoding: 'utf8', env: { ...env, ...extra } });
   const cleanup = () => rmSync(parent, { recursive: true, force: true });
   return { parent, dir, home, env, started, out, record, cleanup };
 }
@@ -90,6 +91,77 @@ test('record-history.mjs prints its usage, and importing it runs nothing', () =>
     assert.equal(imp.stdout, 'imported\n');
     assert.equal(imp.stderr, '');
     assert.ok(!existsSync(started), 'claude was not started');
+    assert.ok(!existsSync(out));
+  } finally {
+    cleanup();
+  }
+});
+
+test('record-history.mjs refuses a command line it can\'t read, before claude starts', () => {
+  const { parent, started, out, record, cleanup } = setup();
+  try {
+    const cfg = join(parent, 'cfg');
+    mkdirSync(join(cfg, 'projects'), { recursive: true });
+    const msg = 'write a blog post about remote work';
+    // One argument, three, an empty message, --model without a value or with an empty one (a model
+    // name then taken for the file), an unknown option, and a message that reads as an option.
+    for (const args of [[out], [out, msg, 'extra'], [out, ''], [out, msg, '--model'], [out, msg, '--model='], ['--model', out, msg], [out, msg, '--modle', 'x'], [out, '--help me']]) {
+      const r = record(args, { CLAUDE_CONFIG_DIR: cfg });
+      assert.equal(r.status, 2, `${JSON.stringify(args)}: ${r.stderr}`);
+      assert.match(r.stderr, /usage: record-history\.mjs <out\.jsonl>/, JSON.stringify(args));
+      assert.doesNotMatch(r.stderr, /^\s+at /m, 'no stack trace');
+      assert.ok(!existsSync(started), `${JSON.stringify(args)}: claude was not started`);
+    }
+    assert.ok(!existsSync(out));
+  } finally {
+    cleanup();
+  }
+});
+
+test('record-history.mjs reads --model before the file and the message too', { skip: STAND_IN }, () => {
+  const { parent, started, out, record, cleanup } = setup();
+  try {
+    const cfg = join(parent, 'cfg');
+    mkdirSync(join(cfg, 'projects'), { recursive: true });
+    const r = record(['--model', 'claude-opus-5-5', out, 'write a blog post about remote work'], { CLAUDE_CONFIG_DIR: cfg });
+    assert.equal(r.status, 0, r.stderr);
+    const args = JSON.parse(readFileSync(started, 'utf8'));
+    assert.equal(args[args.indexOf('-p') + 1], 'write a blog post about remote work');
+    assert.equal(args[args.indexOf('--model') + 1], 'claude-opus-5-5');
+    assert.ok(existsSync(out));
+    assert.ok(!existsSync(join(parent, '--model')), 'no file named after the flag');
+  } finally {
+    cleanup();
+  }
+});
+
+test('record-history.mjs refuses an output file it can\'t write, before claude starts', () => {
+  const { parent, started, record, cleanup } = setup();
+  try {
+    const cfg = join(parent, 'cfg');
+    mkdirSync(join(cfg, 'projects'), { recursive: true });
+    // A new case's folder that isn't there yet, a folder, and a path through a file.
+    for (const [out, why] of [[join(parent, 'evals', 'new-case', 'history.jsonl'), 'its folder doesn\'t exist'], [cfg, 'it is a folder'], [join(parent, 'fake.mjs', 'history.jsonl'), 'its folder is a file']]) {
+      const r = record([out, 'write a blog post about remote work'], { CLAUDE_CONFIG_DIR: cfg });
+      assert.equal(r.status, 1, r.stderr);
+      assert.equal(r.stderr, `cannot write ${out} (${why}), so nothing was sent\n`);
+      assert.ok(!existsSync(started), `${why}: claude was not started`);
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+test('record-history.mjs says so when claude isn\'t on PATH', () => {
+  const { parent, out, record, cleanup } = setup();
+  try {
+    const cfg = join(parent, 'cfg');
+    mkdirSync(join(cfg, 'projects'), { recursive: true });
+    const empty = join(parent, 'empty');
+    mkdirSync(empty);
+    const r = record([out, 'write a blog post about remote work'], { CLAUDE_CONFIG_DIR: cfg, PATH: empty });
+    assert.equal(r.status, 1, r.stderr);
+    assert.equal(r.stderr, 'could not start claude: it isn\'t on PATH, so nothing was sent\n');
     assert.ok(!existsSync(out));
   } finally {
     cleanup();
