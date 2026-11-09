@@ -503,12 +503,12 @@ test('ci.yml: the Windows job runs the three root checks under bash (findings 13
   }
 });
 
-test('ci.yml: the MCP job tests both Node versions, packs and starts both packages on each, and again on Node 22.19.0 (findings 71 and 79, D26)', () => {
+// Every leg meets the Inspector's Node floor (22.19), so every leg runs its gates.
+test('ci.yml: the MCP job tests both Node versions, runs the Inspector gates and packs and starts both packages on each, and again on Node 22.19.0 (findings 71 and 79, D26)', () => {
   const mcp = ci.jobs.mcp;
   assert.deepEqual(mcp.strategy.matrix.node, ['22', '24']);
   const plain = (re) => mcp.steps.find((s) => runs(re)(s) && s.if === undefined);
-  for (const re of [/^npm ci$/, /^npm run build$/, /^npm test$/, /^npm run test:pack$/, /^npm run pack:mcpb$/]) assert.ok(plain(re), `both legs run ${re.source}`);
-  assert.equal(step(ci, 'mcp', runs(/^npm run test:inspector$/), 'that runs the Inspector gates').if, 'matrix.node == 22');
+  for (const re of [/^npm ci$/, /^npm run build$/, /^npm test$/, /^npm run test:inspector$/, /^npm run test:pack$/, /^npm run pack:mcpb$/]) assert.ok(plain(re), `both legs run ${re.source}`);
   const floor = step(ci, 'mcp', (s) => uses(s, 'actions/setup-node') && s.with?.['node-version'] === '22.19.0', 'that switches to Node 22.19.0');
   const again = step(ci, 'mcp', (s, i) => i > floor.i && runs(/npm run test:pack/)(s), 'that packs again on 22.19.0');
   assert.equal(floor.if, 'matrix.node == 22');

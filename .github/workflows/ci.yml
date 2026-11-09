@@ -86,7 +86,6 @@ jobs:
       - run: npm run build
       - run: npm test
       - name: MCP Inspector gates (needs Node >= 22.19)
-        if: matrix.node == 22
         run: npm run test:inspector
       - name: Install and start the packed npm package
         run: npm run test:pack
