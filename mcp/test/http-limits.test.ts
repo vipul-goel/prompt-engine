@@ -62,6 +62,19 @@ function holdUpload(port: number, held: Held[], length = 50_000): Promise<void> 
   });
 }
 
+/** A 2025-era POST to /mcp with this body, written out for a raw socket. */
+function post(port: number, body: string, extraHeaders = ''): string {
+  return (
+    `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
+    `MCP-Protocol-Version: 2025-11-25\r\n${extraHeaders}Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`
+  );
+}
+
+/** A batch of 100 get_checklist calls, whose answer (2.2 MB) is more than the socket buffers hold. */
+const BATCH = JSON.stringify(
+  Array.from({ length: 100 }, (_, i) => ({ jsonrpc: '2.0', id: i + 1, method: 'tools/call', params: { name: 'get_checklist', arguments: { domain: 'image-video' } } })),
+);
+
 describe.concurrent('--http limits', () => {
   it('keeps serving while many connections send nothing, and closes connections past 1024 at once', async ({ expect }) => {
     const server = await startHttp();
@@ -181,6 +194,40 @@ describe.concurrent('--http limits', () => {
     }
   });
 
+  it('closes a connection once a refusal is written, when requests admitted behind it can never be answered', async ({ expect }) => {
+    const server = await startHttp();
+    const held: Held[] = [];
+    // On one connection, all sent at once: the batch, a request refused for its Origin, and 127
+    // pings. While the batch's answer waits for the client, the refusal waits behind it and the
+    // pings behind that are admitted. Their answers can't be sent once the refusal's answer has
+    // closed the connection, and the client sends an empty line each second, which would keep
+    // resetting an idle timer.
+    const sock = connect({ port: server.port, host: '127.0.0.1', allowHalfOpen: true });
+    let text = '';
+    let closed = false;
+    sock.on('data', (d: Buffer) => (text += d.toString('latin1')));
+    sock.on('error', () => {});
+    sock.on('close', () => (closed = true));
+    sock.pause();
+    const ping = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' });
+    const crlf = setInterval(() => sock.writable && sock.write('\r\n'), 1_000);
+    try {
+      await new Promise((resolve) => sock.once('connect', resolve));
+      sock.write(post(server.port, BATCH) + post(server.port, TOOLS_LIST, 'Origin: http://evil.example.com\r\n') + post(server.port, ping).repeat(127));
+      await sleep(500);
+      sock.resume();
+      await waitFor(() => closed, () => `still open; answers: ${text.match(/^HTTP\/1\.1 \d+/gm)?.join(', ')}`, 5_000);
+      expect(text.match(/^HTTP\/1\.1 \d+/gm)).toEqual(['HTTP/1.1 200', 'HTTP/1.1 403']);
+      // Every slot is free again.
+      for (let i = 0; i < 128; i++) await holdUpload(server.port, held);
+    } finally {
+      clearInterval(crlf);
+      sock.destroy();
+      for (const { sock: upload } of held) upload.destroy();
+      server.proc.kill('SIGTERM');
+    }
+  });
+
   it('stays up with a 512 MB heap while 32 clients send dense batches of the largest size at once', async ({ expect }) => {
     // Each call's _meta nests arrays thousands deep: about 28 bytes of heap for each byte of
     // the body while the request is in flight (about 40 MiB for this 1.5 MB body, measured
@@ -219,19 +266,13 @@ describe.concurrent('--http limits', () => {
     const host = { host: `127.0.0.1:${server.port}` };
     // A batch whose answer (2.2 MB) is more than the socket buffers hold, then 127 tools/list
     // behind it on the same connection, all sent at once: the one connection takes every slot.
-    const batch = JSON.stringify(
-      Array.from({ length: 100 }, (_, i) => ({ jsonrpc: '2.0', id: i + 1, method: 'tools/call', params: { name: 'get_checklist', arguments: { domain: 'image-video' } } })),
-    );
-    const post = (body: string) =>
-      `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
-      `MCP-Protocol-Version: 2025-11-25\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`;
     const sock = connect(server.port, '127.0.0.1');
     sock.on('error', () => {});
     sock.pause(); // never reads
     try {
       await new Promise((resolve) => sock.once('connect', resolve));
       const started = Date.now();
-      sock.write(post(batch) + post(TOOLS_LIST).repeat(127));
+      sock.write(post(server.port, BATCH) + post(server.port, TOOLS_LIST).repeat(127));
       await sleep(2_000);
       expect((await send(server.port, host)).status).toBe(503);
       let status = 503;

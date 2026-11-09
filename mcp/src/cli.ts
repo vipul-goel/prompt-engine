@@ -69,8 +69,11 @@ const MAX_CONNECTIONS = 1024;
 // the server closes its side, keeps reading and discarding what the client sends, and closes
 // the connection once the client closes its side or has sent nothing for LINGER_MS. A body
 // still arriving is cut off by the request timeout, and a request sent after the answer closes
-// the connection at once. After the SDK's 413 for a chunked body, Node has stopped reading the
-// socket, so that connection is closed LINGER_MS after the answer.
+// the connection at once. A request the client sent before the answer, behind the request it
+// answers, may already have been admitted; its answer can never be sent, so then the connection
+// is closed at once, as Node would, which frees its slot. After the SDK's 413 for a chunked
+// body, Node has stopped reading the socket, so that connection is closed LINGER_MS after the
+// answer.
 const LINGER_MS = 2_000;
 // The methods the SDK answers itself: POST, and 405 for GET, DELETE and
 // OPTIONS. Any other gets 405 here, since the SDK's fetch Request throws for
@@ -179,15 +182,16 @@ function declaredBodyBytes(req: IncomingMessage): number {
 
 /**
  * Stands in for socket.destroySoon(), which Node's HTTP server calls on a connection once it
- * has written an answer with Connection: close. See LINGER_MS.
+ * has written an answer with Connection: close. See LINGER_MS. `unanswerable` says whether a
+ * request admitted on the connection is still waiting for its answer.
  */
-function closeInStages(this: Socket): void {
-  if (!this.readable) {
-    Socket.prototype.destroySoon.call(this);
+function closeInStages(socket: Socket, unanswerable: boolean): void {
+  if (!socket.readable || unanswerable) {
+    Socket.prototype.destroySoon.call(socket);
     return;
   }
-  if (this.writable) this.end();
-  this.setTimeout(LINGER_MS, () => this.destroy());
+  if (socket.writable) socket.end();
+  socket.setTimeout(LINGER_MS, () => socket.destroy());
 }
 
 function serveOverHttp(host: string, port: number, allowedHosts: string[]): void {
@@ -267,7 +271,9 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
   });
   httpServer.maxConnections = MAX_CONNECTIONS;
   httpServer.on('connection', (socket: Socket) => {
-    socket.destroySoon = closeInStages;
+    // By the time Node calls this, the answer that closes the connection has been written, so an
+    // admitted request on it whose answer hasn't been is one sent behind that answer's request.
+    socket.destroySoon = () => closeInStages(socket, [...inFlight].some((res) => res.req.socket === socket && !res.writableFinished));
   });
   httpServer.on('error', (error) => {
     log(`cannot listen on ${host}:${port}: ${describeError(error)}`);
