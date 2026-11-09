@@ -4,7 +4,7 @@
 
 import { connect, type Socket } from 'node:net';
 import { describe, it } from 'vitest';
-import { send, sleep, startHttp } from './cli-helpers.js';
+import { send, sleep, startHttp, TOOLS_LIST } from './cli-helpers.js';
 
 /** Opens a TCP connection to the server that sends nothing; resolves once it's connected. */
 function openIdle(port: number, sockets: Socket[]): Promise<Socket> {
@@ -113,6 +113,41 @@ describe.concurrent('--http limits', () => {
       expect(status).toBe(200);
     } finally {
       for (const { sock } of held) sock.destroy();
+      server.proc.kill('SIGTERM');
+    }
+  });
+
+  it('closes a connection whose answers the client stops reading after 15-20 s, which frees their slots', async ({ expect }) => {
+    const server = await startHttp();
+    const host = { host: `127.0.0.1:${server.port}` };
+    // A batch whose answer (2.2 MB) is more than the socket buffers hold, then 127 tools/list
+    // behind it on the same connection, all sent at once: the one connection takes every slot.
+    const batch = JSON.stringify(
+      Array.from({ length: 100 }, (_, i) => ({ jsonrpc: '2.0', id: i + 1, method: 'tools/call', params: { name: 'get_checklist', arguments: { domain: 'image-video' } } })),
+    );
+    const post = (body: string) =>
+      `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
+      `MCP-Protocol-Version: 2025-11-25\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`;
+    const sock = connect(server.port, '127.0.0.1');
+    sock.on('error', () => {});
+    sock.pause(); // never reads
+    try {
+      await new Promise((resolve) => sock.once('connect', resolve));
+      const started = Date.now();
+      sock.write(post(batch) + post(TOOLS_LIST).repeat(127));
+      await sleep(2_000);
+      expect((await send(server.port, host)).status).toBe(503);
+      let status = 503;
+      while (status === 503 && Date.now() - started < 30_000) {
+        await sleep(500);
+        status = (await send(server.port, host)).status;
+      }
+      const seconds = (Date.now() - started) / 1000;
+      expect(status, `slots still held after ${seconds} s`).toBe(200);
+      expect(seconds).toBeGreaterThanOrEqual(14);
+      expect(seconds).toBeLessThan(25);
+    } finally {
+      sock.destroy();
       server.proc.kill('SIGTERM');
     }
   });

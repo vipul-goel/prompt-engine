@@ -148,10 +148,11 @@ The HTTP server's own limits:
 - The MCP SDK answers a 2025-era `resources/read` whose URI is over 1,000,000 characters with `500`, without the request's id, and the server logs the error.
 - The headers must arrive within 10 seconds and the whole request within 30, or the server answers `408` and closes the connection. It checks every 5 seconds, so a stalled request can run up to 5 seconds past its limit.
 - At most 128 requests are handled at once. Past that, a request gets `503` with `Retry-After: 1` before its body is read.
+- A connection whose answer the client stops reading is closed once the answer has waited 15 seconds for it, which ends every request on that connection. The server checks every 5 seconds, so this can take up to 20 seconds.
 - At most 1,024 connections are open at once; more are closed straight away.
 - A request refused for its `Host` or its `Origin`, or for a method other than `POST`, `GET`, `DELETE` and `OPTIONS`, is answered before its body is read, and its connection is closed. The MCP SDK answers `GET`, `DELETE` and `OPTIONS` with `405` itself and keeps the connection open. It reads a `DELETE` or `OPTIONS` body first, so one whose body stalls gets `408` at the timeout instead.
 
-One client can still hold all 128 request slots with slow uploads, or all 1,024 connections, until the timeouts close them. On a network, a proxy in front of the server should still limit body size, connections per client, slow clients and request rate.
+One client can still hold all 128 request slots with slow uploads or answers it doesn't read, or all 1,024 connections, until the timeouts close them. On a network, a proxy in front of the server should still limit body size, connections per client, slow clients and request rate.
 
 ### Cloudflare Workers
 
@@ -189,7 +190,7 @@ npm run test:worker      # Cloudflare Worker dry-run and wrangler dev smoke test
 `npm test` covers:
 - the `check_prompt` heuristics, language detection and lint rules, with timing tests on hostile 100,000-character drafts, and the question validation, text format and form schema;
 - every tool, the prompt and the resources through a real SDK client, in both the 2025-era and the 2026-07-28 protocol, including form answers, declines, closed forms and the text fallback;
-- the built `dist/cli.js` over stdio, and over real HTTP with `Host` and `Origin` checks, `--allowed-hosts` and `PROMPT_ENGINE_ALLOWED_HOSTS`, the body cap, the request and connection caps, the header timeout, and what gets logged for refused and unreadable requests;
+- the built `dist/cli.js` over stdio, and over real HTTP with `Host` and `Origin` checks, `--allowed-hosts` and `PROMPT_ENGINE_ALLOWED_HOSTS`, the body cap, the request and connection caps, the header timeout, the closing of a connection whose answers aren't read, and what gets logged for refused and unreadable requests;
 - budgets: instructions under 3,500 characters; tool descriptions of at most 1,024 characters, since some clients and model APIs are reported to reject or cut longer ones; and every tool result under 24,000 characters, counting its text and structured content as JSON, for the largest inputs the schemas allow. Those inputs are filled with quotes, which double when escaped, or with control characters or unpaired surrogates, which `ask_user` and `check_prompt` return as spaces and U+FFFD rather than as 6-character escapes. The longest list of `ask_user` errors is under the budget too. Errors the MCP SDK writes itself, such as the one for a client that answers a form with an invalid result, aren't covered and can be longer;
 - version and schema checks for `package.json`, `manifest.json` (MCPB) and `server.json` (MCP Registry).
 

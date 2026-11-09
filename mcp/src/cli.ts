@@ -4,7 +4,8 @@
 // the start-up line, warnings, and one line per error, which never quotes a
 // request (see log.ts).
 
-import { createServer as createHttpServer, type IncomingMessage } from 'node:http';
+import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import type { Socket } from 'node:net';
 import { parseArgs } from 'node:util';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import {
@@ -35,9 +36,18 @@ const MAX_BODY_BYTES = PROMPT_MAX_CHARS * 12 + 300_000;
 // it answers, so at most this many requests are passed to it at once. Past
 // that, a request gets 503 before its body is read. A connection that hasn't
 // sent a request, or whose request was refused, takes no slot. Stalled uploads
-// still hold their slots until the 30 s request timeout, so a client that
-// keeps 128 of them open can shut out every other client.
+// still hold their slots until the 30 s request timeout, and answers a client
+// doesn't read until the stall check below closes the connection, so a client
+// that keeps 128 of either going can shut out every other client.
 const MAX_REQUESTS = 128;
+// Node's header and request timeouts end once a request has arrived, and a
+// socket has no idle timeout, so an answer a client doesn't read would wait in
+// the socket's buffer, holding its request's slot, for as long as the
+// connection stays open. Every 5 s, each connection with a request in flight is
+// checked: once a write has waited for the client for 15 s without the socket's
+// buffer going down, the connection is closed, which ends every request on it.
+const STALL_CHECK_MS = 5_000;
+const STALL_LIMIT_MS = 15_000;
 // A backstop on open sockets: connections past it are closed at once.
 // Connections that send nothing count until the header timeout closes them,
 // 10 to 15 s later, so a client that keeps this many open shuts out every
@@ -156,7 +166,23 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
       hostHeaderValidationResponse(request, allowedHosts) ?? originValidationResponse(request, allowedHosts) ?? mcp.fetch(request),
   };
   const nodeHandler = toNodeHandler(guarded, { onerror, maxRequestBodySize: MAX_BODY_BYTES });
-  let inFlight = 0;
+  const inFlight = new Set<ServerResponse>();
+
+  // See STALL_LIMIT_MS. A response waiting behind another on the same connection
+  // has no socket yet; the one being written does.
+  const stalls = new WeakMap<Socket, { length: number; since: number }>();
+  const stallCheck = setInterval(() => {
+    const now = Date.now();
+    for (const res of inFlight) {
+      const socket = res.socket;
+      if (!socket) continue;
+      const seen = stalls.get(socket);
+      if (!socket.writableNeedDrain) stalls.delete(socket);
+      else if (seen?.length !== socket.writableLength) stalls.set(socket, { length: socket.writableLength, since: now });
+      else if (now - seen.since >= STALL_LIMIT_MS) socket.destroy();
+    }
+  }, STALL_CHECK_MS);
+  stallCheck.unref();
 
   // Slow or stalled uploads are cut off: the headers must arrive within 10 s
   // and the whole request within 30 s (Node's defaults are 60 s and 300 s),
@@ -171,7 +197,7 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
     }
     // Answered in the SDK guard's format, without a log line, and the
     // connection is closed rather than the rest of the body read.
-    const refused = refusal(req, allowedHosts) ?? (inFlight >= MAX_REQUESTS ? { status: 503, message: 'Server busy. Try again shortly.' } : undefined);
+    const refused = refusal(req, allowedHosts) ?? (inFlight.size >= MAX_REQUESTS ? { status: 503, message: 'Server busy. Try again shortly.' } : undefined);
     if (refused) {
       const extra = refused.status === 405 ? { allow: 'POST' } : refused.status === 503 ? { 'retry-after': '1' } : {};
       res.writeHead(refused.status, { 'content-type': 'application/json', connection: 'close', ...extra });
@@ -179,8 +205,8 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
       return;
     }
     // 'close' follows both a finished response and a dropped connection.
-    inFlight++;
-    res.once('close', () => inFlight--);
+    inFlight.add(res);
+    res.once('close', () => inFlight.delete(res));
     void nodeHandler(req, res);
   });
   httpServer.maxConnections = MAX_CONNECTIONS;
@@ -200,6 +226,7 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
   });
 
   const stop = () => {
+    clearInterval(stallCheck);
     httpServer.close();
     void mcp.close().finally(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
