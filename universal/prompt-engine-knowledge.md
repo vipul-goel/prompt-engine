@@ -442,13 +442,13 @@ Coding agents take instructions literally and act on them, so these five items p
 
 ### Example
 
-Rough prompt: "add login to my app"
+Rough prompt: "add search to my recipe site"
 
-What changes after questions (React + Express repo detected from `package.json`; answers: email + password, keep the existing user table):
-- **Goal:** add email-and-password login to the existing React and Express app, so users can access their saved projects.
-- **Where:** `server/routes/` and `client/src/pages/`; reuse the existing `users` table, because migrating user data is out of scope.
-- **Done when:** a user can register, log in and log out; protected routes return 401 without a session; existing tests and the new auth tests pass (`npm test`).
-- **Risky actions:** ask before adding dependencies other than a password-hashing library; never log passwords or tokens.
+What changes after questions (Rails app detected from the `Gemfile`; answers: search titles and ingredients, no separate search service):
+- **Goal:** add a search box to the existing Rails recipe site, so visitors can find recipes by title or ingredient.
+- **Where:** `app/controllers/recipes_controller.rb` and `app/views/recipes/`; query the existing database, because a separate search service is out of scope.
+- **Done when:** a search lists the recipes whose title or ingredients match; a search with no match says so; existing tests and the new search tests pass (`bin/rails test`).
+- **Risky actions:** ask before adding a gem or changing the database schema; never put the search text straight into SQL.
 - **Report:** files changed, commands run with their output, and anything not verified.
 
 ---
@@ -495,23 +495,23 @@ For stories and creative writing, ask about genre, point of view, length, the re
 
 ### Example
 
-Rough prompt: "write a launch email for my productivity app" (quick mode)
+Rough prompt: "write a radio ad for our farmers' market" (quick mode)
 
-Assumptions it produces include: audience = existing newsletter subscribers; goal = start a free trial; body of 150–250 words; subject line under 50 characters; friendly and direct tone. Placeholders: `[[app name]]`, `[[key feature]]`, `[[trial length]]`, `[[sign-up link]]`.
+Assumptions it produces include: listeners = people who live nearby; goal = come to the market; 25–30 seconds when read aloud; two alternative opening lines; friendly and plain tone. Placeholders: `[[market name]]`, `[[days and hours]]`, `[[where it is]]`, `[[what is in season]]`.
 
 Enhanced prompt (excerpt):
 
 ```text
 # Goal
-Write a launch email announcing [[app name]], a productivity app, to existing newsletter subscribers, so that as many as possible start a free trial.
+Write a radio ad for [[market name]], a farmers' market, so that as many listeners as possible come to the market. Assume the listeners live nearby unless told otherwise.
 
 # Output
-- A subject line (under 50 characters, because longer ones get cut off on phones) plus two alternatives.
-- Body of 150–250 words: a hook naming the reader's problem, what [[app name]] does about it ([[key feature]]), one short proof point if provided, and one call to action: "Start your [[trial length]] free trial" linking to [[sign-up link]].
-- Tone: friendly and direct, like a founder writing to people who already know the brand. Avoid hype words such as "revolutionary" and "game-changing".
+- A script that takes 25–30 seconds to read aloud, plus two alternative opening lines. Use short sentences, because a listener can't go back and hear a line again.
+- Parts: an opening line about what is in season ([[what is in season]]), where the market is ([[where it is]]), one short proof point if provided, and one call to action: "Come to [[market name]], open [[days and hours]]".
+- Tone: friendly and plain, like a farmer chatting with a regular customer. Avoid claims the market can't prove, such as "the freshest" and "the cheapest".
 
 # Facts
-Use only the facts above. If a number or testimonial would help but isn't provided, leave a placeholder instead of inventing one.
+Use only the facts above. If a number or a customer's quote would help but isn't provided, leave a placeholder instead of inventing one.
 ```
 
 ---
@@ -558,27 +558,27 @@ For data analysis, also ask about the dataset (paste a sample or the columns), t
 
 ### Example
 
-Rough prompt: "compare the best vector databases for my startup" (quick mode)
+Rough prompt: "find out if solar panels are worth it for my house" (quick mode)
 
 Enhanced prompt (excerpt):
 
 ```text
 # Goal
-Compare vector databases for a startup choosing one for a production retrieval-augmented generation (RAG) feature, and recommend the best fit for the constraints below.
+Find out whether solar panels are worth it for a house in [[country or region]], and recommend whether to go ahead, wait or drop the idea.
 
 # Context
-- Today's date: [[today's date]]. Vector databases change quickly, so check current documentation and pricing pages rather than relying on memory, and give an "as of" date.
-- Assume a small team with no dedicated database administrator and fewer than [[number]] vectors at launch unless told otherwise.
+- Today's date: [[today's date]]. Panel prices, electricity rates and subsidy rules change, so check current sources rather than relying on memory, and give an "as of" date.
+- Electricity use: [[yearly electricity use]]. Assume the owner lives in the house and the roof is in good condition unless told otherwise.
 
 # Method
-Compare 4–6 widely used options on: hosting model (managed or self-hosted), cost at our scale, query latency, filtering support, operational effort, and lock-in. Define each criterion before scoring.
+Work out three things, each as a range: the cost to install a system, the yearly saving, and the years until it pays for itself. Define each term and unit first, and stop once each range rests on a cited source.
 
 # Sources and honesty
-- Prefer official documentation and published benchmarks, and say who ran each benchmark.
-- Cite a source for every pricing or performance claim. If something can't be verified, say so instead of estimating.
+- Prefer government, regulator and utility pages, and say when a figure comes from an installer or a manufacturer.
+- Cite a source for every price, rate and subsidy. If something can't be verified for this region, say so instead of guessing.
 
 # Output
-A one-paragraph recommendation first, then a comparison table, then caveats and what would change the recommendation.
+A one-paragraph recommendation first, then a table of the three ranges with their sources, then caveats and what would change the recommendation.
 ```
 
 ---
