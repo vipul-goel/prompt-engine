@@ -51,16 +51,19 @@ describe('package.json', () => {
     expect(pkg.scripts['test:pack']).toBe('node scripts/smoke-pack.mjs');
   });
 
-  it('copies the root LICENSE in for npm pack, keeps a hand-placed one, and fails when there is none', () => {
-    // A copy of scripts/license.mjs in a temporary tree, so the real LICENSE files stay put.
+  // A copy of scripts/license.mjs in a temporary tree, so the real LICENSE files stay put.
+  const licenseTree = () => {
     const root = mkdtempSync(join(tmpdir(), 'prompt-engine-license-'));
-    try {
-      const script = join(root, 'mcp', 'scripts', 'license.mjs');
-      mkdirSync(dirname(script), { recursive: true });
-      cpSync(join(PKG, 'scripts', 'license.mjs'), script);
-      const run = (action: string) => spawnSync(process.execPath, [script, action], { encoding: 'utf8' });
-      const copy = join(root, 'mcp', 'LICENSE');
+    const script = join(root, 'mcp', 'scripts', 'license.mjs');
+    mkdirSync(dirname(script), { recursive: true });
+    cpSync(join(PKG, 'scripts', 'license.mjs'), script);
+    const run = (action: string) => spawnSync(process.execPath, [script, action], { encoding: 'utf8' });
+    return { root, run, copy: join(root, 'mcp', 'LICENSE') };
+  };
 
+  it('copies the root LICENSE in for npm pack, keeps a hand-placed one, and fails when there is none', () => {
+    const { root, run, copy } = licenseTree();
+    try {
       // No LICENSE in either place: prepack fails, so npm pack and npm publish stop.
       const none = run('copy');
       expect(none.status).toBe(1);
@@ -90,6 +93,38 @@ describe('package.json', () => {
     }
   });
 
+  // A pack that fails between prepack and postpack, such as one given a --pack-destination
+  // that doesn't exist, leaves the copy and its marker behind.
+  it('keeps a LICENSE written over a copy that a failed pack left behind', () => {
+    const { root, run, copy } = licenseTree();
+    try {
+      writeFileSync(join(root, 'LICENSE'), 'root license\n');
+      expect(run('copy').status).toBe(0);
+      writeFileSync(copy, 'hand-placed\n');
+      expect(run('copy').status).toBe(0);
+      expect(readFileSync(copy, 'utf8')).toBe('hand-placed\n');
+      expect(run('remove').status).toBe(0);
+      expect(existsSync(copy) ? readFileSync(copy, 'utf8') : 'deleted').toBe('hand-placed\n');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('replaces a copy that a failed pack left behind with the root LICENSE as it is now, and removes it after the pack', () => {
+    const { root, run, copy } = licenseTree();
+    try {
+      writeFileSync(join(root, 'LICENSE'), 'root license\n');
+      expect(run('copy').status).toBe(0);
+      writeFileSync(join(root, 'LICENSE'), 'root license, updated\n');
+      expect(run('copy').status).toBe(0);
+      expect(readFileSync(copy, 'utf8')).toBe('root license, updated\n');
+      expect(run('remove').status).toBe(0);
+      expect(existsSync(copy)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('packs the built server without the Cloudflare Worker entry', () => {
     // npm sets npm_execpath when it runs the tests; fall back to npm on PATH.
     const npm = process.env.npm_execpath?.endsWith('.js') ? [process.execPath, process.env.npm_execpath] : ['npm'];
@@ -99,7 +134,9 @@ describe('package.json', () => {
     expect(files).toContain('dist/cli.js');
     expect(files).toContain('dist/generated/content.js');
     expect(files).not.toContain('dist/worker.js');
-    expect(files.filter((f) => !f.startsWith('dist/')).sort()).toEqual(['README.md', 'package.json']);
+    // A LICENSE is listed only when one is in mcp/: put there by hand, which license.mjs keeps, or
+    // left by a pack that failed. npm run test:pack checks that the packed tarball carries one.
+    expect(files.filter((f) => !f.startsWith('dist/') && f !== 'LICENSE').sort()).toEqual(['README.md', 'package.json']);
   });
 
   it("agrees with the lockfile's root entry, which npm ci doesn't compare", () => {
