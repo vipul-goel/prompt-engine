@@ -2,6 +2,8 @@
 // stateless HTTP entry) in both protocol eras, plus serveStdio over an in-memory
 // pipe for the stateful-connection paths.
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ElicitResult } from '@modelcontextprotocol/client';
 import { CLIENT_CAPABILITIES_META_KEY, createMcpHandler } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -12,6 +14,7 @@ import { DEFAULT_INTRO, HEADER_MAX_CHARS, MAX_OPTIONS, MAX_QUESTIONS, NOTES_MAX_
 import { ASK_USER_MAX_CHARS, FORM_WAIT_MS, INSTRUCTIONS, TOOL_NAMES, createServer } from '../src/server.js';
 import {
   ERAS,
+  PKG,
   SAMPLE_QUESTIONS,
   connectHttp,
   connectStdioInProcess,
@@ -276,6 +279,31 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
       expect(structured.status).toBe('ask_in_chat');
       expect(structured.questionsText.split('\n')[0]).toBe(DEFAULT_INTRO);
       expect(textOf(result)).not.toContain(intro);
+    }
+  });
+});
+
+describe("mcp/README.md's tools table", () => {
+  it("states each structured result as the tool's outputSchema: every field, with ? on the optional ones", async () => {
+    const rows = readFileSync(join(PKG, 'README.md'), 'utf8').split('\n');
+    const conn = await connectHttp('modern');
+    try {
+      const { tools } = await conn.client.listTools();
+      for (const tool of tools) {
+        const row = rows.find((line) => line.startsWith(`| \`${tool.name}\` |`));
+        expect(row, tool.name).toBeDefined();
+        const stated = /Structured `\{([^}]*)\}`/.exec(row!)?.[1];
+        if (!tool.outputSchema) {
+          expect(stated, tool.name).toBeUndefined();
+          continue;
+        }
+        const schema = tool.outputSchema as { properties?: Record<string, unknown>; required?: string[] };
+        const required = new Set(schema.required ?? []);
+        const fields = Object.keys(schema.properties ?? {}).map((field) => (required.has(field) ? field : `${field}?`));
+        expect(stated?.split(',').map((field) => field.trim()).sort(), tool.name).toEqual(fields.sort());
+      }
+    } finally {
+      await conn.close();
     }
   });
 });

@@ -67,7 +67,7 @@ Every tool is annotated read-only, non-destructive, idempotent and closed-world.
 | `enhance_prompt` | `mode?`: `quick`, `standard` or `deep`; `target?`: where the prompt will run, such as `Midjourney` | The method brief as text. It echoes the mode and target and never needs the prompt itself. |
 | `get_checklist` | `domain`: `coding`, `writing`, `research`, `image-video` or `general` | The domain's checklist with ★ defaults and an example. `image-video` also includes each tool's syntax. |
 | `ask_user` | `questions`: 1–8 of `{ id, header?, question, options: [{ label, description? }] (2–4), recommended, why }`; `intro?`, `notes_label?`, `notes_hint?` (the form's message and its notes field's label and hint, in the user's language) | Structured `{ status, answers?, notes?, questionsText?, next }`. For `answered` and `declined`, also a JSON text mirror; for `ask_in_chat`, one text block with the instructions and the numbered questions |
-| `check_prompt` | `prompt` (up to 100,000 characters); `target?` | Structured `{ heuristic, targetKind, mostlyEnglish, dimensions, issues, summary }`, plus a readable text version |
+| `check_prompt` | `prompt` (up to 100,000 characters); `target?` | Structured `{ heuristic, target?, targetKind, mostlyEnglish, dimensions, issues, summary }`, plus a readable text version |
 
 How `ask_user` asks:
 
