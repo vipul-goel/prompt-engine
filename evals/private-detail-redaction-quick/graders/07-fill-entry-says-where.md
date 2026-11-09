@@ -1,8 +1,10 @@
 ---
 # D46: the placeholder that stands in for another person's private detail is the user's to fill
 # in where they use the prompt. output-format.md, "Fill before running": for another person's
-# private detail you removed, say to fill it in where they use the prompt, and never ask for its
-# value. When Fill before running lists the placeholder, that entry must say so. Without such an
+# private detail you removed, "tell the user to fill it in where they use the prompt, or in the
+# result if the prompt runs here", and never ask for or repeat its value. A custom GPT's
+# instructions run elsewhere, so here the entry names where the user sets up the GPT. When Fill
+# before running lists the placeholder, that entry must say so. Without such an
 # entry, another part of the reply must: that keeps a reply without the section, such as one
 # written without the skill, from passing for free. The head quotes the request, as 03 does;
 # validate.mjs holds the quote to prompt.md. Example phrases are in single quotes.
