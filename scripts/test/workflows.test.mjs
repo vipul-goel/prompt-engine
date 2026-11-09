@@ -1,8 +1,8 @@
 // Checks of the GitHub workflow files. Nothing else reads them: actionlint, which CI runs on them,
 // checks their syntax and shell code, not what they promise, so a workflow with a safeguard taken
 // out is still valid. These tests pin down those promises, each with the review finding or owner
-// decision it comes from. Each run: script is also read as text, and a few run under bash with
-// stand-ins for gh and npm, so nothing reaches GitHub or npm.
+// decision it comes from. Most read the run: scripts as text; the npm, GitHub release and issue
+// steps also run under bash, with stand-ins for gh and npm, so nothing reaches GitHub or npm.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -150,10 +150,10 @@ function inOrder(text, parts, what) {
   }
 }
 
-// Runs a step's script under bash -e, as GitHub runs a run: block on Linux by default, in a new
-// folder, with stand-ins first on PATH. Each stand-in logs its arguments, then runs the shell code
-// given for it. GH_CONFIG_DIR and npm's user config point at the empty folder, so even a real gh
-// or npm reached by mistake would have no login.
+// Runs a step's script under bash -e, as GitHub runs a run: block on Linux when no shell is set,
+// in a new folder, with stand-ins first on PATH. Each stand-in logs its arguments, then runs the
+// shell code given for it. GH_CONFIG_DIR and npm's user config point at the empty folder, so even
+// a real gh or npm reached by mistake would have no login.
 const NO_BASH = (process.platform === 'win32' && 'the stand-ins for gh and npm are shell scripts')
   || (spawnSync('bash', ['--version']).error && 'needs bash');
 function runStep(script, { stubs, env = {}, files = {} }) {
@@ -284,7 +284,8 @@ test('release.yml: the packed npm package is installed and started in a read-onl
   const job = release.jobs[check.job];
   assert.ok(!job.steps.some((s) => uses(s, 'actions/upload-artifact')), `job ${check.job} uploads nothing`);
   assert.deepEqual(job.permissions, { contents: 'read' });
-  assert.ok(job.steps.findIndex((s) => uses(s, 'actions/download-artifact')) < check.i, 'it checks the uploaded tarball');
+  const download = job.steps.findIndex((s) => uses(s, 'actions/download-artifact'));
+  assert.ok(download >= 0 && download < check.i, 'it checks the uploaded tarball');
   for (const name of ['github-release', 'npm']) assert.ok([].concat(release.jobs[name].needs).includes(check.job), `${name} waits for job ${check.job}`);
 });
 
@@ -402,7 +403,8 @@ test('evals.yml runs only by hand; its inputs reach the script as checked enviro
   assert.equal(s.env.ANTHROPIC_API_KEY, '${{ secrets.ANTHROPIC_API_KEY }}');
   assert.equal(JSON.stringify(evals).split('secrets.').length, 2, 'no other secret, and the key nowhere else (not in a job or workflow env:)');
   assert.deepEqual(all.filter((x) => JSON.stringify(x).includes('ANTHROPIC_API_KEY')).map(label), [label(all[s.i])]);
-  assert.ok(all.findIndex(runs(/npm install -g @anthropic-ai\/claude-code@\d+\.\d+\.\d+$/m)) < s.i, 'Claude Code is installed, at a fixed version, in an earlier step');
+  const install = all.findIndex(runs(/^npm install -g @anthropic-ai\/claude-code@\d+\.\d+\.\d+$/m));
+  assert.ok(install >= 0 && install < s.i, 'Claude Code is installed, at a fixed version, in an earlier step');
 });
 
 test('evals.yml pins the judge and leaves the agent model to each case (finding 47, D28)', () => {
@@ -432,7 +434,8 @@ test('verify-data.yml runs weekly with a 45-day window, under the 60 days after 
 
 // verify-data.yml's issue step, run with a stand-in gh. `gh issue list` answers from a canned list,
 // keeping only the --json fields as gh does and applying the step's own --jq with real jq; every
-// other gh call is only logged. Returns the calls after the lookup, as "edit 12" or "create".
+// other gh call is only logged. Returns every gh call (all), and the calls after the lookup as
+// "edit 12" or "create" (calls).
 const NO_JQ = NO_BASH || (spawnSync('jq', ['--version']).error && 'needs jq');
 const TITLE = 'Re-verify image/video tool data';
 const BOT = { is_bot: true, login: 'app/github-actions' };
