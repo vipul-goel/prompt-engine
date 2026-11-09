@@ -18,6 +18,7 @@ const readJson = (path: string) => JSON.parse(readFileSync(path, 'utf8'));
 const pkg = readJson(join(PKG, 'package.json'));
 const manifest = readJson(join(PKG, 'manifest.json'));
 const server = readJson(join(PKG, 'server.json'));
+const lock = readJson(join(PKG, 'package-lock.json'));
 const pluginPath = join(REPO, '.claude-plugin', 'plugin.json');
 
 describe('versions', () => {
@@ -26,6 +27,8 @@ describe('versions', () => {
     expect(manifest.version).toBe(VERSION);
     expect(server.version).toBe(VERSION);
     expect(server.packages.map((p: { version: string }) => p.version)).toEqual([VERSION]);
+    // scripts/version.mjs writes both of the lockfile's; npm ci reads neither.
+    expect([lock.version, lock.packages[''].version]).toEqual([VERSION, VERSION]);
     if (existsSync(pluginPath)) expect(readJson(pluginPath).version).toBe(VERSION);
   });
 });
@@ -96,6 +99,14 @@ describe('package.json', () => {
     expect(files).toContain('dist/generated/content.js');
     expect(files).not.toContain('dist/worker.js');
     expect(files.filter((f) => !f.startsWith('dist/')).sort()).toEqual(['README.md', 'package.json']);
+  });
+
+  it("agrees with the lockfile's root entry, which npm ci doesn't compare", () => {
+    // npm ci accepts a lockfile whose root version, engines, license or bin differ from
+    // package.json and leaves them as they are; `npm install` in mcp/ writes them again.
+    const root = lock.packages[''];
+    expect(lock.name).toBe(pkg.name);
+    for (const key of ['name', 'version', 'license', 'bin', 'engines']) expect(root[key], key).toEqual(pkg[key]);
   });
 
   it('pins every dependency exactly', () => {
