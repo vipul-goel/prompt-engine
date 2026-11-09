@@ -56,8 +56,15 @@ const spaces = (line) => line.match(/^ */)[0].length;
 const blank = (line) => /^ *$/.test(line);
 // YAML separates with spaces (and tabs, refused here), so a value's own edges keep any other
 // white space, such as a no-break or ideographic space; String.prototype.trim would drop it and
-// read "regex\u{A0}" as regex.
-const trimSp = (s) => s.replace(/^ +| +$/g, '');
+// read "regex\u{A0}" as regex. A loop, not / +$/: that pattern rescans a run of spaces from each
+// space in it, which took quadratic time on a long run inside a value.
+const trimSp = (s) => {
+  let a = 0;
+  let b = s.length;
+  while (a < b && s[a] === ' ') a++;
+  while (b > a && s[b - 1] === ' ') b--;
+  return s.slice(a, b);
+};
 
 function quoted(v, where) {
   if (v[0] === "'") {
@@ -126,7 +133,9 @@ function scalar(raw, where) {
   if (v[0] === "'" || v[0] === '"') return quoted(v, where);
   if (v[0] === '[' || v[0] === '{') return flow(v, where);
   if (/^[&*!|>%@`#]/.test(v)) throw new Error(`${where}: unsupported YAML value ${v}`);
-  const plain = v.replace(/ +#.*$/, '');
+  // The comment starts at the first space of its run: a match tried from each space of a long run
+  // took quadratic time.
+  const plain = v.replace(/(?<! ) +#.*$/, '');
   // A nested mapping, a list entry or a flow indicator to YAML, or an error; Psych reads :x as a
   // Ruby symbol.
   if (/:( |$)/.test(plain) || /^[-?,]( |$)/.test(plain) || /^[:\]},]/.test(plain)) throw new Error(`${where}: quote the value "${plain}"`);
@@ -653,11 +662,12 @@ const NEXT = 'What next?';
 const SAVE = 'Save to file';
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// A heading as the method writes it: "### Full prompt".
-const headingRe = (h) => new RegExp(`#+[ \\t]*${esc(h)}`);
+// A heading as the method writes it: "### Full prompt". It starts at the first # of a run, which
+// gives the same answers: tried from each # of a long run, it took quadratic time.
+const headingRe = (h) => new RegExp(`(?<!#)#+[ \\t]*${esc(h)}`);
 // The text of the fenced block right after a heading, closed by a fence as long as its opener;
 // null when no fenced block follows the heading.
-const fencedAfter = (text, h) => text.match(new RegExp(`#+[ \\t]*${esc(h)}[^\\n]*\\n\\s*(\`{3,})[^\\n]*\\n([\\s\\S]*?)\\n\\1[ \\t]*(?:\\n|$)`))?.[2] ?? null;
+const fencedAfter = (text, h) => text.match(new RegExp(`(?<!#)#+[ \\t]*${esc(h)}[^\\n]*\\n\\s*(\`{3,})[^\\n]*\\n([\\s\\S]*?)\\n\\1[ \\t]*(?:\\n|$)`))?.[2] ?? null;
 // Quoted text and the text it is looked up in, in one form: NFKC, dashes as -, no ` or * (code
 // and emphasis marks), curly quotes straight, each run of white space as one space, lowercase.
 const normalizeQuote = (s) => s.normalize('NFKC').replace(/[\u{2010}-\u{2015}\u{2212}]/gu, '-').replace(/[`*]/g, '')
@@ -688,8 +698,10 @@ const savePathOf = (text, lineRe) => {
 };
 // A relative path in one form, so ./prompts/x.md, prompts//x.md and prompts\x.md name one file.
 const samePath = (a, b) => posix.normalize(a.replace(/\\/g, '/')) === posix.normalize(b.replace(/\\/g, '/'));
-// Whether a reply picks option q+letter, written as "2c" or "2: c".
-const picks = (reply, { q, letter }) => new RegExp(`(?:^|[^0-9a-z])${q}\\s*:?\\s*${letter}\\b`, 'i').test(reply);
+// Whether a reply picks option q+letter, written as "2c" or "2: c". The spaces after a colon are
+// matched only after one: two runs of \s* side by side split a long run of spaces every way, which
+// took quadratic time.
+const picks = (reply, { q, letter }) => new RegExp(`(?:^|[^0-9a-z])${q}\\s*(?::\\s*)?${letter}\\b`, 'i').test(reply);
 // The prompt a case sends: prompt.md's body, else execution.prompt in case.yaml.
 const promptOf = (c) => c.prompt?.body || (isMapping(c.caseYaml?.execution) && typeof c.caseYaml.execution.prompt === 'string' ? c.caseYaml.execution.prompt.trim() : '');
 // An llm grader's criteria: the criteria key, else the file's body, as the CLI reads them.
@@ -700,8 +712,10 @@ const criteriaOf = (g) => (g.data.type === 'llm' ? g.data.criteria ?? (g.body !=
 const ORIGINAL_PROMPT = /<original_prompt>([\s\S]*?)<\/original_prompt>/g;
 const WHOLE_REQUEST = /The user['\u{2019}]s whole request\b[^"\u{201C}\n]*["\u{201C}]([^"\u{201D}\n]+)["\u{201D}]/gu;
 const WHOLE_REQUEST_MARK = /The user['\u{2019}]s whole request\b/gu;
-// Text in straight or curly double quotes, on one line.
-const QUOTE = /"([^"\n]+)"|\u{201C}([^\u{201D}\n]+)\u{201D}/gu;
+// Text in straight or curly double quotes, on one line. Curly quoted text holds no opening curly
+// quote: from each of a long run of unclosed ones, the match ran to the end of the line, which took
+// quadratic time. So in "\u{201C}a \u{201C}b\u{201D}" the quote is "b".
+const QUOTE = /"([^"\n]+)"|\u{201C}([^\u{201C}\u{201D}\n]+)\u{201D}/gu;
 // A rubric that judges the answers to a question round: it speaks of an answer, an option, a
 // recommendation, accepting or the ★. So "every recommended option the user accepted" counts as
 // well as "every answer" does.

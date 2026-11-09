@@ -107,6 +107,13 @@ const CONTROL = /[\x00-\x08\x0B-\x1F\x7F-\x9F\uFFFE\uFFFF]/;
 // A line in a message: a JSON string, with the characters JSON.stringify leaves as they are (DEL,
 // the C1 range, U+FFFE and U+FFFF) escaped too, so that each one shows.
 const shown = (line) => JSON.stringify(line).replace(/[\x7F-\x9F\uFFFE\uFFFF]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+// A value without its trailing spaces. A loop: "(.*?) *$" tried the end of the line from each
+// character of the value, which took quadratic time on a long run of spaces inside it.
+const trimEndSp = (s) => {
+  let e = s.length;
+  while (e > 0 && s[e - 1] === ' ') e--;
+  return s.slice(0, e);
+};
 function scalar(value, line) {
   if (QUOTED.test(value)) return value.slice(1, -1);
   if (BARE.test(value) && !NOT_A_STRING.test(value)) return value;
@@ -124,8 +131,10 @@ export function parseFrontmatter(text) {
     if (CONTROL.test(line)) throw new Error(`frontmatter must not contain control characters: ${shown(line)}`);
     // PyYAML refuses a tab between a key and its value, at the end of a line and on a blank line.
     if (line.replace(/"[^"\\]*"/, '').includes('\t')) throw new Error(`frontmatter must not contain tabs outside a "double-quoted string": ${shown(line)}`);
-    const nested = line.match(/^ {2}([\w-]+): +(.*?) *$/);
-    const top = line.match(/^([\w-]+):(?: +(.*?))? *$/);
+    const nested = line.match(/^ {2}([\w-]+): +(.*)$/);
+    const top = line.match(/^([\w-]+):(?: +(.*))?$/);
+    if (nested) nested[2] = trimEndSp(nested[2]);
+    if (top?.[2] !== undefined) top[2] = trimEndSp(top[2]);
     if (nested && parent) {
       if (!KEY.test(nested[1]) || NOT_A_STRING.test(nested[1])) throw new Error(`frontmatter key must start with a letter and not read as a YAML boolean, null or number: ${line}`);
       if (Object.hasOwn(data[parent], nested[1])) throw new Error(`duplicate frontmatter key: ${parent}.${nested[1]}`);
@@ -265,8 +274,10 @@ for (const k of KNOWLEDGE_ORDER) if (!refFiles.includes(`${k}.md`)) err(`scripts
 // right after a list marker) whose text is followed by a colon or the end of the line, or a
 // **bold** label that starts a list item. So "Score anchors" doesn't count as "Score", and
 // neither would "### Score (0-5)". The other contract strings may appear anywhere in the text.
+// The spaces after a list marker are matched only after one: two runs of [ \t]* side by side
+// split a long line of spaces every way, which took quadratic time.
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const headingRe = (h) => new RegExp(`(^|\\n)[ \\t]*(?:(?:[-*]|\\d+\\.)?[ \\t]*#{2,4}[ \\t]+${esc(h)}[ \\t]*(?::|\\n|$)|(?:[-*]|\\d+\\.)[ \\t]+\\*\\*${esc(h)}\\*\\*)`);
+const headingRe = (h) => new RegExp(`(^|\\n)[ \\t]*(?:(?:(?:[-*]|\\d+\\.)[ \\t]*)?#{2,4}[ \\t]+${esc(h)}[ \\t]*(?::|\\n|$)|(?:[-*]|\\d+\\.)[ \\t]+\\*\\*${esc(h)}\\*\\*)`);
 // The contract's own shape first: each group in required is a list of strings, and each artifact
 // lists groups that required defines. A misspelled group name read as an empty list, and a list
 // written as a string as its single characters, so either turned checks off without a message.

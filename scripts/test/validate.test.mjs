@@ -863,6 +863,40 @@ test('git copies leave alone the repository that GIT_DIR and GIT_INDEX_FILE name
   }
 });
 
+// validate.mjs's own patterns take time in step with the text they read. Each pattern these
+// inputs reach took quadratic time on one long run of a character: tens of seconds at 80,000
+// characters, where the whole check takes about a second. Each run here reads 200,000 such characters and is stopped
+// after 20 seconds, which leaves room for a busy machine.
+const LONG = 200_000;
+const SLOW_INPUTS = [
+  // eval-cases.mjs: the Full prompt heading and the fenced block after it, in a recorded output.
+  ['a run of "#" before a recorded output', (d) => editOutput(d, (t) => `${'#'.repeat(LONG)}\n${t}`)],
+  // eval-cases.mjs: the text in curly quotes in a history case's rubric.
+  ['unclosed curly quotes in a history case\'s rubric', (d) => edit(d, `${OK_CASE}/graders/08-no-invention.md`, (t) => `${t}\n${'\u{201C}a '.repeat(LONG / 2)}\n`)],
+  // validate.mjs: SKILL.md's frontmatter lines.
+  ['spaces inside SKILL.md\'s quoted description', setFront('description', `description: "Use${' '.repeat(LONG)}to improve a prompt."`)],
+  // validate.mjs: a contract heading, on each line of a contract file.
+  ['a line of spaces in the universal core', (d) => edit(d, CORE, (t) => t.replace('\n', `\n${' '.repeat(LONG)}x\n`))],
+  // eval-cases.mjs: a plain case.yaml value, its edges and a # comment.
+  ['two runs of spaces inside a plain case.yaml value', (d) => edit(d, `${SPANISH}/case.yaml`, (t) => `${t}description: a${' '.repeat(LONG / 2)}b${' '.repeat(LONG / 2)}c\n`)],
+  // eval-cases.mjs: whether the reply picks an option that a rubric quotes, such as "4b".
+  ['a question number and a run of spaces in a history case\'s reply', (d) => edit(d, `${PARTIAL_CASE}/prompt.md`, (t) => t.replace('\n---\n\n2c', `\n---\n\n4${' '.repeat(LONG)}x\n2c`))],
+];
+for (const [name, mutate] of SLOW_INPUTS) {
+  test(`validate.mjs finishes in seconds on ${name}`, () => {
+    const dir = copyRepo();
+    try {
+      mutate(dir);
+      const t0 = performance.now();
+      const r = spawnSync(process.execPath, [join(dir, 'scripts', 'validate.mjs')], { env: { ...gitEnv(), PE_ROOT: dir }, encoding: 'utf8', timeout: 20_000 });
+      assert.equal(r.signal, null, `stopped after ${Math.round(performance.now() - t0)} ms`);
+      assert.doesNotMatch(r.stdout + r.stderr, /^\s+at |validate\.mjs stopped/m);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
 for (const [name, mutate, expected, code, unexpected] of ROWS) test(name, () => withMutation(mutate, expected, code, unexpected));
 for (const [name, mutate, expected, code, unexpected] of GIT_ROWS) {
   test(name, { skip: !hasGit && 'needs git' }, () => inGitCopy(mutate, expected, code, unexpected));
