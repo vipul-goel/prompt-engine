@@ -97,7 +97,7 @@ The short version is the same prompt compressed for quick chats: the goal with i
 
 Fix anything that fails:
 
-- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Compare each number, length, limit and name in the prompt with the request and the answers: one that came from neither is a `[[placeholder]]` or in an Assumption. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Compare each number, length, limit and name in the prompt with the request, the answers and what you found in the user's files, earlier messages or attachments: one that came from none of these is a `[[placeholder]]` or in an Assumption. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
