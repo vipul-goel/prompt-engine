@@ -236,6 +236,23 @@ test('build.mjs reports data it cannot render in one line, without a stack trace
   }
 });
 
+test('build.mjs names a JSON file it reads that does not parse', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-badjson-'));
+  try {
+    copyTo(dir);
+    for (const f of ['data/media-targets.json', 'data/lint-rules.json', 'data/contract.json', '.claude-plugin/plugin.json']) {
+      const before = readFileSync(join(dir, f), 'utf8');
+      writeFileSync(join(dir, f), before.replace('\n', '\n<<<<<<< HEAD\n'));
+      const r = node(join(dir, 'scripts', 'build.mjs'), ['--check']);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.stderr, new RegExp(`^build failed: ${f.replace(/\./g, '\\.')}: [^\\n]*JSON[^\\n]*\\n$`), f);
+      writeFileSync(join(dir, f), before);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ---------- the knowledge file ----------
 test('the knowledge file demotes headings but not "# " lines inside fenced blocks', () => {
   const refs = Object.fromEntries(KNOWLEDGE_ORDER.map((k) => [k, `# ${k}\n\nText.\n`]));

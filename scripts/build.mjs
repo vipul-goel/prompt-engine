@@ -22,6 +22,11 @@ export const root = process.env.PE_ROOT || join(dirname(fileURLToPath(import.met
 // what it wrote, and one pass of CR LF to LF left a CR LF that the next read dropped.
 export const normalize = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s).replace(/\r+\n/g, '\n');
 const read = (p) => normalize(readFileSync(join(root, p), 'utf8'));
+// A JSON file under the root, parsed. JSON.parse's own message doesn't name the file, so a merge-
+// conflict marker or a trailing comma left the build's one line, and validate.mjs, without it.
+export function readJson(p) {
+  try { return JSON.parse(read(p)); } catch (e) { throw new Error(`${p}: ${e.message}`); }
+}
 // SKILL.md's frontmatter and body, from normalized text, or null when the text has none. Claude
 // Code (2.1.319, read in its code) ends the frontmatter at the first "---" after the opening line,
 // wherever it is (/^---\s*\n([\s\S]*?)---\s*\n?/): inside a value, or in a closing line such as
@@ -53,7 +58,9 @@ export function renderMediaTargets(data) {
     'Tool-specific syntax for image and video prompts, used with `references/image-video.md`. These tools change often. If an entry is not marked verified, or the user may be on a different version, ask the user or state your choice as an assumption.',
     '',
   ];
-  for (const t of data.targets) {
+  if (!Array.isArray(data?.targets)) throw new Error('media-targets: targets must be a list of entries');
+  for (const [i, t] of data.targets.entries()) {
+    if (t === null || typeof t !== 'object') throw new Error(`media-targets: targets[${i}] is not an entry`);
     if (!STATUS_LABEL[t.status]) throw new Error(`media-targets: unknown status "${t.status}" for ${t.id}`);
     if (!Array.isArray(t.sources)) throw new Error(`media-targets: ${t.id} needs a sources array`);
     // The fields written into the Markdown below: a missing or misspelled one became "undefined".
@@ -313,7 +320,7 @@ export function renderLintGraders(rules, { media = false, skip = [] } = {}) {
 
 export function buildAll() {
   const outputs = {};
-  const media = JSON.parse(read('data/media-targets.json'));
+  const media = readJson('data/media-targets.json');
   // As a read of the file will see it, here already because the knowledge file and recorded Reads
   // copy this text: a value with a written-out \r\n left a CR LF in them, which each later read
   // dropped, so the build never settled.
@@ -344,7 +351,8 @@ export function buildAll() {
     // Name the history in the error, so the build's one line says which file to record again.
     try { outputs[p] = refreshHistory(read(p), skillBody, readPluginFile); } catch (e) { throw new Error(`${p}: ${e.message}`); }
   }
-  const lintRules = JSON.parse(read('data/lint-rules.json')).rules;
+  const lintRules = readJson('data/lint-rules.json').rules;
+  if (!Array.isArray(lintRules)) throw new Error('data/lint-rules.json: rules must be a list of rules');
   for (const [c, opts] of Object.entries(LINT_GRADER_CASES)) {
     const dir = `evals/${c}/graders`;
     if (!existsSync(join(root, dir)) || !statSync(join(root, dir)).isDirectory()) throw new Error(`LINT_GRADER_CASES in scripts/build.mjs names ${dir}, which does not exist`);
@@ -353,12 +361,12 @@ export function buildAll() {
   if (existsSync(join(root, 'mcp', 'package.json'))) {
     const strip = ({ $comment, ...rest }) => rest;
     outputs['mcp/src/generated/content.ts'] = renderContentModule({
-      version: JSON.parse(read('.claude-plugin/plugin.json')).version,
+      version: readJson('.claude-plugin/plugin.json').version,
       universal: read('universal/prompt-engine.md'),
       refs,
-      contract: strip(JSON.parse(read('data/contract.json'))),
-      media: strip(JSON.parse(read('data/media-targets.json'))),
-      lint: strip(JSON.parse(read('data/lint-rules.json'))),
+      contract: strip(readJson('data/contract.json')),
+      media: strip(readJson('data/media-targets.json')),
+      lint: strip(readJson('data/lint-rules.json')),
     });
   }
   // Every output as a later read of it will see it, so that what the build writes compares equal

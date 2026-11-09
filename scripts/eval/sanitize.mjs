@@ -108,12 +108,15 @@ function textsOf(line) {
     add(line);
     return texts;
   }
-  const walk = (v) => {
+  // With a list of values still to read rather than recursion: JSON.parse reads a row nested
+  // tens of thousands of levels deep, and a recursive walk overflowed the call stack on it.
+  const pending = [value];
+  while (pending.length) {
+    const v = pending.pop();
     if (typeof v === 'string') add(v);
-    else if (Array.isArray(v)) v.forEach(walk);
-    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { add(k); walk(x); }
-  };
-  walk(value);
+    else if (Array.isArray(v)) for (const x of v) pending.push(x);
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { add(k); pending.push(x); }
+  }
   return texts;
 }
 

@@ -198,6 +198,15 @@ test('a token right after a written-out escape, a %XX escape or a colour code is
   assert.deepEqual(scanText('C:\\\\notes\\\\new and 100%25 done'), []);
 });
 
+test('scanText reads every string of a JSON line nested 50,000 levels deep', () => {
+  // A recursive walk overflowed the call stack well before this depth, and validate.mjs stopped.
+  const token = `gh${'p'}_${'R'.repeat(36)}`;
+  const n = 50_000;
+  for (const line of [`${'['.repeat(n)}"${token}"${']'.repeat(n)}`, `{"a":${'{"b":'.repeat(n)}"${token}"${'}'.repeat(n)}}`, `{"a":${'[{"b":'.repeat(n)}0${'}]'.repeat(n)},"c":"${token}"}`]) {
+    assert.deepEqual(scanText(line), ['line 1: GitHub token'], line.slice(0, 12));
+  }
+});
+
 test('the committed histories pass the scan', () => {
   const cases = readdirSync(join(repo, 'evals')).filter((c) => existsSync(join(repo, 'evals', c, 'history.jsonl')));
   assert.ok(cases.length >= 3, cases.join(', '));

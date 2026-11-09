@@ -20,7 +20,7 @@
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, relative, basename } from 'node:path';
-import { buildAll, root, normalize, splitFrontmatter, OS_JUNK, KNOWLEDGE_ORDER } from './build.mjs';
+import { buildAll, root, normalize, readJson, splitFrontmatter, OS_JUNK, KNOWLEDGE_ORDER } from './build.mjs';
 import { checkEvalCases, checkSuiteRules, checkConversations } from './eval-cases.mjs';
 import { scanText, publicText } from './eval/sanitize.mjs';
 
@@ -31,9 +31,51 @@ const warn = (msg) => warnings.push(msg);
 const read = (p) => normalize(readFileSync(join(root, p), 'utf8'));
 const exists = (p) => existsSync(join(root, p));
 const chars = (s) => [...s].length;
+const isMapping = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
-const contract = JSON.parse(read('data/contract.json'));
-const B = contract.budgets;
+// The end of every run: the warnings, then the errors, if any, with exit 1.
+function report() {
+  for (const w of warnings) console.warn(`warning: ${w}`);
+  if (errors.length) {
+    for (const e of errors) console.error(`error: ${e}`);
+    console.error(`\n${errors.length} error(s)`);
+    process.exit(1);
+  }
+}
+// A backstop for a throw that the checks below don't foresee: it ends the error list with one
+// line instead of a stack trace, and keeps the errors found before it, which a stack trace lost.
+process.on('uncaughtException', (e) => {
+  err(`validate.mjs stopped: ${e?.message ?? e}; the checks after this point didn't run`);
+  report();
+});
+
+// The JSON files validate.mjs reads, each an object. One that doesn't parse (a merge-conflict
+// marker, a trailing comma) or holds something else is reported with its name, and the checks
+// that need it are skipped: it returns undefined.
+function readObject(p) {
+  let v;
+  try { v = readJson(p); } catch (e) { err(e.message); return undefined; }
+  if (!isMapping(v)) { err(`${p}: must hold a JSON object`); return undefined; }
+  return v;
+}
+
+const contract = readObject('data/contract.json');
+// The budgets, each checked before it is used: one missing or of the wrong type turned its check
+// off without a word, or stopped validate.mjs. B has only the good ones, so a bad one's check is
+// skipped after its error.
+const B = {};
+const BUDGET_NUMBERS = ['skillBodyMaxChars', 'skillBodyMaxLines', 'skillKeySectionsWithinChars', 'universalCoreMaxChars',
+  'descriptionMaxChars', 'descriptionHardMaxChars', 'skillFolderMaxFiles', 'skillFolderMaxBytes', 'skillFileMaxBytes'];
+if (contract && !isMapping(contract.budgets)) err('data/contract.json: budgets must map each budget to its limit');
+else if (contract) {
+  for (const k of BUDGET_NUMBERS) {
+    if (Number.isFinite(contract.budgets[k]) && contract.budgets[k] >= 0) B[k] = contract.budgets[k];
+    else err(`data/contract.json: budgets.${k} must be a number of 0 or more`);
+  }
+  const sections = contract.budgets.skillKeySections;
+  if (Array.isArray(sections) && sections.every((s) => typeof s === 'string' && s !== '')) B.skillKeySections = sections;
+  else err('data/contract.json: budgets.skillKeySections must be a list of headings');
+}
 const SKILL_DIR = 'skills/prompt-engine';
 const SKILL = `${SKILL_DIR}/SKILL.md`;
 
@@ -173,13 +215,15 @@ for (const f of skillFiles) {
 // the references, which the skill reads as instructions and build.mjs copies into the knowledge
 // file and the MCP server's content) and the universal core. Lint rules marked selfCheck in
 // data/lint-rules.json (pressure words, requests to expose reasoning) must not occur in them.
-const lint = JSON.parse(read('data/lint-rules.json'));
+const lint = readObject('data/lint-rules.json');
+const lintRulesOk = Array.isArray(lint?.rules) && lint.rules.every(isMapping);
+if (lint && !lintRulesOk) err('data/lint-rules.json: rules must be a list of rules, each an object');
 // A rule whose pattern doesn't compile is reported here and skipped below, so a broken
 // self-check rule can't stop validation before the error list is printed.
 const compiles = (r) => {
   try { new RegExp(r.pattern, r.flags); return true; } catch (e) { err(`data/lint-rules.json ${r.id}: bad pattern (${e.message})`); return false; }
 };
-const selfCheckRules = lint.rules.filter(compiles).filter((r) => r.selfCheck);
+const selfCheckRules = (lintRulesOk ? lint.rules : []).filter(compiles).filter((r) => r.selfCheck);
 const INSTRUCTION_FILES = [...skillFiles.filter((f) => f.endsWith('.md')), 'universal/prompt-engine.md'];
 // Text in `code spans` names a pattern, often to warn against it; it is not an instruction.
 // Double-quoted text and fenced example prompts are still checked (D11).
@@ -195,7 +239,7 @@ for (const f of INSTRUCTION_FILES) {
 // Budgets
 if (chars(skillBody) > B.skillBodyMaxChars) err(`${SKILL}: body is ${chars(skillBody)} chars (max ${B.skillBodyMaxChars})`);
 if (skillBody.split('\n').length > B.skillBodyMaxLines) err(`${SKILL}: body is ${skillBody.split('\n').length} lines (max ${B.skillBodyMaxLines})`);
-for (const h of B.skillKeySections) {
+for (const h of B.skillKeySections ?? []) {
   const i = skillBody.indexOf(h);
   if (i < 0) err(`${SKILL}: missing section "${h}"`);
   else if (i > B.skillKeySectionsWithinChars) err(`${SKILL}: section "${h}" starts at char ${i}; keep it within the first ${B.skillKeySectionsWithinChars} so it survives context compaction`);
@@ -226,16 +270,15 @@ const headingRe = (h) => new RegExp(`(^|\\n)[ \\t]*(?:(?:[-*]|\\d+\\.)?[ \\t]*#{
 // The contract's own shape first: each group in required is a list of strings, and each artifact
 // lists groups that required defines. A misspelled group name read as an empty list, and a list
 // written as a string as its single characters, so either turned checks off without a message.
-const isMapping = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-if (!isMapping(contract.required)) err('data/contract.json: required must map each group name to a list of strings');
-if (!isMapping(contract.artifacts)) err('data/contract.json: artifacts must map each file to a list of group names from required');
-const required = isMapping(contract.required) ? contract.required : {};
+if (contract && !isMapping(contract.required)) err('data/contract.json: required must map each group name to a list of strings');
+if (contract && !isMapping(contract.artifacts)) err('data/contract.json: artifacts must map each file to a list of group names from required');
+const required = isMapping(contract?.required) ? contract.required : {};
 const isGroup = (g) => typeof g === 'string' && Object.hasOwn(required, g);
 const strings = (g) => (isGroup(g) && Array.isArray(required[g]) ? required[g].filter((s) => typeof s === 'string' && s !== '') : []);
 for (const [g, list] of Object.entries(required)) {
   if (!Array.isArray(list) || !list.length || list.some((s) => typeof s !== 'string' || s === '')) err(`data/contract.json: required.${g} must be a list of non-empty strings`);
 }
-for (const [file, groups] of Object.entries(isMapping(contract.artifacts) ? contract.artifacts : {})) {
+for (const [file, groups] of Object.entries(isMapping(contract?.artifacts) ? contract.artifacts : {})) {
   if (!Array.isArray(groups) || !groups.length) { err(`data/contract.json: artifacts[${JSON.stringify(file)}] must be a list of group names from required`); continue; }
   for (const g of groups) if (!isGroup(g)) err(`data/contract.json: artifacts[${JSON.stringify(file)}] lists ${JSON.stringify(g)}, which isn't a group in required (${Object.keys(required).join(', ')})`);
   if (!exists(file)) { err(`${file}: listed in data/contract.json but missing`); continue; }
@@ -333,32 +376,40 @@ if (tracked) {
 }
 
 // ---------- manifests ----------
-const plugin = JSON.parse(read('.claude-plugin/plugin.json'));
-const market = JSON.parse(read('.claude-plugin/marketplace.json'));
-if (plugin.name !== 'prompt-engine') err('.claude-plugin/plugin.json: name must be prompt-engine');
-if (!/^\d+\.\d+\.\d+$/.test(plugin.version ?? '')) err('.claude-plugin/plugin.json: version must be semver');
-const entry = (market.plugins ?? []).find((p) => p.name === plugin.name);
-if (!entry) err('.claude-plugin/marketplace.json: no entry for prompt-engine');
-else {
-  if (entry.source !== './') err('.claude-plugin/marketplace.json: prompt-engine source should be "./"');
-  if (entry.version) err('.claude-plugin/marketplace.json: set version only in plugin.json (it silently wins)');
+const plugin = readObject('.claude-plugin/plugin.json');
+const market = readObject('.claude-plugin/marketplace.json');
+if (plugin) {
+  if (plugin.name !== 'prompt-engine') err('.claude-plugin/plugin.json: name must be prompt-engine');
+  if (!/^\d+\.\d+\.\d+$/.test(plugin.version ?? '')) err('.claude-plugin/plugin.json: version must be semver');
 }
-const version = plugin.version;
-if (front?.metadata?.version && front.metadata.version !== version) err(`${SKILL}: metadata.version ${front.metadata.version} != plugin.json ${version}`);
+const plugins = market?.plugins ?? [];
+if (!Array.isArray(plugins) || !plugins.every(isMapping)) err('.claude-plugin/marketplace.json: plugins must be a list of plugin entries');
+else if (market) {
+  const entry = plugins.find((p) => p.name === (plugin?.name ?? 'prompt-engine'));
+  if (!entry) err('.claude-plugin/marketplace.json: no entry for prompt-engine');
+  else {
+    if (entry.source !== './') err('.claude-plugin/marketplace.json: prompt-engine source should be "./"');
+    if (entry.version) err('.claude-plugin/marketplace.json: set version only in plugin.json (it silently wins)');
+  }
+}
+// The versions kept in step with plugin.json's, compared only when plugin.json was read.
+const version = plugin?.version;
+const differs = (v) => plugin !== undefined && v !== version;
+if (front?.metadata?.version && differs(front.metadata.version)) err(`${SKILL}: metadata.version ${front.metadata.version} != plugin.json ${version}`);
 if (exists('mcp/package.json')) {
-  const pkg = JSON.parse(read('mcp/package.json'));
-  if (pkg.version !== version) err(`mcp/package.json: version ${pkg.version} != plugin.json ${version}`);
-  if (exists('mcp/server.json')) {
-    const server = JSON.parse(read('mcp/server.json'));
-    if (pkg.mcpName !== server.name) err(`mcp/package.json mcpName "${pkg.mcpName}" != server.json name "${server.name}"`);
-    if (server.version !== version) err(`mcp/server.json: version ${server.version} != ${version}`);
-    if (chars(server.description ?? '') > 100) err('mcp/server.json: description must be 100 characters or fewer');
-    for (const p of server.packages ?? []) if (p.version && p.version !== version) err(`mcp/server.json: package ${p.identifier} version ${p.version} != ${version}`);
+  const pkg = readObject('mcp/package.json');
+  if (pkg && differs(pkg.version)) err(`mcp/package.json: version ${pkg.version} != plugin.json ${version}`);
+  const server = exists('mcp/server.json') ? readObject('mcp/server.json') : undefined;
+  if (server) {
+    if (pkg && pkg.mcpName !== server.name) err(`mcp/package.json mcpName "${pkg.mcpName}" != server.json name "${server.name}"`);
+    if (differs(server.version)) err(`mcp/server.json: version ${server.version} != ${version}`);
+    if (chars(String(server.description ?? '')) > 100) err('mcp/server.json: description must be 100 characters or fewer');
+    const packages = server.packages ?? [];
+    if (!Array.isArray(packages) || !packages.every(isMapping)) err('mcp/server.json: packages must be a list of package entries');
+    else for (const p of packages) if (p.version && differs(p.version)) err(`mcp/server.json: package ${p.identifier} version ${p.version} != ${version}`);
   }
-  if (exists('mcp/manifest.json')) {
-    const mf = JSON.parse(read('mcp/manifest.json'));
-    if (mf.version !== version) err(`mcp/manifest.json: version ${mf.version} != ${version}`);
-  }
+  const mf = exists('mcp/manifest.json') ? readObject('mcp/manifest.json') : undefined;
+  if (mf && differs(mf.version)) err(`mcp/manifest.json: version ${mf.version} != ${version}`);
 }
 
 // ---------- data ----------
@@ -369,9 +420,11 @@ if (exists('mcp/package.json')) {
 // sources and a date. An entry without an id is named by its place in the list.
 const MEDIA_TEXT = ['prompt_style', 'exclusions', 'settings', 'references', 'text', 'notes'];
 const MEDIA_KEYS = new Set(['id', 'name', 'kind', ...MEDIA_TEXT, 'status', 'sources', 'last_verified']);
-const media = JSON.parse(read('data/media-targets.json'));
+const media = readObject('data/media-targets.json');
+if (media && !Array.isArray(media.targets)) err('data/media-targets.json: targets must be a list of entries');
 const mediaIds = new Set();
-media.targets.forEach((t, i) => {
+(Array.isArray(media?.targets) ? media.targets : []).forEach((t, i) => {
+  if (!isMapping(t)) { err(`data/media-targets.json targets[${i}]: must be an object`); return; }
   const at = `data/media-targets.json ${typeof t.id === 'string' && t.id.trim() ? t.id : `targets[${i}]`}`;
   for (const k of ['id', 'name', 'kind']) if (typeof t[k] !== 'string' || !t[k].trim()) err(`${at}: ${k} must be a non-empty string`);
   if (typeof t.id === 'string' && mediaIds.has(t.id)) err(`${at}: another entry has this id too`);
@@ -396,7 +449,8 @@ media.targets.forEach((t, i) => {
 // request text that any case's rubric quotes against the case.
 const cases = checkEvalCases(root, err);
 checkSuiteRules(root, cases, err);
-checkConversations(root, cases, { err, contract });
+// It reads the contract's headings, menu and reply line: skipped when data/contract.json didn't read.
+if (contract) checkConversations(root, cases, { err, contract });
 // A recorded history is public once committed: the recorder's scan runs on each one (D9).
 // No machine patterns here, since this machine's home folder and name say nothing about
 // the one that recorded the file. The messages name the line and kind, never the match,
@@ -432,10 +486,5 @@ if (built && exists('evals')) {
   }
 }
 
-for (const w of warnings) console.warn(`warning: ${w}`);
-if (errors.length) {
-  for (const e of errors) console.error(`error: ${e}`);
-  console.error(`\n${errors.length} error(s)`);
-  process.exit(1);
-}
+report();
 console.log(`validate: OK (${skillFiles.length} skill files, ${chars(skillBody)} chars in SKILL.md body, ${chars(core)} chars in universal core)`);

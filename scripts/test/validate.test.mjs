@@ -226,6 +226,15 @@ const FORBIDDEN_ROOT = ['package.json', 'package-lock.json', 'npm-shrinkwrap.jso
   'CLAUDE.md', '.mcp.json', '.lsp.json', 'commands', 'agents', 'hooks', 'settings.json', 'SKILL.md',
   'output-styles', 'monitors', 'workflows', 'themes'];
 
+// Damage to a data or manifest file that validate.mjs reads: each row adds a file outside the skill's
+// rules (an error validate.mjs finds before it reads most of these files) and expects that error
+// too, its file's own line, and no stack trace. A stack trace dropped every error found before it.
+const JSON_FILES = ['data/contract.json', 'data/lint-rules.json', 'data/media-targets.json', '.claude-plugin/plugin.json',
+  '.claude-plugin/marketplace.json', 'mcp/package.json', 'mcp/server.json', 'mcp/manifest.json'];
+const OTHER_ERROR = /^error: skills\/prompt-engine\/helper\.py: only Markdown files belong in the skill folder/m;
+const NO_STACK = [/^\s+at /m, /validate\.mjs stopped/];
+const damaged = (mutate) => (d) => { put(d, 'skills/prompt-engine/helper.py', 'print(1)\n'); mutate(d); };
+
 // [name, mutate(dir), expected, code = 1, unexpected = []], as in expectRun.
 const ROWS = [
   // ---- frontmatter
@@ -675,6 +684,36 @@ const ROWS = [
   // With the build failed, no file counts as written: the other cases' graders aren't listed.
   ['reports a lint-grader case that is gone, and lists no lint grader as unwritten', (d) => rmSync(join(d, 'evals/spanish-quick'), { recursive: true }),
     /error: build failed: LINT_GRADER_CASES in scripts\/build\.mjs names evals\/spanish-quick\/graders, which does not exist/, 1, /looks generated/],
+  // ---- damaged data and manifest files
+  ...JSON_FILES.map((f) => [`names ${f} when it doesn't parse, and keeps the other errors`, damaged((d) => edit(d, f, (t) => t.replace('\n', '\n<<<<<<< HEAD\n'))),
+    [new RegExp(`^error: ${reEsc(f)}: [^\\n]*JSON`, 'm'), OTHER_ERROR], 1, [...NO_STACK, /build failed/]]),
+  ...['data/media-targets.json', '.claude-plugin/plugin.json'].map((f) => [`names ${f} when it holds no object`, damaged((d) => writeFileSync(join(d, f), '[]\n')),
+    [new RegExp(`^error: ${reEsc(f)}: must hold a JSON object$`, 'm'), OTHER_ERROR], 1, NO_STACK]),
+  ['names a media target that is null, and checks the others', damaged((d) => editJson(d, 'data/media-targets.json', (j) => { j.targets[1] = null; j.targets[2].status = 'verifed'; })),
+    [/^error: data\/media-targets\.json targets\[1\]: must be an object$/m, /^error: data\/media-targets\.json \S+: bad status "verifed"$/m, OTHER_ERROR], 1, NO_STACK],
+  ['names media targets that are not a list', damaged((d) => editJson(d, 'data/media-targets.json', (j) => { j.targets = { a: j.targets[0] }; })),
+    [/^error: data\/media-targets\.json: targets must be a list of entries$/m, OTHER_ERROR], 1, NO_STACK],
+  ['names lint rules that are not a list', damaged((d) => editJson(d, 'data/lint-rules.json', (j) => { delete j.rules; })),
+    [/^error: data\/lint-rules\.json: rules must be a list of rules, each an object$/m, OTHER_ERROR], 1, NO_STACK],
+  ['names contract budgets that are missing, and skips their checks', damaged((d) => editJson(d, 'data/contract.json', (j) => { delete j.budgets; })),
+    [/^error: data\/contract\.json: budgets must map each budget to its limit$/m, OTHER_ERROR], 1, [...NO_STACK, /budgets\./]],
+  ['names a contract budget that is missing or of the wrong type', damaged((d) => editJson(d, 'data/contract.json', (j) => { delete j.budgets.descriptionMaxChars; j.budgets.skillKeySections = 3; })),
+    [/^error: data\/contract\.json: budgets\.descriptionMaxChars must be a number of 0 or more$/m, /^error: data\/contract\.json: budgets\.skillKeySections must be a list of headings$/m, OTHER_ERROR], 1, NO_STACK],
+  ['names marketplace plugins that are not a list', damaged((d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins = {}; })),
+    [/^error: \.claude-plugin\/marketplace\.json: plugins must be a list of plugin entries$/m, OTHER_ERROR], 1, NO_STACK],
+  ['names server.json packages that are not a list', damaged((d) => editJson(d, 'mcp/server.json', (j) => { j.packages = { npm: j.packages[0] }; })),
+    [/^error: mcp\/server\.json: packages must be a list of package entries$/m, OTHER_ERROR], 1, NO_STACK],
+  // Anything else that stops validate.mjs ends the list with one line, after the errors found before it.
+  ['lists the errors found before a throw it does not foresee, and the throw in one line', (d) => {
+    editJson(d, 'data/contract.json', (j) => { delete j.budgets; });
+    rmSync(join(d, SKILL));
+  }, [/^error: data\/contract\.json: budgets must map each budget to its limit$/m,
+    /^error: validate\.mjs stopped: ENOENT[^\n]*SKILL\.md'; the checks after this point didn't run\n\n2 error\(s\)$/m], 1, /^\s+at /m],
+  // The private-data scan reads every string of a history row, at any depth: a row nested 20,000
+  // levels deep overflowed its recursive walk.
+  ['scans a history row nested 20,000 levels deep, down to its last level', (d) => edit(d, `${SAVE_CASE}/history.jsonl`,
+    (t) => `{"type":"user","message":{"content":${'['.repeat(20_000)}"push with gh${'p'}_${'R'.repeat(36)}"${']'.repeat(20_000)}}}\n${t}`),
+    /^error: evals\/save-to-file\/history\.jsonl line 1: GitHub token \(looks private; remove it or record again\)$/m, 1, NO_STACK],
   // ---- text that must make no difference
   ['passes with CRLF line endings', (d) => {
     for (const f of [SKILL, `${REF}/media-targets.md`, CORE, 'data/contract.json']) edit(d, f, (t) => t.replace(/\n/g, '\r\n'));
