@@ -557,27 +557,27 @@ For data analysis, also ask about the dataset (paste a sample or the columns), t
 
 ### Example
 
-Rough prompt: "compare the best vector databases for my startup" (quick mode)
+Rough prompt: "find out if solar panels are worth it for my house" (quick mode)
 
 Enhanced prompt (excerpt):
 
 ```text
 # Goal
-Compare vector databases for a startup choosing one for a production retrieval-augmented generation (RAG) feature, and recommend the best fit for the constraints below.
+Find out whether solar panels are worth it for a house in [[country or region]], and recommend whether to go ahead, wait or drop the idea.
 
 # Context
-- Today's date: [[today's date]]. Vector databases change quickly, so check current documentation and pricing pages rather than relying on memory, and give an "as of" date.
-- Assume a small team with no dedicated database administrator and fewer than [[number]] vectors at launch unless told otherwise.
+- Today's date: [[today's date]]. Panel prices, electricity rates and subsidy rules change, so check current sources rather than relying on memory, and give an "as of" date.
+- Electricity use: [[yearly electricity use]]. Assume the owner lives in the house and the roof is in good condition unless told otherwise.
 
 # Method
-Compare 4–6 widely used options on: hosting model (managed or self-hosted), cost at our scale, query latency, filtering support, operational effort, and lock-in. Define each criterion before scoring.
+Work out three things, each as a range: the cost to install a system, the yearly saving, and the years until it pays for itself. Define each term and unit first, and stop once each range rests on a cited source.
 
 # Sources and honesty
-- Prefer official documentation and published benchmarks, and say who ran each benchmark.
-- Cite a source for every pricing or performance claim. If something can't be verified, say so instead of estimating.
+- Prefer government, regulator and utility pages, and say when a figure comes from an installer or a manufacturer.
+- Cite a source for every price, rate and subsidy. If something can't be verified for this region, say so instead of guessing.
 
 # Output
-A one-paragraph recommendation first, then a comparison table, then caveats and what would change the recommendation.
+A one-paragraph recommendation first, then a table of the three ranges with their sources, then caveats and what would change the recommendation.
 ```
 
 ---
