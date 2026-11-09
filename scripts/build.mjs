@@ -10,7 +10,7 @@
 // `node scripts/build.mjs --check` exits 1 instead of writing when anything is stale.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // PE_ROOT lets tests point the scripts at a temporary copy of the repository.
@@ -132,6 +132,8 @@ const SKILL_TEXT_HEAD = 'Base directory for this skill: /plugin/skills/prompt-en
 // The names a recording can invoke the skill by: the Skill tool's input.skill, and a typed slash command.
 const SKILL_NAMES = new Set(['prompt-engine', 'prompt-engine:prompt-engine']);
 const COMMAND_NAME = /<command-name>\/(prompt-engine(?::prompt-engine)?)<\/command-name>/;
+// The only files whose Reads refreshHistory refreshes: the skill's own, under the plugin root.
+const SKILL_FILES = 'skills/prompt-engine/';
 // Claude Code's Read result: each line prefixed with its number and a tab.
 const numberLines = (text) => text.split('\n').map((l, i) => `${i + 1}\t${l}`).join('\n');
 
@@ -147,8 +149,10 @@ const numberLines = (text) => text.split('\n').map((l, i) => `${i + 1}\t${l}`).j
 // patched by guesswork: skill text without a recorded invocation, arguments without their
 // ARGUMENTS line (or an ARGUMENTS line other than an empty one without them), a plugin path that
 // wasn't rewritten, a Read with offset or limit (D12: Claude Code's partial-read format isn't
-// verified), a Read of a file that no longer exists, or one of a path with a ".." segment, which
-// would copy a file from outside the plugin into the history.
+// verified), a Read of a file that no longer exists, or a Read of a file outside the skill's
+// folder (skills/prompt-engine/), or of a path with a ".." segment. A refresh copies the file's
+// text from disk into the history, and other files under the root can be untracked or private,
+// such as an .env file, .git/config or a file that a link leads to.
 export function refreshHistory(jsonl, skillBody, readPluginFile) {
   const reads = new Map(); // Read tool_use id -> { rel, partial }
   let args = null; // the arguments of the latest prompt-engine invocation; null before the first one
@@ -171,6 +175,7 @@ export function refreshHistory(jsonl, skillBody, readPluginFile) {
       } else if (part.type === 'tool_result' && reads.has(part.tool_use_id) && part.is_error !== true) {
         const { rel, partial } = reads.get(part.tool_use_id);
         if (rel.split(/[\\/]/).includes('..')) throw new Error(`reads ${rel}, outside the plugin; re-record it`);
+        if (!rel.startsWith(SKILL_FILES)) throw new Error(`reads ${rel}, outside the skill's folder; re-record it`);
         if (partial) throw new Error(`reads part of ${rel} (offset/limit); re-record it`);
         const current = readPluginFile(rel);
         if (current === undefined) throw new Error(`reads ${rel}, which no longer exists; re-record it`);
@@ -296,7 +301,15 @@ export function buildAll() {
   }
   outputs['universal/prompt-engine-knowledge.md'] = renderKnowledge(refs);
   const skillBody = read('skills/prompt-engine/SKILL.md').replace(/^---\n[\s\S]*?\n---\n/, '').trim();
-  const readPluginFile = (p) => outputs[p] ?? (existsSync(join(root, p)) ? read(p) : undefined);
+  // A file on disk is read only when it is still in the skill's folder once links are followed,
+  // so a link there can't bring a file from elsewhere into a recording.
+  const skillDir = join(root, SKILL_FILES);
+  const readPluginFile = (p) => {
+    if (outputs[p] !== undefined) return outputs[p];
+    if (!existsSync(join(root, p))) return undefined;
+    if (!realpathSync(join(root, p)).startsWith(realpathSync(skillDir) + sep)) throw new Error(`${p} leads out of the skill's folder through a link, and only the skill's own files are copied into a recording`);
+    return read(p);
+  };
   for (const entry of readdirSync(join(root, 'evals'), { withFileTypes: true })) {
     const p = `evals/${entry.name}/history.jsonl`;
     if (!entry.isDirectory() || !existsSync(join(root, p))) continue;

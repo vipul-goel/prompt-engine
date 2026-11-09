@@ -355,6 +355,36 @@ test('refuses a Read of a path with a ".." segment, which would copy a file from
   }
 });
 
+test('refuses a Read of a file outside the skill\'s folder, which a refresh would copy into the history from disk', () => {
+  // An untracked .env, the checkout's own git config, a file that a link in a case folder leads
+  // to, and other files of the repository: none of them is the skill's, so none is refreshed.
+  for (const rel of ['.env', '.git/config', 'evals/x/fixtures/notes.txt', 'README.md', 'skills/other/SKILL.md', 'skills/prompt-engine-x/notes.md']) {
+    assert.throws(() => refreshHistory(jsonl(readUse({ file_path: `/plugin/${rel}` }), readResult('1\tOLD')), 'BODY', files({ [rel]: 'LOCAL TEXT' })),
+      { message: `reads ${rel}, outside the skill's folder; re-record it` }, rel);
+  }
+});
+
+test('build.mjs never copies a file that a link in the skill\'s folder leads to from outside it', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => {
+  const parent = mkdtempSync(join(tmpdir(), 'pe-link-'));
+  try {
+    const dir = join(parent, 'repo');
+    copyTo(dir);
+    writeFileSync(join(parent, 'notes.txt'), 'OUTSIDE TEXT\n');
+    const link = 'skills/prompt-engine/references/zz-link.md';
+    symlinkSync(join(parent, 'notes.txt'), join(dir, link));
+    const h = join(dir, 'evals/followup-partial-answers/history.jsonl');
+    writeFileSync(h, `${jsonl(readUse({ file_path: `/plugin/${link}` }), readResult('1\tOLD'))}\n${readFileSync(h, 'utf8')}`);
+    const before = readFileSync(h, 'utf8');
+    const r = node(join(dir, 'scripts', 'build.mjs'));
+    assert.equal(r.code, 1, r.out);
+    assert.equal(r.stderr, `build failed: evals/followup-partial-answers/history.jsonl: ${link} leads out of the skill's folder through a link, and only the skill's own files are copied into a recording\n`);
+    assert.equal(readFileSync(h, 'utf8'), before);
+    assert.doesNotMatch(readFileSync(h, 'utf8'), /OUTSIDE TEXT/);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
 test('refuses a Read it cannot refresh exactly: part of a file, a file that no longer exists, a result that is not text', () => {
   for (const extra of [{ offset: 4 }, { limit: 2 }, { offset: 4, limit: 2 }]) {
     assert.throws(() => refreshHistory(jsonl(readUse({ file_path: `/plugin/${REL}`, ...extra }), readResult('4\tOLD')), 'BODY', files({ [REL]: 'NEW' })),
