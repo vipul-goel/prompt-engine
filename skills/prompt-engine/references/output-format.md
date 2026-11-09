@@ -7,7 +7,7 @@ The reply that delivers an enhanced prompt always has the same shape, so users l
 The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★` and `modifier 2 : …` for `change N`. Translate `deep` the same way, into the user's own word. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
 
 ````markdown
-<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it. For a strong prompt: "Your prompt is already strong — small edits below.">
+<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so. Never repeat a removed value. For a strong prompt: "Your prompt is already strong — small edits below.">
 
 ### Full prompt
 ```text
@@ -52,11 +52,13 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 ## Rules for each part
 
+**Removed values.** The value of a secret or private detail you removed appears nowhere in the reply, bullets, Assumptions and menu included.
+
 **Fences.** Put the prompt in a fence longer than any run of backticks inside it: if the prompt contains a triple-backtick block, wrap it in four backticks. Use the `text` info string so nothing renders as markdown.
 
 **Short version.** At most about 120 words: the goal with its purpose, the 3–5 requirements that matter most, hard constraints and the output format. It carries the same assumptions as the full version. If the full prompt embeds long inputs, the short version may point to them ("the notes below") rather than repeating them, and the note under it says to paste them after it.
 
-**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable), never ask for its value.
+**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable); for another person's private detail you removed, such as a home address or an ID number, tell the user to fill it in where they use the prompt, or in the result if the prompt runs here. Never ask for or repeat the value of either.
 
 **What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. If more qualify, merge related ones, such as two answers, into one bullet; an answer never moves to Assumptions to make room. Tag every bullet:
 - **[you]** — something the user said, restated or made precise;
@@ -74,12 +76,12 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 | Situation | Options |
 |---|---|
 | Normal | Run it now ★ · Refine · Save to file |
-| Placeholders other than secrets still open | Fill placeholders ★ · Refine · Save to file |
+| Open placeholders that are neither secrets nor removed private details | Fill placeholders ★ · Refine · Save to file |
 | Image or video prompt and you can't generate media | Done ★ (with where to paste it) · Refine · Save to file |
 | The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
 | You can't write files (chat apps) | Drop "Save to file" |
 
-When several rows apply, use the first that fits: open placeholders other than secrets, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
+When several rows apply, use the first that fits: open placeholders that are neither secrets nor removed private details, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
 
 In Claude Code, use AskUserQuestion with the question "What would you like to do next?" and the header "Next step", both in the user's language, and the same options; put the save path in the "Save to file" description.
 
@@ -105,7 +107,7 @@ For image and video prompts, read the dimensions as: Clear goal = subject, actio
 
 ## Variants
 
-- **Questions round.** When you are asking questions, the reply is only the questions (see `references/questions.md`), plus one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it. That line is one sentence, not a list: the questions carry the detail. Don't show a draft prompt yet.
+- **Questions round.** When you are asking questions, the reply is only the questions (see `references/questions.md`), plus one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so. Never repeat a removed value. That line is one sentence, not a list: the questions carry the detail. Don't show a draft prompt yet.
 - **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, as long as the prompt grows by at most about half its length, but don't regroup it under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
 - **Refine.** After a change, show one line on what changed, then the full template again with the updated prompt and score.
 - **Run it now.** Once the user picks this, answer the prompt like any normal request. Don't show the template, score or menu again unless they ask for another prompt.

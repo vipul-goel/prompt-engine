@@ -8,6 +8,8 @@
 // mcp/src/check.ts, which check_prompt applies to every rule.
 // Each scan runs under a vm timeout, so a catastrophic pattern fails the test
 // instead of hanging it. Zero dependencies.
+// The last three tests are about one rule's words, not its speed: what
+// visible-reasoning-request matches around "step by step", and its message.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -341,4 +343,89 @@ test('fragments samples characters that two classes both match', () => {
   assert.ok(!fragments(String.raw`\p{Script=Cyrillic}`, 'u').chars.includes('\u0430'));
   assert.ok(!fragments(String.raw`\p{Ll}`, 'u').chars.includes('\u0430'));
   assert.ok(fragments(String.raw`\p{Script=Cyrillic}{1,30}\p{Ll}{10}!`, 'u').chars.includes('\u0430'));
+});
+
+// What visible-reasoning-request matches around "step by step" (D48). It takes
+// the phrase with spaces, hyphens or a mix, and only where the words around it
+// make it a request for the model's own reasoning: after "think" or "reason",
+// after "by" or "your" with "reasoning" or "thinking" ("by thinking step by
+// step", "your reasoning step-by-step"), and between "your" and one of those
+// two words ("your step-by-step reasoning"). Next to other words the phrase
+// asks for an ordered answer or procedure.
+// Known limits: a sentence in which "think" or "reason" only happens to stand
+// before the phrase, such as "I think step-by-step instructions would help",
+// is flagged too, and so is one where the reasoning is someone else's, such as
+// "Help the student reason step by step" or "Encourage learners to think
+// step-by-step". Other wordings of the request pass, such as "Think it through
+// step by step", "Think carefully, step by step" and "Let's work this out in a
+// step by step way", and so does the phrase written with an en, em or figure
+// dash, or with a no-break space (check_prompt turns that into a plain space
+// first). Whether to widen the rule to them is left to step 1e, whose list in
+// the review record's step_1d.follow_ups names these limits.
+const reasoningRule = rules.find((r) => r.id === 'visible-reasoning-request');
+const asksForReasoning = (text) => new RegExp(reasoningRule.pattern, reasoningRule.flags).test(text);
+
+test('visible-reasoning-request catches a request to reason step by step, spelled with spaces, hyphens or a mix', () => {
+  for (const text of [
+    'Think step by step.',
+    "Let's think step by step.",
+    // The line that ends the Gemini 3 example template in Google's prompt design guide.
+    'Remember to think step-by-step before answering.',
+    'THINK STEP-BY-STEP',
+    'Please think step by-step.',
+    'Please think step-by step.',
+    "Let's reason step by step.",
+    'Reason step-by-step, then give the answer.',
+    'Solve the problem by thinking step by step.',
+    'Answer by reasoning step-by-step.',
+    'Explain your reasoning step by step.',
+    'Lay out your thinking step-by-step.',
+    'Show your step-by-step reasoning.',
+    'Give your step by step thinking first.',
+    // The hyphen (U+2010) and the non-breaking hyphen (U+2011) count as hyphens.
+    'Think step\u{2011}by\u{2011}step.',
+    'Remember to think step\u{2010}by\u{2010}step before answering.',
+    'Show your step\u{2011}by\u{2011}step reasoning.',
+  ]) {
+    assert.ok(asksForReasoning(text), text);
+  }
+  // The match is the request alone: validate.mjs quotes it in its error.
+  const match = new RegExp(reasoningRule.pattern, reasoningRule.flags).exec('Think step-by-step before answering.');
+  assert.equal(match?.[0], 'Think step-by-step');
+});
+
+test('visible-reasoning-request leaves step by step alone where it asks for a format or a procedure', () => {
+  for (const text of [
+    'Write step-by-step instructions for the installer.',
+    'Write step\u{2011}by\u{2011}step instructions for the installer.',
+    'Give me a step-by-step guide to sourdough.',
+    'Explain step by step how to set up the router.',
+    // From the same Google template: a plan, not the model's reasoning.
+    'Analyze the task and create a step-by-step plan.',
+    'Walk the user through the form step by step.',
+    'I think a step-by-step guide would help.',
+    'Think about the audience, then write step-by-step instructions.',
+    'Follow the checklist step by step before you reply.',
+    // Thinking and reasoning as a subject to explain, or someone else's.
+    'Explain design thinking step by step for beginners.',
+    'Teach deductive reasoning step-by-step, with one example per rule.',
+    "Check the student's step-by-step reasoning and name the first error.",
+    'List the reasons step by step.',
+    'The reader thinks step-by-step guides are too long.',
+    // The wording the rule's message recommends.
+    'Explain your reasoning in two sentences after the answer.',
+  ]) {
+    assert.ok(!asksForReasoning(text), text);
+  }
+});
+
+// The message reaches MCP hosts with every match (check_prompt) and is printed by validate.mjs,
+// so it gives a reason that holds for each match. Since D48 the rule matches Google's own line
+// for Gemini, `think step-by-step`, so the message names that request and gives the method's own
+// rule as the reason. It doesn't say that reasoning models don't need such lines, which Google's
+// page contradicts, or that Claude may refuse, which is about showing reasoning, not thinking.
+test("visible-reasoning-request's message gives a reason that holds for every match", () => {
+  assert.match(reasoningRule.message, /think step by step/);
+  assert.match(reasoningRule.message, /its own/);
+  assert.doesNotMatch(reasoningRule.message, /don't need|may refuse/);
 });

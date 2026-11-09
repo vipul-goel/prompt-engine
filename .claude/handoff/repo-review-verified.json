@@ -1,5 +1,5 @@
 {
-  "$comment": "Steps 1a, 1b, 1c and 1d of the handoff plan in .claude/CLAUDE.md, and step 2. Steps 1a and 1b reproduced and checked every repo-review finding on this branch and gave it a verdict; findings 1-45 come from repo-review-partial.json (step 1a), 46-80 from repo-review-1b.json (step 1b). Step 1c fixed the code parts and step 1d the method, eval-grader and docs parts, with billed re-runs: each finding's step_1c and step_1d fields list what was done, the commits, the review findings and the results; the top-level step_1c, step_2 and step_1d hold the process, the checks and the follow-ups. Paths written as <repo>, <scratch>, <session-tmp> or <eval-sandbox> were on the owner's Mac during the session and are not kept.",
+  "$comment": "Steps 1a, 1b, 1c and 1d of the handoff plan in .claude/CLAUDE.md, and step 2. Steps 1a and 1b reproduced and checked every repo-review finding on this branch and gave it a verdict; findings 1-45 come from repo-review-partial.json (step 1a), 46-80 from repo-review-1b.json (step 1b). Step 1c fixed the code parts and step 1d the method, eval-grader and docs parts, with billed re-runs: each finding's step_1c and step_1d fields list what was done, the commits, the review findings and the results; the top-level step_1c, step_2 and step_1d hold the process, the checks and the follow-ups. The owner's answers of 2026-11-09 to the questions that step 1d raised are in owner_answers_1d and owner_decisions (D46-D52 and K3). Paths written as <repo>, <scratch>, <session-tmp> or <eval-sandbox> were on the owner's Mac during the session and are not kept.",
   "step": "1a, 1b and 1c, then step 2, then 1d",
   "verified_on": {
     "1a": "2026-11-03",
@@ -76,6 +76,14 @@
       "plan.md line 100 (now 101): keep the MCP server's behavior. A declined form falls back to ★, recorded as assumptions; a form closed without an answer makes the model ask in the chat. plan.md now says so."
     ],
     "recorded_in": ".claude/handoff/plan.md (changed lines carry their D number) and .claude/CLAUDE.md"
+  },
+  "owner_answers_1d": {
+    "date": "2026-11-09",
+    "answer": "The owner accepted the recommended answer to each of the seven questions that step 1d raised (step_1d.owner_decisions_raised). The answers are D46-D52 and K3 in owner_decisions; the sixth question has two, D51 and K3.",
+    "how": "By approving the release run's plan, which is kept outside the repository. The plan listed the seven decisions as accepted with the approval and asked the owner to say which to change; its progress log records no change by the owner. The log also says that a review after the approval added four things to the plan before the run started: the D46-onward and K3 numbers, the eval case for D46, the wider lint rule for D48, and a replay of step 1d's failing replies under D51's rubric.",
+    "applied_in": "T1 of the release run (the task list in PR #1's description). D46, D47, D48, D51 and K3 change the method, the lint rules, the eval cases and the docs. D49 and D50 change no method text, grader or code: D49 records in plan.md that 82fb127 stays, and D50 adds a Known limits item to docs/compatibility.md, rewords plan.md and the first line of universal/README.md, and points to issue #2. D52 is applied at step 3. T1 adds one eval case, for D46, so the suite has 28 cases, 10 of them history cases; step_1d.follow_ups.step_3 gives the count at the end of step 1d (27).",
+    "recorded_in": ".claude/handoff/plan.md (changed lines carry their D or K number) and .claude/CLAUDE.md",
+    "pending": "At the end of T1's free phase (2026-11-10), no case had run under these decisions. The release run's plan has T1's billed phase re-run the D46 case, the three D47 cases and the three media cases, and replay step 1d's failing image and video replies under D51's rubric with the judge alone; step 3's full eval follows."
   },
   "not_verified": [],
   "severity_note": "severity is the verifiers' own rating; review_severity is the original review's. From step 1a, ten findings stay major: 1, 3, 5, 13, 16, 27, 28, 35, 37 and 39. Step 1b adds six majors, all as the review rated them: 46, 47, 48, 49, 50 and 68. Three step 1b findings drop to trivial: 60, 67 and 80. Finding 73 became major on 2026-11-07, when a billed check confirmed the load (its check field).",
@@ -1375,6 +1383,83 @@
       "question": "Finding 61 is wrong: the Veo FAIL was a correct catch. The reply repeated the clip length in its prose (\"over the full 8 seconds\"), which image-video.md:104 rules out. Should 1d fix that skill miss? The fix extends :104 to cover a repeated length, exempts segment timestamps, starts the Veo example at :89 with \"One continuous\", and changes the grader's wording to match.",
       "recommended": "Yes, in 1d, with the audit's wording rather than the reply's (coordination: method examples), then re-run video-veo-quick with a cost cap.",
       "decision": "Accepted as recommended on 2026-11-07."
+    },
+    {
+      "id": "D46",
+      "findings": [
+        2,
+        3
+      ],
+      "question": "Intake replaces other people's private details with placeholders (SKILL.md:33), but D1 and D5 exempt only secrets. So a redacted private detail still makes Fill placeholders the ★, and Fill placeholders asks the user to type it again and shows the prompt with it put back (finding 2's step 1d review, method-1-core-CR3). Treat these placeholders like secret placeholders, or reuse the values the user already gave?",
+      "recommended": "Placeholders that stand in for other people's private details are treated like secret placeholders: they don't make \"Fill placeholders\" the recommended next step, and they aren't asked for again. Asking again would collect what the method just kept out. This changes D1 and D5. It edits SKILL.md:91 and output-format.md :59, :77 and :82. Their user action becomes \"fill it in where you use the prompt\". The universal core has no room for it, so it goes in the knowledge file and is listed as a known limit. A new eval case with a redacted private detail tests it.",
+      "decision": "Accepted as recommended on 2026-11-09. The eval case came into the recommendation after the approval (owner_answers_1d.how).",
+      "applied": "T1 applies D46 to private details that the skill removed from the rough prompt, as the question and the reason (\"asked for again\", \"what the method just kept out\") read. A placeholder for another person's private detail that the request never gave stays an ordinary placeholder; docs/compatibility.md lists that under Known limits. Run it now leaves a removed detail's placeholder in the result for the user to fill in, and questions.md's Don't ask list has a bullet for it (2f8814d, d23c01e). T1's fix pass added: Intake's never-ask sentence names a removed detail; the reply's first line, and a question round's opening line, say the detail was removed without repeating it, and output-format.md's Removed values rule keeps the value out of every other part of the reply; Fill before running gives two examples (a home address, an ID number; T1's second fix pass replaced a health condition, which can be a prompt's subject) and says to fill the detail in where the prompt is used, or in the result if it runs here. The universal core and the MCP brief have no such rule. The brief, the prompt-engine://questions resource and ask_user's reply for asking in the chat do list a question round's opening line that says a private detail was removed: it goes first, as ask_user's intro or before the questions. The knowledge file and the prompt-engine://output-format and prompt-engine://questions resources hold its reply-format part; SKILL.md holds the rest."
+    },
+    {
+      "id": "D47",
+      "findings": [
+        49
+      ],
+      "question": "The worked examples in writing.md, research.md and coding.md use the requests of writing-quick-launch-email, research-quick-vector-databases and coding-vague-asks-questions word for word, so those cases can't tell following the method from copying an example (finding 49's step 1d reviews). Write new example requests, or only note the limit in compatibility.md?",
+      "recommended": "The writing, research and coding examples are rewritten around requests in domains that no eval case, universal-test prompt (scripts/eval/universal-test.mjs:224-231) or manual check uses (K2). Those three cases run again, so the evals test the method rather than copying.",
+      "decision": "Accepted as recommended on 2026-11-09. Its \"(K2)\" points at the unnumbered line in step_1d.decisions about method examples, which use languages and domains that no eval case uses; K2 itself is about translated keywords."
+    },
+    {
+      "id": "D48",
+      "findings": [
+        12,
+        17
+      ],
+      "question": "Google's prompt design page for Gemini recommends lines such as \"think step-by-step\", which the method bans for every target (step_1d.owner_decisions_raised; no finding's own record names it). Finding 12 checked the Gemini column of blueprint.md's table against that page, and finding 17's self-lint enforces the ban. Keep the ban for Gemini too, or make an exception?",
+      "recommended": "The ban stays for every target, since it's a hard rule. The visible-reasoning-request lint rule is widened to catch \"step-by-step\" too. One line where the method covers Gemini notes, with the phrase in backticks and Google's page cited with its date, that Google suggests such lines, so users can add one themselves.",
+      "decision": "Accepted as recommended on 2026-11-09. The wider lint rule came into the recommendation after the approval (owner_answers_1d.how).",
+      "applied": "The visible-reasoning-request rule in data/lint-rules.json catches think or reason followed by step by step, written with spaces, hyphens, U+2010 or U+2011, and the phrase next to your or by with reasoning or thinking. Other wordings, such as \"think it through step by step\", pass, and some sentences where the reasoning is someone else's, such as \"Help the student reason step by step\", are flagged; scripts/test/lint-rules.test.mjs names both limits. The rule's message, which check_prompt returns and validate.mjs prints, names the step-by-step request and gives the method's own rule as the reason. The note is the Gemini paragraph of references/blueprint.md, which gives the method's own reason for the ban. The blueprint's final check, which applies to every target, counts such lines as requests for visible reasoning, and says to take one out of the user's own prompt and say so in one [best practice] bullet; docs/sources.md quotes Google's page, read on 2026-11-09 and 2026-11-10."
+    },
+    {
+      "id": "D49",
+      "findings": [
+        61
+      ],
+      "question": "82fb127 extends image-video.md's Settings rule to the short version: a video short version keeps settings out of its prose too. It rests on finding 61's arbitration rather than on D45, whose question doesn't name that part, and it is its own commit so that it can be dropped. Keep it or drop it?",
+      "recommended": "82fb127 stays. It removes a contradiction on Veo, Runway, Kling and Luma short versions, which the 2026-11-04 Veo reply showed.",
+      "decision": "Accepted as recommended on 2026-11-09. No method text, grader or code changes; plan.md's Media rule records it."
+    },
+    {
+      "id": "D50",
+      "findings": [],
+      "question": "OpenAI's skills page (learn.chatgpt.com/docs/build-skills, read 2026-11-09) says the ChatGPT desktop app runs standalone skills, and that ChatGPT on the web, desktop and mobile runs skills that come in plugins. Nothing here has tested either route, and the user docs send ChatGPT users to the universal prompt. Should the docs offer a ChatGPT skill route? (Step 1d's docs lane raised it as an open issue on plan.md's Research status, in accc067; no finding covers it.)",
+      "recommended": "No ChatGPT skill route in 0.1.0. It's untested, and the honesty rule applies. It goes into a GitHub issue to test later.",
+      "decision": "Accepted as recommended on 2026-11-09. The issue is https://github.com/vipul-goel/prompt-engine/issues/2, opened the same day."
+    },
+    {
+      "id": "D51",
+      "findings": [
+        4,
+        49
+      ],
+      "question": "After step 1d's method passes, the no-invention judges still fail image and video replies for small details missing from Assumptions, such as soft shadows or cup clinks (step_1d.still_failing). Should the media no-invention rubrics count words added to the user's own nouns?",
+      "recommended": "The rubrics count new things (objects, people, actions, sounds, numbers, settings) that the user didn't give and Assumptions doesn't list, including a merged Assumptions item (D6). Descriptive words added to something the user named don't count, such as \"wooden\" on \"cabin\".",
+      "decision": "Accepted as recommended on 2026-11-09.",
+      "applied": "The rubrics of image-midjourney-quick (08), japanese-midjourney-quick (06) and video-veo-quick (07) share their text after the first paragraph. They count no words for light, colors, mood, style, framing or camera, since D51's list has no such kind, and they treat clothing as a descriptive word of the person who wears it; the method still asks for all of these picks under Assumptions (image-video.md). An Assumption covers a number only when it states it, and a general label covers none of the things under it. D51 doesn't say whether what a named thing or action can't exist or be done without, such as a cabin's roof or the milk in latte art, is a new thing. T1's first fix pass took out the evals lane's broader rule (a part a named thing normally has, what its action needs) and its rule for a borderline item, so the judge had to read such items against D51's kinds. T1's second fix pass, pending the owner question in .claude/CLAUDE.md, adds a narrower rule: what the request names comes with what it can't exist or be done without, so that is not a new thing. It also brings back a rule for a borderline item: an item the judge can't place is left out, so a run fails only on a clear new thing."
+    },
+    {
+      "id": "D52",
+      "findings": [
+        47
+      ],
+      "question": "README.md's real example (README.md:71 then, :74 now) lost its model name in 8c36dc1, because no run recorded which model wrote it (finding 47's step 1d review, docs-1-user-AR2). Should the example name its model again?",
+      "recommended": "It's replaced with the image-midjourney-quick reply from the final full eval (step 3), naming the model and date the results record for that run. 8c36dc1 removed an earlier model name only because no run recorded it.",
+      "decision": "Accepted as recommended on 2026-11-09. It is applied at step 3, not before."
+    },
+    {
+      "id": "K3",
+      "findings": [
+        9
+      ],
+      "question": "Japanese replies translate the labels but keep the reply keywords deep and change N in English (step_1d.still_failing), and under K2 a grader accepts an English keyword only next to its translation. Must a translated reply translate the reply keywords? (The second half of the question that D51 answers.)",
+      "recommended": "The graders accept deep and change N either translated or in English. The method still asks for the translation. K2 allowed English only next to a translation, so this is recorded as K3.",
+      "decision": "Accepted as recommended on 2026-11-09. K1 and K2 are step 1d's own decisions, in step_1d.decisions, which now points here for K3.",
+      "applied": "The language judges of japanese-midjourney-quick (02) and spanish-quick (01) accept deep and change N translated or in English; a keyword in a third language still fails. The label regexes are unchanged."
     }
   ],
   "coordination": [
@@ -1540,6 +1625,7 @@
     "decisions": [
       "K1: the provenance tags [you], [your answer] and [best practice] and the ★ and [[ markers stay as written in every language; they are contract strings, like the markers.",
       "K2: a translated reply writes the reply keywords in the user's language and may also show the English form next to it; no grader rejects an English keyword shown next to its translation.",
+      "K3 (the owner, 2026-11-09, after step 1d; its record is in owner_decisions): the graders accept deep and change N either translated or in English. The method still asks for the translation. K2 allowed English only next to a translation.",
       "Method examples use languages and domains that no eval case uses. A French example word for deep was copied into Spanish replies and was taken out (b8c9328).",
       "The D31 re-checks ran the skill arm only (--ablation none): the run without the plugin doesn't bear on whether the skill behaves."
     ],
@@ -1615,6 +1701,19 @@
       "Whether the media no-invention rubrics should count words added to the user's own nouns, and whether Japanese replies must translate the reply keywords.",
       "README.md:71's example could name its model again."
     ],
+    "owner_decisions_answered": {
+      "date": "2026-11-09",
+      "answers": [
+        "D46: such placeholders are treated like secret placeholders. They don't make Fill placeholders the ★, and they aren't asked for again; the user fills them in where they use the prompt.",
+        "D47: the three examples are rewritten around requests in domains that no eval case, universal-test prompt or manual check uses, and the three cases run again.",
+        "D48: the ban stays for every target. The visible-reasoning-request lint rule also catches 'step-by-step', and one line where the method covers Gemini notes that Google suggests such lines.",
+        "D49: 82fb127 stays.",
+        "D50: no ChatGPT skill route in 0.1.0, because it is untested. https://github.com/vipul-goel/prompt-engine/issues/2 tracks testing it.",
+        "D51 and K3: the media rubrics count new things (objects, people, actions, sounds, numbers, settings) that the user didn't give and Assumptions doesn't list, and no longer descriptive words added to something the user named. The graders accept deep and change N either translated or in English; the method still asks for the translation.",
+        "D52: at step 3, the example is replaced with the image-midjourney-quick reply from the final full eval, naming the model and date the results record."
+      ],
+      "see": "owner_answers_1d and owner_decisions (D46-D52 and K3); the answers are in the order of owner_decisions_raised"
+    },
     "not_verified": [
       "The MCP server's new text with a live host: whether hosts call enhance_prompt for critique and what's-missing requests, pass a round's opening line as ask_user's intro (200 characters or fewer) and open a text-mode reply with it.",
       "The cases not re-run after the method changes: their last run is 0f65705's full suite.",
@@ -1627,8 +1726,10 @@
         "asksForKey (universal-test.mjs) misses an ask after a dash that opens no aside, a key named only in brackets, and a key named only in rotation advice; it flags a question about the key's type. The residuals are listed in its comment.",
         "The translated fence graders fail a reply with a heading before the Full prompt heading; the translated tag graders pass a What I added section with no tags when another section is tagged (both named in their comments).",
         "The universal core has 5 characters left and lacks the second pass's rules (one-sentence critique line, the strong-prompt length cue, media fields in their own blocks, the compare-each-detail check, the bullet-merge rule); the knowledge file carries them.",
-        "SKILL.md has 81 characters left before ### 5. Present; the image-video get_checklist result is about 1,700 characters under integration.test.ts's 24,000.",
-        "The new MCP text and the trigger for critique requests need a live host check."
+        "SKILL.md had 81 characters left before ### 5. Present at the end of step 1d, and 61 after T1's fix pass, which named the removed detail in Intake's never-ask sentence; the image-video get_checklist result is about 1,700 characters under integration.test.ts's 24,000.",
+        "The new MCP text and the trigger for critique requests need a live host check.",
+        "The visible-reasoning-request lint rule (D48) misses other wordings, such as \"Think it through step by step\", \"Think carefully, step by step\" and \"Let's work this out in a step by step way\". It also misses step by step written with an en dash (U+2013), a figure dash (U+2012) or an em dash (U+2014), and with a no-break space between the words in validate.mjs's self-lint and the eval lint graders; check_prompt turns that space into a plain one first. And it flags lines where the reasoning is someone else's, such as \"Help the student reason step by step\". scripts/test/lint-rules.test.mjs names the other wordings and the tutoring lines; T1's second fix pass checked the dashes and the space with a probe.",
+        "No check keeps the method's examples away from the requests that eval cases, universal-test conversations and manual checks use (the examples rule that D47 cites as K2). D47's rewrite was checked by hand, and the output template, Format B and the universal core's sample question still use the remote-work blog post (an owner question in .claude/CLAUDE.md). A validator rule could compare the example requests in SKILL.md, the references and the universal core with evals/*/prompt.md, scripts/eval/universal-test.mjs and docs/manual-checks.md."
       ],
       "step_3": [
         "The full eval now has 27 cases, 10 of them history cases; expect about $3.50. Re-check failing cases at three runs (D31) and record them as docs/compatibility.md does for round 3."
@@ -1637,7 +1738,7 @@
         "Follow docs/manual-checks.md's Claude Code checklist; record the model /status shows; decide there whether a read-only Bash call before the pick is acceptable (record 52)."
       ],
       "owner": [
-        "The owner decisions raised above, D20, NPM_OWNER and the trusted publisher, and D38(b)."
+        "The owner decisions raised above, D20, NPM_OWNER and the trusted publisher, and D38(b). Since then, the raised decisions were answered on 2026-11-09 (owner_decisions_answered), and D20 and NPM_OWNER were done the same day, before T1."
       ]
     },
     "cost": "Billed: $14.05 (above). Subagent work: the free phase used about 9.1M tokens (24 agents), the consistency phase about 4.8M (17), the second method pass about 1.0M (4), the recording batch about 1.4M (4 in the completed run, after a stopped first attempt), plus one reviewer of the third pass."
@@ -2035,7 +2136,8 @@
         "For prompts meant for code or agents, should the method name an environment variable (such as OPENAI_API_KEY) instead of a [[api key]] placeholder? The grader already accepts that, and the model did it in both runs today. Should every reply that removes a pasted key suggest rotating it, and say so in the first line? And when the only open placeholder is a secret, should the menu still star Fill placeholders?"
       ],
       "decisions": [
-        "D5"
+        "D5",
+        "D46"
       ],
       "step_1c": {
         "items": [],
@@ -2384,7 +2486,8 @@
       ],
       "resolution": "D1, 2026-11-04: only an explicit pick runs anything; ok, 👍 or thanks gets \"the prompt is ready\". Fill placeholders collects the values, shows the filled prompt and shows the menu again. Apply the explicit-picks branch of proposed_fix, with the audit's fix_corrections.",
       "decisions": [
-        "D1"
+        "D1",
+        "D46"
       ],
       "step_1c": {
         "items": [],
@@ -2852,7 +2955,8 @@
         "In image and video prompts, which details the model adds should be listed? Every small scene detail (footprints, chimney smoke, a palette), merged into one Assumption? Or only numbers, settings and style choices?"
       ],
       "decisions": [
-        "D6"
+        "D6",
+        "D51"
       ],
       "step_1c": {
         "items": [],
@@ -4015,7 +4119,8 @@
         "In non-English replies, should the section headings, score rows, caveat line, 'What next?' labels and reply keywords (`change N`, `deep`) be translated, or stay in English as fixed labels? The method already says translate (output-format.md:3; questions.md:73 for the question round), and U4 did. Today's skill runs and U6 kept English, and the reviewer proposed English. Nothing in the tooling depends on either choice."
       ],
       "decisions": [
-        "D3"
+        "D3",
+        "K3"
       ],
       "step_1c": {
         "items": [],
@@ -4675,6 +4780,9 @@
       "fix_assessment": "The reviewer's line-56 wording is accurate. 'Overtrigger' is Anthropic's word for tools and skills, so keeping 'over-apply' with 'can', and dropping 'everywhere', sits closer to all the sources. The line-68 wording is honest by the repo's records, but it now undersells what can be checked: the OpenAI and Google pages are directly reachable and support most cells. Re-verifying and citing them is better, and the reviewer's wording is the fallback. The lint message edit is safe. No test asserts the message text, and check_prompt caps findings at 5 per rule and 20 in all (mcp/src/check.ts:40-41), so results grow by at most about 45 characters per finding. The MCP tests still need a run in step 1d. blueprint.md isn't lint-checked (validate.mjs:121 covers only SKILL.md and the universal core), so '(MUST, NEVER, CRITICAL)' can stay. In my copy the reviewer's edits built, passed build --check and validated.",
       "proposed_fix": "1. skills/prompt-engine/references/blueprint.md:56: 'Capitalized pressure words (MUST, NEVER, CRITICAL) can make current models over-apply the rule, even where it doesn't fit.' 2. data/lint-rules.json:10: 'Capitalized pressure words can make current models over-apply the rule. Write it plainly and give the reason; keep 'always' and 'never' for true invariants.' 3. blueprint.md:68: re-check the GPT and Gemini columns against OpenAI's GPT-4.1 and GPT-5 prompting guides and Google's prompting-strategies page (all reachable on 2026-11-03). Add those URLs to docs/sources.md:32 in place of 'seen only through search results'. Reword the Gemini 'Clarifying behavior' cell, or mark it as the method's own inference. Date the line with the real check date. If that re-check isn't done, use the reviewer's wording, which labels the GPT and Gemini columns secondary. While there, compare the Claude 'Verification' cell with Anthropic's current Opus 5 over-verification note. 4. Run node scripts/build.mjs, which regenerates universal/prompt-engine-knowledge.md, mcp/src/generated/content.ts and 3 evals/*/history.jsonl, then all root and MCP checks.",
       "owner_questions": [],
+      "decisions": [
+        "D48"
+      ],
       "step_1c": {
         "items": [
           {
@@ -5509,7 +5617,8 @@
         "How should blueprint.md:56 and :99 name the patterns?\n(a) In backticks, with a lint that skips code spans. This keeps today's strictness on SKILL.md and the universal core.\n(b) Reworded without the literal words, as SKILL.md:74 and universal/prompt-engine.md:38 already do. This matches plan.md:152 ('which the skill describes abstractly') and needs no lint exemption, but the model loses concrete examples of what to remove.\nSkipping double-quoted text, as the reviewer proposed, is not recommended.\nAlso: is the step-3 full eval enough after this edit, or should the affected cases be re-run in 1d?"
       ],
       "decisions": [
-        "D11"
+        "D11",
+        "D48"
       ],
       "step_1c": {
         "items": [],
@@ -10198,7 +10307,8 @@
         "Which agent should the evals pin? Sonnet 5.5 is what compatibility.md names and what recorded the fixtures and ran the trigger tests. Opus 5.5 is the documented default for most Claude Code users. And were the 2026-10-29 rounds run with --model claude-sonnet-5-5? If you don't know, compatibility.md should say the model wasn't recorded for them."
       ],
       "decisions": [
-        "D28"
+        "D28",
+        "D52"
       ],
       "step_1c": {
         "items": [
@@ -10801,7 +10911,9 @@
         "plan.md:176 and output-format.md:66 say every default that shaped the prompt is listed, with minor ones merged. Should text prompts follow that literally, as D6 does for media? Then small picks such as \"1-3 lines per paragraph\", \"a 3–5 sentence overview\" or an output file name like support-summary.md must each be covered by some Assumption. Or should only the values that shape the deliverable count (length, item counts, limits, names)? The strict reading would fail today's writing, Spanish and secret-redaction replies until the method changes."
       ],
       "decisions": [
-        "D30"
+        "D30",
+        "D47",
+        "D51"
       ],
       "step_1c": {
         "items": [],
@@ -13571,7 +13683,8 @@
       "owner_questions_note": "The verifier asked whether a pacing phrase that repeats the clip length counts as writing settings into the prose. The arbitration settled it from the method text: it does. Whether to fix the skill miss is D45.",
       "resolution": "D45, 2026-11-07: no grader fix. Fix the skill miss in 1d with the audit's wording, then re-run video-veo-quick with a cost cap.",
       "decisions": [
-        "D45"
+        "D45",
+        "D49"
       ],
       "step_1c": {
         "items": [],

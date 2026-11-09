@@ -615,9 +615,10 @@ export function checkSuiteRules(root, cases, err) {
     if (needs.length && !s.tags.includes('needs-write')) err(`${c.dir}: ${needs.join(', and ')}; tag it needs-write (repo rule)`);
     // Every output case, one whose reply holds an enhanced prompt (the cases that scripts/build.mjs
     // writes lint graders for), has a no-invention judge: each name, number, date or URL the user
-    // didn't give is a placeholder or an assumption (finding 49, D30).
+    // didn't give is a placeholder or an assumption (finding 49, D30). In an image or video case
+    // the judge counts new things that no Assumption mentions instead (D51).
     if (Object.hasOwn(LINT_GRADER_CASES, c.name) && !c.graders.some((g) => g.data.type === 'llm' && g.name.endsWith('-no-invention'))) {
-      err(`${c.dir}: an output case (LINT_GRADER_CASES in scripts/build.mjs) needs an llm grader named <n>-no-invention.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption (repo rule)`);
+      err(`${c.dir}: an output case (LINT_GRADER_CASES in scripts/build.mjs) needs an llm grader named <n>-no-invention.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption, or, in an image or video case, that every new thing the user didn't give is in an assumption (repo rule)`);
     }
     // A tool_used grader with min: 0, such as a max: 0 check, passes with zero calls, which is
     // all a run can make of a tool it doesn't grant. Listed in allowed_tools, the tool shows as

@@ -40,21 +40,21 @@ For stories and creative writing, ask about genre, point of view, length, the re
 
 ## Example
 
-Rough prompt: "write a launch email for my productivity app" (quick mode)
+Rough prompt: "write a radio ad for our farmers' market" (quick mode)
 
-Assumptions it produces include: audience = existing newsletter subscribers; goal = start a free trial; body of 150–250 words; subject line under 50 characters; friendly and direct tone. Placeholders: `[[app name]]`, `[[key feature]]`, `[[trial length]]`, `[[sign-up link]]`.
+Assumptions it produces include: listeners = people who live nearby; goal = come to the market; 25–30 seconds when read aloud; two alternative opening lines; friendly and plain tone. Placeholders: `[[market name]]`, `[[days and hours]]`, `[[where it is]]`, `[[what is in season]]`.
 
 Enhanced prompt (excerpt):
 
 ```text
 # Goal
-Write a launch email announcing [[app name]], a productivity app, to existing newsletter subscribers, so that as many as possible start a free trial.
+Write a radio ad for [[market name]], a farmers' market, so that as many listeners as possible come to the market. Assume the listeners live nearby unless told otherwise.
 
 # Output
-- A subject line (under 50 characters, because longer ones get cut off on phones) plus two alternatives.
-- Body of 150–250 words: a hook naming the reader's problem, what [[app name]] does about it ([[key feature]]), one short proof point if provided, and one call to action: "Start your [[trial length]] free trial" linking to [[sign-up link]].
-- Tone: friendly and direct, like a founder writing to people who already know the brand. Avoid hype words such as "revolutionary" and "game-changing".
+- A script that takes 25–30 seconds to read aloud, plus two alternative opening lines. Use short sentences, because a listener can't go back and hear a line again.
+- Parts: an opening line about what is in season ([[what is in season]]), where the market is ([[where it is]]), one short proof point if provided, and one call to action: "Come to [[market name]], open [[days and hours]]".
+- Tone: friendly and plain unless told otherwise, like a farmer chatting with a regular customer. Avoid claims the market can't prove, such as "the freshest" and "the cheapest".
 
 # Facts
-Use only the facts above. If a number or testimonial would help but isn't provided, leave a placeholder instead of inventing one.
+Use only the facts above. If a number or a customer's quote would help but isn't provided, leave a placeholder instead of inventing one.
 ```

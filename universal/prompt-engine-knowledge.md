@@ -24,7 +24,7 @@ The reply that delivers an enhanced prompt always has the same shape, so users l
 The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★` and `modifier 2 : …` for `change N`. Translate `deep` the same way, into the user's own word. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
 
 ````markdown
-<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it. For a strong prompt: "Your prompt is already strong — small edits below.">
+<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so. Never repeat a removed value. For a strong prompt: "Your prompt is already strong — small edits below.">
 
 ### Full prompt
 ```text
@@ -69,11 +69,13 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 ### Rules for each part
 
+**Removed values.** The value of a secret or private detail you removed appears nowhere in the reply, bullets, Assumptions and menu included.
+
 **Fences.** Put the prompt in a fence longer than any run of backticks inside it: if the prompt contains a triple-backtick block, wrap it in four backticks. Use the `text` info string so nothing renders as markdown.
 
 **Short version.** At most about 120 words: the goal with its purpose, the 3–5 requirements that matter most, hard constraints and the output format. It carries the same assumptions as the full version. If the full prompt embeds long inputs, the short version may point to them ("the notes below") rather than repeating them, and the note under it says to paste them after it.
 
-**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable), never ask for its value.
+**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable); for another person's private detail you removed, such as a home address or an ID number, tell the user to fill it in where they use the prompt, or in the result if the prompt runs here. Never ask for or repeat the value of either.
 
 **What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. If more qualify, merge related ones, such as two answers, into one bullet; an answer never moves to Assumptions to make room. Tag every bullet:
 - **[you]** — something the user said, restated or made precise;
@@ -91,12 +93,12 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 | Situation | Options |
 |---|---|
 | Normal | Run it now ★ · Refine · Save to file |
-| Placeholders other than secrets still open | Fill placeholders ★ · Refine · Save to file |
+| Open placeholders that are neither secrets nor removed private details | Fill placeholders ★ · Refine · Save to file |
 | Image or video prompt and you can't generate media | Done ★ (with where to paste it) · Refine · Save to file |
 | The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
 | You can't write files (chat apps) | Drop "Save to file" |
 
-When several rows apply, use the first that fits: open placeholders other than secrets, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
+When several rows apply, use the first that fits: open placeholders that are neither secrets nor removed private details, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
 
 In Claude Code, use AskUserQuestion with the question "What would you like to do next?" and the header "Next step", both in the user's language, and the same options; put the save path in the "Save to file" description.
 
@@ -122,7 +124,7 @@ For image and video prompts, read the dimensions as: Clear goal = subject, actio
 
 ### Variants
 
-- **Questions round.** When you are asking questions, the reply is only the questions (see the "Asking clarifying questions" section), plus one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it. That line is one sentence, not a list: the questions carry the detail. Don't show a draft prompt yet.
+- **Questions round.** When you are asking questions, the reply is only the questions (see the "Asking clarifying questions" section), plus one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so. Never repeat a removed value. That line is one sentence, not a list: the questions carry the detail. Don't show a draft prompt yet.
 - **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, as long as the prompt grows by at most about half its length, but don't regroup it under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
 - **Refine.** After a change, show one line on what changed, then the full template again with the updated prompt and score.
 - **Run it now.** Once the user picks this, answer the prompt like any normal request. Don't show the template, score or menu again unless they ask for another prompt.
@@ -156,6 +158,7 @@ Don't ask:
 - for facts you can find yourself — in a code workspace, read the repo; in a chat, check earlier messages and attachments;
 - for things the prompt already says;
 - for a secret's value, such as an API key or password: the prompt names an environment variable or a `[[placeholder]]` instead, so never invite the user to paste one;
+- for another person's private detail you removed: the user fills in its placeholder where they use the prompt;
 - "Anything else?" as a main question (the free-text option covers it).
 
 When the user has an artifact, ask for it instead of a description: "Paste the error message", "Share a paragraph in the voice you want". Put that invitation in the question, not in the ★ option (see below).
@@ -304,6 +307,8 @@ The method is the same for every model; only delimiters, placement and a few lin
 | Length | State it explicitly | State it explicitly | Ask explicitly for detail when you want it | State it explicitly |
 | Verification | A concrete check rather than a generic "double-check"; for Claude Opus 5, leave out added verification steps and re-check instructions: it verifies its own work, and they cause over-verification. Coding prompts still name the test command to run and report (the method's own inference from Claude Code's guidance) | Completion criteria and stop rules | A validation step is fine | Concrete criteria |
 
+**Gemini.** Google's prompt design guide ends its Gemini 3 example template with `Remember to think step-by-step before answering.` (https://aistudio.google.com/docs/prompting-strategies, checked on 2026-11-09). Leave such lines out for every target, Gemini included: the method treats them as requests for visible reasoning, which it doesn't add. A user who wants such a line can add it themselves.
+
 **Coding agents** (Claude Code, Codex, Cursor, Copilot and similar):
 - name the files or areas involved;
 - give the command that proves the work (tests, type check, lint) and ask for its output;
@@ -326,7 +331,7 @@ Fix anything that fails:
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
-- No capitalized pressure words, generic personas, magic phrases (`think step by step`, `take a deep breath`), requests to expose internal reasoning, prefill instructions or API settings.
+- No capitalized pressure words, generic personas, magic phrases (`take a deep breath`), requests for visible reasoning (`think step by step`, `show your reasoning`), prefill instructions or API settings. That includes a step-by-step line in the user's own prompt: take it out, and say so in one [best practice] bullet under What I added & why.
 - Scope is explicit, and the output format and length are stated.
 - Every placeholder is listed under "Fill before running", and no template leftovers remain (such as an empty `{{variable}}`).
 - The full prompt is as long as the task needs and no longer, and the short version fits its budget.
@@ -441,13 +446,13 @@ Coding agents take instructions literally and act on them, so these five items p
 
 ### Example
 
-Rough prompt: "add login to my app"
+Rough prompt: "add search to my recipe site"
 
-What changes after questions (React + Express repo detected from `package.json`; answers: email + password, keep the existing user table):
-- **Goal:** add email-and-password login to the existing React and Express app, so users can access their saved projects.
-- **Where:** `server/routes/` and `client/src/pages/`; reuse the existing `users` table, because migrating user data is out of scope.
-- **Done when:** a user can register, log in and log out; protected routes return 401 without a session; existing tests and the new auth tests pass (`npm test`).
-- **Risky actions:** ask before adding dependencies other than a password-hashing library; never log passwords or tokens.
+What changes after questions (Rails app detected from the `Gemfile`; answers: search titles and ingredients, no separate search service):
+- **Goal:** add a search box to the existing Rails recipe site, so visitors can find recipes by title or ingredient.
+- **Where:** `app/controllers/recipes_controller.rb` and `app/views/recipes/`; query the existing database, because a separate search service is out of scope.
+- **Done when:** a search lists the recipes whose title or ingredients match; a search with no match says so; existing tests and the new search tests pass (`bin/rails test`).
+- **Risky actions:** ask before adding a gem or changing the database schema; never put the search text straight into SQL.
 - **Report:** files changed, commands run with their output, and anything not verified.
 
 ---
@@ -494,23 +499,23 @@ For stories and creative writing, ask about genre, point of view, length, the re
 
 ### Example
 
-Rough prompt: "write a launch email for my productivity app" (quick mode)
+Rough prompt: "write a radio ad for our farmers' market" (quick mode)
 
-Assumptions it produces include: audience = existing newsletter subscribers; goal = start a free trial; body of 150–250 words; subject line under 50 characters; friendly and direct tone. Placeholders: `[[app name]]`, `[[key feature]]`, `[[trial length]]`, `[[sign-up link]]`.
+Assumptions it produces include: listeners = people who live nearby; goal = come to the market; 25–30 seconds when read aloud; two alternative opening lines; friendly and plain tone. Placeholders: `[[market name]]`, `[[days and hours]]`, `[[where it is]]`, `[[what is in season]]`.
 
 Enhanced prompt (excerpt):
 
 ```text
 # Goal
-Write a launch email announcing [[app name]], a productivity app, to existing newsletter subscribers, so that as many as possible start a free trial.
+Write a radio ad for [[market name]], a farmers' market, so that as many listeners as possible come to the market. Assume the listeners live nearby unless told otherwise.
 
 # Output
-- A subject line (under 50 characters, because longer ones get cut off on phones) plus two alternatives.
-- Body of 150–250 words: a hook naming the reader's problem, what [[app name]] does about it ([[key feature]]), one short proof point if provided, and one call to action: "Start your [[trial length]] free trial" linking to [[sign-up link]].
-- Tone: friendly and direct, like a founder writing to people who already know the brand. Avoid hype words such as "revolutionary" and "game-changing".
+- A script that takes 25–30 seconds to read aloud, plus two alternative opening lines. Use short sentences, because a listener can't go back and hear a line again.
+- Parts: an opening line about what is in season ([[what is in season]]), where the market is ([[where it is]]), one short proof point if provided, and one call to action: "Come to [[market name]], open [[days and hours]]".
+- Tone: friendly and plain unless told otherwise, like a farmer chatting with a regular customer. Avoid claims the market can't prove, such as "the freshest" and "the cheapest".
 
 # Facts
-Use only the facts above. If a number or testimonial would help but isn't provided, leave a placeholder instead of inventing one.
+Use only the facts above. If a number or a customer's quote would help but isn't provided, leave a placeholder instead of inventing one.
 ```
 
 ---
@@ -557,27 +562,27 @@ For data analysis, also ask about the dataset (paste a sample or the columns), t
 
 ### Example
 
-Rough prompt: "compare the best vector databases for my startup" (quick mode)
+Rough prompt: "find out if solar panels are worth it for my house" (quick mode)
 
 Enhanced prompt (excerpt):
 
 ```text
 # Goal
-Compare vector databases for a startup choosing one for a production retrieval-augmented generation (RAG) feature, and recommend the best fit for the constraints below.
+Find out whether solar panels are worth it for a house in [[country or region]], and recommend whether to go ahead, wait or drop the idea.
 
 # Context
-- Today's date: [[today's date]]. Vector databases change quickly, so check current documentation and pricing pages rather than relying on memory, and give an "as of" date.
-- Assume a small team with no dedicated database administrator and fewer than [[number]] vectors at launch unless told otherwise.
+- Today's date: [[today's date]]. Panel prices, electricity rates and subsidy rules change, so check current sources rather than relying on memory, and give an "as of" date.
+- Electricity use: [[yearly electricity use]]. Assume the owner lives in the house and the roof is in good condition unless told otherwise.
 
 # Method
-Compare 4–6 widely used options on: hosting model (managed or self-hosted), cost at our scale, query latency, filtering support, operational effort, and lock-in. Define each criterion before scoring.
+Work out three things, each as a range: the cost to install a system, the yearly saving, and the years until it pays for itself. Define each term and unit first, and stop once each range rests on a cited source.
 
 # Sources and honesty
-- Prefer official documentation and published benchmarks, and say who ran each benchmark.
-- Cite a source for every pricing or performance claim. If something can't be verified, say so instead of estimating.
+- Prefer government, regulator and utility pages, and say when a figure comes from an installer or a manufacturer.
+- Cite a source for every price, rate and subsidy. If something can't be verified for this region, say so instead of guessing.
 
 # Output
-A one-paragraph recommendation first, then a comparison table, then caveats and what would change the recommendation.
+A one-paragraph recommendation first, then a table of the three ranges with their sources, then caveats and what would change the recommendation.
 ```
 
 ---
@@ -772,7 +777,7 @@ Tool-specific syntax for image and video prompts, used with the "Domain pack: im
 - **Settings:** UI or API settings (steps, sampler, size, CFG).
 - **References:** Depends on the interface and extensions.
 - **Text in the image:** Unreliable; plan to add text afterwards.
-- **Note:** Square brackets reduce emphasis, so leave [[placeholders]] out of the prompt itself and ask for the value instead.
+- **Note:** Square brackets reduce emphasis, so leave [[placeholders]] out of the prompt itself and ask for the value instead. For a secret or another person's private detail you removed, say where it goes rather than asking for it.
 - **Sources:** https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Features
 
 ### Google Veo

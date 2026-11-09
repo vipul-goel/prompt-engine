@@ -74,7 +74,7 @@
       "settings": "UI or API settings (steps, sampler, size, CFG).",
       "references": "Depends on the interface and extensions.",
       "text": "Unreliable; plan to add text afterwards.",
-      "notes": "Square brackets reduce emphasis, so leave [[placeholders]] out of the prompt itself and ask for the value instead.",
+      "notes": "Square brackets reduce emphasis, so leave [[placeholders]] out of the prompt itself and ask for the value instead. For a secret or another person's private detail you removed, say where it goes rather than asking for it.",
       "status": "verified",
       "sources": [
         "https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Features"

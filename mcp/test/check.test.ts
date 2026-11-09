@@ -375,6 +375,39 @@ describe('lint rules', () => {
     expect(checkPrompt('THINK STEP BY STEP').issues.some((i) => i.id === 'visible-reasoning-request')).toBe(true);
   });
 
+  it('flags a request to reason step by step, spelled with spaces, hyphens or a mix, and not the phrase as a format', () => {
+    const flagged = (prompt: string) => checkPrompt(prompt).issues.filter((i) => i.id === 'visible-reasoning-request');
+    for (const line of [
+      'Think step by step.',
+      // The line that ends the Gemini 3 example template in Google's prompt design guide.
+      'Remember to think step-by-step before answering.',
+      'THINK STEP-BY-STEP',
+      'Please think step by-step.',
+      "Let's reason step-by step.",
+      'Solve the problem by thinking step-by-step.',
+      'Explain your reasoning step by step.',
+      'Show your step-by-step reasoning.',
+      // Runs of whitespace are collapsed before matching.
+      'Think \t step-by-step.',
+    ]) {
+      expect(flagged(line), line).toHaveLength(1);
+    }
+    for (const line of [
+      'Write step-by-step instructions for the installer.',
+      'Give me a step-by-step guide to sourdough.',
+      // From the same Google template: a plan, not the model's reasoning.
+      'Analyze the task and create a step-by-step plan.',
+      'I think a step-by-step guide would help.',
+      'Follow the checklist step by step before you reply.',
+      'Explain design thinking step by step for beginners.',
+      "Check the student's step-by-step reasoning and name the first error.",
+    ]) {
+      expect(flagged(line), line).toEqual([]);
+    }
+    const [issue] = flagged('# Task\nSummarize the report.\n\nRemember to think step-by-step before answering.');
+    expect(issue).toMatchObject({ severity: 'warning', line: 4, excerpt: 'Remember to think step-by-step before answering.' });
+  });
+
   it('reports each distinct match once and caps the list', () => {
     const repeated = checkPrompt('Use [[name]] here and [[name]] there.\n'.repeat(10));
     expect(repeated.issues.filter((i) => i.id === 'open-placeholder')).toHaveLength(1);

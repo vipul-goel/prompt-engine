@@ -2,9 +2,10 @@
 # image-midjourney-quick's 05 check, for a reply whose menu D3 translates: output-format.md,
 # "What next?", for an image prompt when the assistant can't generate media, Done ★, or Fill
 # placeholders ★ while Fill before running lists a placeholder that isn't a secret's, since the
-# table's first row that fits is the one for open placeholders other than secrets (D1, D5). A
-# judge reads the labels in any language; 07 checks that they aren't left in English. Example
-# phrases are in single quotes.
+# table's first row that fits is the one for open placeholders that are neither secrets nor
+# removed private details (D1, D5, D46). This request holds no private detail, so the rubric
+# doesn't model D46. A judge reads the labels in any language; 07 checks that they aren't left in
+# English. Example phrases are in single quotes.
 type: llm
 focus: last_message
 weight: 1

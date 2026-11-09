@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: spanish-quick
 expected_outcome: |
-  Replies in Spanish, with the section headings, score rows, caveat line, What next? menu and reply keywords in Spanish too (D3); the enhanced prompt is in Spanish and tells the model to respond in Spanish; no invented employer or job title.
+  Replies in Spanish, with the section headings, score rows, caveat line and What next? menu in Spanish too (D3); the reply keywords deep and change N may be translated or left in English (K3); the enhanced prompt is in Spanish and tells the model to respond in Spanish; no invented employer or job title.

@@ -227,6 +227,7 @@ export const LINT_GRADER_CASES = {
   'followup-partial-answers': {},
   'image-midjourney-quick': { media: true },
   'japanese-midjourney-quick': { media: true },
+  'private-detail-redaction-quick': {},
   'research-quick-vector-databases': {},
   'secret-redaction-quick': { skip: ['template-leftover'] },
   'spanish-quick': {},

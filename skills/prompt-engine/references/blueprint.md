@@ -79,6 +79,8 @@ The method is the same for every model; only delimiters, placement and a few lin
 | Length | State it explicitly | State it explicitly | Ask explicitly for detail when you want it | State it explicitly |
 | Verification | A concrete check rather than a generic "double-check"; for Claude Opus 5, leave out added verification steps and re-check instructions: it verifies its own work, and they cause over-verification. Coding prompts still name the test command to run and report (the method's own inference from Claude Code's guidance) | Completion criteria and stop rules | A validation step is fine | Concrete criteria |
 
+**Gemini.** Google's prompt design guide ends its Gemini 3 example template with `Remember to think step-by-step before answering.` (https://aistudio.google.com/docs/prompting-strategies, checked on 2026-11-09). Leave such lines out for every target, Gemini included: the method treats them as requests for visible reasoning, which it doesn't add. A user who wants such a line can add it themselves.
+
 **Coding agents** (Claude Code, Codex, Cursor, Copilot and similar):
 - name the files or areas involved;
 - give the command that proves the work (tests, type check, lint) and ask for its output;
@@ -101,7 +103,7 @@ Fix anything that fails:
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
-- No capitalized pressure words, generic personas, magic phrases (`think step by step`, `take a deep breath`), requests to expose internal reasoning, prefill instructions or API settings.
+- No capitalized pressure words, generic personas, magic phrases (`take a deep breath`), requests for visible reasoning (`think step by step`, `show your reasoning`), prefill instructions or API settings. That includes a step-by-step line in the user's own prompt: take it out, and say so in one [best practice] bullet under What I added & why.
 - Scope is explicit, and the output format and length are stated.
 - Every placeholder is listed under "Fill before running", and no template leftovers remain (such as an empty `{{variable}}`).
 - The full prompt is as long as the task needs and no longer, and the short version fits its budget.
