@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build, type Metafile } from 'esbuild';
 import { describe, expect, it } from 'vitest';
+import { DOMAINS } from '../src/brief.js';
 import { VERSION } from '../src/generated/content.js';
 import { TOOL_NAMES } from '../src/server.js';
 import { PKG, REPO, schemaErrors } from './helpers.js';
@@ -184,6 +185,19 @@ describe('manifest.json (MCPB)', () => {
     expect(floor('>=22.19')).toBe('22.19.0');
     expect(() => floor('^22.19.0')).toThrow(/unexpected Node range/);
     expect(floor(manifest.compatibility.runtimes.node)).toBe(floor(pkg.engines.node));
+  });
+
+  // These tool descriptions ship in the .mcpb and are written apart from the server's own, the ones
+  // the model reads, which brief.test.ts and integration.test.ts check.
+  const toolDescription = (name: string): string => manifest.tools.find((t: { name: string }) => t.name === name)?.description ?? '';
+
+  it('says ask_user shows a form only where the app supports one', () => {
+    // In an app without forms it returns the questions as text (finding 69).
+    expect(toolDescription('ask_user')).toMatch(/\bin a form where the app supports one\b.*\botherwise as a numbered list\b/);
+  });
+
+  it('names every domain get_checklist takes, in order', () => {
+    expect(toolDescription('get_checklist')).toContain(`a domain: ${DOMAINS.slice(0, -1).join(', ')} or ${DOMAINS.at(-1)}.`);
   });
 
   it('covers the prompts the server lists', () => {
