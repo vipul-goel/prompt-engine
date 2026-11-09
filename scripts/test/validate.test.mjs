@@ -137,6 +137,21 @@ const SELF_CHECK_RULE = LINT_RULES.find((r) => r.selfCheck).id;
 const chars = (s) => [...s].length;
 // SKILL.md's body as validate.mjs measures it: the text after the frontmatter.
 const bodyOf = (t) => t.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+// Where a key section's heading line starts in SKILL.md's body, in characters.
+const sectionAt = (t, h) => {
+  const body = bodyOf(t);
+  const i = body.search(new RegExp(`^${reEsc(h)}(?![\\p{L}\\p{M}\\p{N}_])`, 'mu'));
+  assert.ok(i >= 0, `no line starts with ${h}`);
+  return chars(body.slice(0, i));
+};
+// A key section's heading line moved so that it starts at character offset `at` of the body.
+const moveSection = (h, at) => (d) => edit(d, SKILL, (t) => {
+  const add = at - sectionAt(t, h);
+  assert.ok(add >= 3, `${h} starts too late for this row`);
+  return t.replace(`\n${h}`, () => `\n${filler(add - 2)}\n\n${h}`);
+});
+const KEY_LAST = BUDGETS.skillKeySections.at(-1);
+const KEY_LIMIT = BUDGETS.skillKeySectionsWithinChars;
 // Neutral text: no lint hits and no substitution syntax.
 const filler = (n) => 'filler '.repeat(Math.ceil(Math.max(n, 1) / 7)).slice(0, Math.max(n, 1));
 const setFront = (key, line) => (d) => edit(d, SKILL, (t) => t.replace(new RegExp(`^${key}:.*$`, 'm'), () => line));
@@ -330,6 +345,25 @@ const ROWS = [
     new RegExp(`SKILL\\.md: section "${reEsc(h)}" starts at char \\d+; keep it within the first ${BUDGETS.skillKeySectionsWithinChars}`)]),
   ['rejects a missing key section', (d) => edit(d, SKILL, (t) => t.replaceAll(BUDGETS.skillKeySections[0], '### Renamed section')),
     new RegExp(`SKILL\\.md: missing section "${reEsc(BUDGETS.skillKeySections[0])}"`)],
+  // A key section is its heading line outside fenced blocks: the heading's text in a contents line,
+  // in a fenced example or at the start of a longer heading doesn't stand in for it.
+  ['rejects a key section named in a contents line near the top that starts past the limit', (d) => {
+    moveSection(KEY_LAST, KEY_LIMIT + 100)(d);
+    const first = BUDGETS.skillKeySections[0];
+    edit(d, SKILL, (t) => t.replace(`\n${first}`, () => `\nContents: ${BUDGETS.skillKeySections.join(', ')}.\n\n${first}`));
+  }, new RegExp(`SKILL\\.md: section "${reEsc(KEY_LAST)}" starts at char \\d+; keep it within the first ${KEY_LIMIT} `)],
+  ['rejects a key section whose heading is left only in a fenced block', (d) => edit(d, SKILL, (t) => {
+    const first = BUDGETS.skillKeySections[0];
+    return t.replace(`\n${KEY_LAST}\n`, () => `\n${KEY_LAST.replace(/\S+$/, 'Renamed')}\n`)
+      .replace(`\n${first}`, () => `\n\`\`\`text\n${KEY_LAST}\n\`\`\`\n\n${first}`);
+  }), new RegExp(`SKILL\\.md: missing section "${reEsc(KEY_LAST)}"`)],
+  ['rejects a key section whose heading line goes on with more of a word', (d) => edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n${KEY_LAST}s\n`)),
+    new RegExp(`SKILL\\.md: missing section "${reEsc(KEY_LAST)}"`)],
+  // "Within the first 8,000 characters": the last offset that passes is 7,999.
+  [`rejects a key section that starts right after the first ${KEY_LIMIT} characters`, moveSection(KEY_LAST, KEY_LIMIT),
+    new RegExp(`SKILL\\.md: section "${reEsc(KEY_LAST)}" starts at char ${KEY_LIMIT + 1}; keep it within the first ${KEY_LIMIT} `)],
+  [`accepts a key section that starts at the last of the first ${KEY_LIMIT} characters`, (d) => { moveSection(KEY_LAST, KEY_LIMIT - 1)(d); rebuild(d); },
+    /validate: OK/, 0, /missing section|starts at char/],
   ['rejects a universal core over its character budget', (d) => edit(d, CORE, (t) => `${t}\n${filler(BUDGETS.universalCoreMaxChars - chars(t) + 100)}\n`),
     new RegExp(`universal/prompt-engine\\.md: \\d+ chars \\(max ${BUDGETS.universalCoreMaxChars}\\)`)],
   // ---- references

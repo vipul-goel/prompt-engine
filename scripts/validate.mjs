@@ -265,10 +265,34 @@ for (const f of INSTRUCTION_FILES) {
 // Budgets
 if (chars(skillBody) > B.skillBodyMaxChars) err(`${SKILL}: body is ${chars(skillBody)} chars (max ${B.skillBodyMaxChars})`);
 if (skillBody.split('\n').length > B.skillBodyMaxLines) err(`${SKILL}: body is ${skillBody.split('\n').length} lines (max ${B.skillBodyMaxLines})`);
+// A key section starts at its heading line: the first line outside fenced blocks that starts with
+// the heading, followed by the end of the line or a character that can't continue a word, so
+// "### 3. Ask (standard and deep modes)" counts and "### 5. Presentation" doesn't. Fences are
+// tracked as build.mjs's demoteHeadings tracks them. A search for the heading's text anywhere let a
+// contents line or a fenced example that named it stand in for a section that started later, or
+// that was gone. Positions count characters from 1, as the body budget counts them: "within the
+// first 8,000" means that the heading's first character is one of the first 8,000.
+const sectionStart = new Map();
+{
+  let fence = null;
+  let at = 0;
+  for (const line of skillBody.split('\n')) {
+    const f = line.match(/^(`{3,}|~{3,})/);
+    if (f) {
+      if (!fence) fence = f[1];
+      else if (line.startsWith(fence)) fence = null;
+    } else if (!fence) {
+      for (const h of B.skillKeySections ?? []) {
+        if (!sectionStart.has(h) && line.startsWith(h) && !/^[\p{L}\p{M}\p{N}_]/u.test(line.slice(h.length, h.length + 2))) sectionStart.set(h, at);
+      }
+    }
+    at += chars(line) + 1;
+  }
+}
 for (const h of B.skillKeySections ?? []) {
-  const i = skillBody.indexOf(h);
-  if (i < 0) err(`${SKILL}: missing section "${h}"`);
-  else if (i > B.skillKeySectionsWithinChars) err(`${SKILL}: section "${h}" starts at char ${i}; keep it within the first ${B.skillKeySectionsWithinChars} so it survives context compaction`);
+  const i = sectionStart.get(h);
+  if (i === undefined) err(`${SKILL}: missing section "${h}": no line outside fenced blocks starts with it`);
+  else if (i >= B.skillKeySectionsWithinChars) err(`${SKILL}: section "${h}" starts at char ${i + 1}; keep it within the first ${B.skillKeySectionsWithinChars} so it survives context compaction`);
 }
 const core = read('universal/prompt-engine.md');
 if (chars(core) > B.universalCoreMaxChars) err(`universal/prompt-engine.md: ${chars(core)} chars (max ${B.universalCoreMaxChars})`);
