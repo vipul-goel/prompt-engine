@@ -223,10 +223,24 @@ for (const k of KNOWLEDGE_ORDER) if (!refFiles.includes(`${k}.md`)) err(`scripts
 // neither would "### Score (0-5)". The other contract strings may appear anywhere in the text.
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const headingRe = (h) => new RegExp(`(^|\\n)[ \\t]*(?:(?:[-*]|\\d+\\.)?[ \\t]*#{2,4}[ \\t]+${esc(h)}[ \\t]*(?::|\\n|$)|(?:[-*]|\\d+\\.)[ \\t]+\\*\\*${esc(h)}\\*\\*)`);
-for (const [file, groups] of Object.entries(contract.artifacts)) {
+// The contract's own shape first: each group in required is a list of strings, and each artifact
+// lists groups that required defines. A misspelled group name read as an empty list, and a list
+// written as a string as its single characters, so either turned checks off without a message.
+const isMapping = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+if (!isMapping(contract.required)) err('data/contract.json: required must map each group name to a list of strings');
+if (!isMapping(contract.artifacts)) err('data/contract.json: artifacts must map each file to a list of group names from required');
+const required = isMapping(contract.required) ? contract.required : {};
+const isGroup = (g) => typeof g === 'string' && Object.hasOwn(required, g);
+const strings = (g) => (isGroup(g) && Array.isArray(required[g]) ? required[g].filter((s) => typeof s === 'string' && s !== '') : []);
+for (const [g, list] of Object.entries(required)) {
+  if (!Array.isArray(list) || !list.length || list.some((s) => typeof s !== 'string' || s === '')) err(`data/contract.json: required.${g} must be a list of non-empty strings`);
+}
+for (const [file, groups] of Object.entries(isMapping(contract.artifacts) ? contract.artifacts : {})) {
+  if (!Array.isArray(groups) || !groups.length) { err(`data/contract.json: artifacts[${JSON.stringify(file)}] must be a list of group names from required`); continue; }
+  for (const g of groups) if (!isGroup(g)) err(`data/contract.json: artifacts[${JSON.stringify(file)}] lists ${JSON.stringify(g)}, which isn't a group in required (${Object.keys(required).join(', ')})`);
   if (!exists(file)) { err(`${file}: listed in data/contract.json but missing`); continue; }
   const t = read(file);
-  for (const g of groups) for (const s of contract.required[g] ?? []) {
+  for (const g of groups) for (const s of strings(g)) {
     if (g === 'headings') {
       if (!headingRe(s).test(t)) err(`${file}: missing contract heading ${JSON.stringify(s)} (a ## to #### heading followed by a colon or the end of the line, or a **bold** label that starts a list item)`);
     } else if (!t.includes(s)) err(`${file}: missing contract string ${JSON.stringify(s)} (${g})`);

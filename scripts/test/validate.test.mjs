@@ -329,6 +329,21 @@ const ROWS = [
     /output-format\.md: missing contract heading "What next\?"/],
   ['rejects a renamed heading in a list item', (d) => edit(d, CORE, (t) => t.replace('\n- ### Score:', '\n- ### Rating:')), /universal\/prompt-engine\.md: missing contract heading "Score"/],
   ['rejects a renamed bold label in a list item', (d) => edit(d, SKILL, (t) => t.replace('\n7. **Score**', '\n7. **Rating**')), /SKILL\.md: missing contract heading "Score"/],
+  // The contract's own shape: a group name that required doesn't define, or a list written as a
+  // string, turned an artifact's checks off without a message. The copy is built again, since the
+  // MCP server's content holds the contract.
+  ['rejects a contract group name that required does not define', (d) => {
+    editJson(d, 'data/contract.json', (j) => { const g = j.artifacts[`${REF}/output-format.md`]; g[g.indexOf('menu')] = 'menus'; });
+    rebuild(d);
+  }, /^error: data\/contract\.json: artifacts\["skills\/prompt-engine\/references\/output-format\.md"\] lists "menus", which isn't a group in required \([^)\n]+\)\n\n1 error\(s\)$/m],
+  ['rejects an artifact whose contract groups are not a list', (d) => {
+    editJson(d, 'data/contract.json', (j) => { j.artifacts[SKILL] = 'headings'; });
+    rebuild(d);
+  }, /^error: data\/contract\.json: artifacts\["skills\/prompt-engine\/SKILL\.md"\] must be a list of group names from required\n\n1 error\(s\)$/m],
+  ['rejects a contract group whose strings are not a list', (d) => {
+    editJson(d, 'data/contract.json', (j) => { j.required.menu = j.required.menu.join(', '); });
+    rebuild(d);
+  }, /^error: data\/contract\.json: required\.menu must be a list of non-empty strings\n\n1 error\(s\)$/m],
   // ---- plugin root
   ...FORBIDDEN_ROOT.map((f) => [`rejects ${f} at the plugin root`, (d) => writeFileSync(join(d, f), ''), new RegExp(`(^|\\n)error: ${reEsc(f)}: not allowed at the repo root`)]),
   // Memory files in the folders that Claude Code walks through to a reference, tracked or not.
