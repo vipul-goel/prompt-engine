@@ -118,7 +118,7 @@ The server can also run over HTTP for people who want a remote URL instead of a 
 
 ## Weekly data check
 
-The "Re-verify tool data" workflow runs once a week. When entries in `data/media-targets.json` haven't been checked for 45 days, it opens one issue that lists them; while that issue stays open, each run that finds stale entries updates the list and adds a comment. To handle it:
+The "Re-verify tool data" workflow runs once a week. When entries in `data/media-targets.json` haven't been checked for 45 days, it opens one issue that lists them; while that issue stays open, each run that finds stale entries updates the list and adds a comment. It reuses only an issue it opened itself, so an issue that someone else opens with the same title is left alone. To handle it:
 1. Check each listed tool against the vendor's current docs.
 2. Update the entry's fields, `status` and `sources`, and set `last_verified` to today.
 3. Run `node scripts/build.mjs` and commit the regenerated files.

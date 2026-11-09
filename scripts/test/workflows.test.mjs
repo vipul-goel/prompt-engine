@@ -444,7 +444,7 @@ esac`;
   });
   const calls = r.calls.filter((c) => !c.startsWith('gh [issue] [list]'))
     .map((c) => { const [, verb, arg] = /^gh \[issue\] \[(\w+)\] \[([^\]]*)\]/.exec(c) ?? [, c]; return verb === 'create' ? 'create' : `${verb} ${arg}`; });
-  return { ...r, calls };
+  return { ...r, all: r.calls, calls };
 }
 
 test('verify-data.yml keeps one issue: it updates the open one, and opens one only when there is none (finding 29, D18)', { skip: NO_JQ }, () => {
@@ -454,6 +454,17 @@ test('verify-data.yml keeps one issue: it updates the open one, and opens one on
   const failed = issueStep([], { LIST_FAILS: '1' });
   assert.notEqual(failed.code, 0, 'a failed lookup fails the step');
   assert.deepEqual(failed.calls, [], 'instead of opening a second issue');
+});
+
+test("verify-data.yml reuses only an issue it opened itself, never someone else's with the same title", { skip: NO_JQ }, () => {
+  // The repository is public, so anyone can open an issue with the workflow's title. The stand-in
+  // returns every canned issue whatever --author says, so the step's own --jq filter is tested.
+  const STRANGER = { is_bot: false, login: 'someone', id: 'U_1', name: '' };
+  assert.deepEqual(issueStep([{ number: 57, title: TITLE, author: STRANGER }]).calls, ['create']);
+  assert.deepEqual(issueStep([{ number: 57, title: TITLE, author: STRANGER }, { number: 12, title: TITLE, author: BOT }]).calls, ['edit 12', 'comment 12']);
+  assert.deepEqual(issueStep([{ number: 58, title: TITLE, author: { is_bot: true, login: 'app/other-app' } }]).calls, ['create'], "another app's issue");
+  const lookup = issueStep([]).all.find((c) => c.startsWith('gh [issue] [list]'));
+  assert.match(lookup, / \[--author\] \[app\/github-actions\]/, 'the search asks for its own issues');
 });
 
 test('ci.yml runs on pull requests and on main, with read-only permissions', () => {
