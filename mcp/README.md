@@ -110,7 +110,7 @@ Lines are matched one at a time, after each control character becomes a space an
 | `prompt-engine://media-targets` | Image and video tool syntax, with verification status |
 | `prompt-engine://checklists/{domain}` | The `get_checklist` text for each domain (listed individually) |
 
-All text comes from the same sources as the skill and the copy-paste prompt (`skills/prompt-engine/` and `universal/`), generated into `src/generated/content.ts` by `node scripts/build.mjs` at the repository root.
+All text comes from the same sources as the skill and the copy-paste prompt (`skills/prompt-engine/` and `universal/`), generated into `src/generated/content.ts` by `node scripts/build.mjs` at the repository root. The method brief is the copy-paste prompt's text with this server's steps added, so it shares that prompt's limits: for example, it has no rule for other people's private details, which the skill replaces with placeholders ([Known limits](https://github.com/vipul-goel/prompt-engine/blob/main/docs/compatibility.md#known-limits)).
 
 ## Self-hosting over HTTP
 

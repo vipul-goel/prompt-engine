@@ -126,7 +126,7 @@ Expected:
 - [ ] `/prompt-engine` resolves to `/prompt-engine:prompt-engine`.
 - [ ] Reading the skill's reference files asks for no permission.
 - [ ] The questions appear as dialogs: at most 4 per dialog, each with a short header (12 characters at most), the "(Recommended)" option first, then a review screen before you submit.
-- [ ] The output follows the order in [check 2](#2-accept-the-recommendations), except for the menu: "What next?" is a dialog headed **Next step**. It offers Run it now marked "(Recommended)", Refine, and Save to file with the path it will use. In place of Run it now, the recommended option is Fill placeholders while placeholders other than secrets remain, or else Try it here if Claude takes the prompt to be for another tool.
+- [ ] The output follows the order in [check 2](#2-accept-the-recommendations), except for the menu: "What next?" is a dialog headed **Next step**. It offers Run it now marked "(Recommended)", Refine, and Save to file with the path it will use. In place of Run it now, the recommended option is Fill placeholders while placeholders remain (those for secrets or other people's private details don't count), or else Try it here if Claude takes the prompt to be for another tool.
 - [ ] Nothing runs before you pick an option.
 - [ ] Pick Save to file. Claude Code asks for permission to create `prompts/<name>.md` as a file, not to run a shell command, and the reply gives the path. Then ask it to save to the same path again: it writes `prompts/<name>-2.md` and leaves the first file unchanged.
 - [ ] Optional: in another session, press Esc on a question dialog, and note whether the questions come back as a numbered list.
