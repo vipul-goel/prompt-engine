@@ -546,6 +546,9 @@ const ROWS = [
   // tool_used grader on Skill out of the score unless it sets arm: both (finding 46, D27).
   ['rejects a trigger case whose Skill grader two-arm runs leave out of the score', (d) => edit(d, 'evals/trigger-natural-phrasing/graders/02-skill-fired.md', (t) => t.replace('arm: both\n', '')),
     /error: evals\/trigger-natural-phrasing\/graders\/02-skill-fired\.md: a trigger case's Skill grader needs arm: both; without it, two-arm runs leave it out of the score \(repo rule\)/],
+  // With min: 0 and no max, the grader passes when the skill never starts, which D27 is there to catch.
+  ['rejects a trigger case whose Skill grader passes without the skill (min: 0, no max)', (d) => edit(d, 'evals/trigger-natural-phrasing/graders/02-skill-fired.md', (t) => t.replace('arm: both', 'min: 0\narm: both')),
+    /^error: evals\/trigger-natural-phrasing\/graders\/02-skill-fired\.md: min: 0 without max counts any number of calls, so the grader never fails; set max \(max: 0 checks that the tool is never called\), or drop min\n\n1 error\(s\)$/m],
   ['rejects a trigger case without a tool_used grader on Skill', (d) => rmSync(join(d, 'evals/no-trigger-plain-task/graders/01-skill-not-fired.md')),
     /error: evals\/no-trigger-plain-task: a case tagged trigger needs a tool_used grader on Skill \(repo rule\)/],
   // Every case pins one agent model, and a history case the model it was recorded on (finding 47, D28).

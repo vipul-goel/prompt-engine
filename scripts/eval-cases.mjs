@@ -368,9 +368,11 @@ function checkGrader(err, where, g, abs, referenced, dir) {
       if (typeof d.tool !== 'string' || d.tool === '') err(`${where}: needs tool`);
       pattern('input_match', d.input_match);
       for (const k of ['min', 'max']) if (d[k] !== undefined && !whole(d[k], 0, Infinity)) err(`${where}: ${k} must be a whole number of 0 or more`);
-      // The CLI counts calls from min (1 when unset) to max: a max below that never passes.
+      // The CLI counts calls from min (1 when unset) to max (no limit when unset): a max below that
+      // never passes, and min: 0 without max passes every run.
       const min = d.min ?? 1;
       if (whole(min, 0, Infinity) && whole(d.max, 0, Infinity) && min > d.max) err(`${where}: min (${d.min === undefined ? '1 when unset' : min}) is above max (${d.max}), so the grader never passes`);
+      if (min === 0 && d.max === undefined) err(`${where}: min: 0 without max counts any number of calls, so the grader never fails; set max (max: 0 checks that the tool is never called), or drop min`);
       break;
     }
     case 'tool_order': tool('before'); tool('after'); break;

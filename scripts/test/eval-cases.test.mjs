@@ -236,6 +236,19 @@ test('checkEvalCases reads an unset min as 1, as the CLI does', () => {
   assert.deepEqual(errors, ['evals/demo/graders/01-x.md: min (1 when unset) is above max (0), so the grader never passes']);
 });
 
+// The CLI passes a tool_used grader when the matching calls number from min to max, and an unset
+// max has no limit: with min: 0 and no max, every run passes it, a run without the skill included.
+test('checkEvalCases refuses a tool_used grader that never fails: min: 0 without max', () => {
+  const { errors } = check({
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-skill.md': '---\ntype: tool_used\ntool: Skill\nmin: 0\narm: both\n---\n',
+    'evals/demo/graders/02-never.md': '---\ntype: tool_used\ntool: Write\nmin: 0\nmax: 0\n---\n',
+    'evals/demo/graders/03-at-most-two.md': '---\ntype: tool_used\ntool: Write\nmin: 0\nmax: 2\n---\n',
+    'evals/demo/graders/04-at-least-one.md': '---\ntype: tool_used\ntool: Skill\narm: both\n---\n',
+  });
+  assert.deepEqual(errors, ['evals/demo/graders/01-skill.md: min: 0 without max counts any number of calls, so the grader never fails; set max (max: 0 checks that the tool is never called), or drop min']);
+});
+
 test('checkEvalCases accepts an empty prompt.md body when case.yaml has execution.prompt, and a name set only in prompt.md', () => {
   const { errors } = check({
     'evals/demo/case.yaml': 'schema_version: "1.1"\nexecution:\n  prompt: Hi.\n',
@@ -468,6 +481,16 @@ test('checkSuiteRules scores a trigger case\'s Skill grader in both arms', () =>
     'evals/unset/graders/01-skill.md: a trigger case\'s Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)',
     'evals/with-only/graders/01-skill.md: a trigger case\'s Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)',
   ]);
+});
+
+// D27's rule wants the grader on Skill: one on another tool, even with arm: both, doesn't count.
+test('checkSuiteRules wants a trigger case\'s tool_used grader on Skill, not on another tool', () => {
+  const { schema, errors } = rules({
+    'evals/read-only/prompt.md': promptMd('tags: [trigger]\n'),
+    'evals/read-only/graders/01-read.md': '---\ntype: tool_used\ntool: Read\narm: both\n---\n',
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, ['evals/read-only: a case tagged trigger needs a tool_used grader on Skill (repo rule)']);
 });
 
 test('checkSuiteRules reads tags as claude plugin eval does: prompt.md\'s, else case.yaml\'s', () => {
