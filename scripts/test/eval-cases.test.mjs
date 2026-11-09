@@ -518,6 +518,38 @@ test('checkEvalCases skips the git check when .git is not a repository (exit 128
   }
 });
 
+// With .git there, a skipped check says why, as validate.mjs's rules on tracked files do: a run
+// that only skipped it passed as if it had run. Without .git, it is skipped quietly.
+test('checkEvalCases warns when .git is there but git check-ignore fails or git is missing', () => {
+  const files = { ...ignoredCase(IGNORED), [`evals/demo/${IGNORED}`]: '{}\n' };
+  const warned = (prepare) => {
+    const dir = tree(files);
+    try {
+      prepare(dir);
+      const errors = [];
+      const warnings = [];
+      checkEvalCases(dir, (m) => errors.push(m), (m) => warnings.push(m));
+      assert.deepEqual(errors, []);
+      return warnings;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const SKIPPED = 'the check that .gitignore hides no file a case names (scaffold_script, history_file, baseline_file) was skipped: ';
+  // An empty .git folder: git check-ignore stops with "fatal: not a git repository", exit 128.
+  const [notRepo, ...more] = warned((dir) => mkdirSync(join(dir, '.git')));
+  assert.deepEqual(more, []);
+  assert.ok(notRepo?.startsWith(`${SKIPPED}git check-ignore failed: fatal: `), notRepo);
+  const path = process.env.PATH;
+  try {
+    process.env.PATH = '';
+    assert.deepEqual(warned((dir) => mkdirSync(join(dir, '.git'))), [`${SKIPPED}git isn't on PATH`]);
+  } finally {
+    process.env.PATH = path;
+  }
+  assert.deepEqual(warned(() => {}), []);
+});
+
 // ---------- checkSuiteRules: this repo's rules for how the cases run and score ----------
 const MODEL = 'claude-sonnet-5-5';
 // prompt.md with the given front matter lines and a model line, none when model is null.

@@ -857,6 +857,11 @@ const GIT_ROWS = [
     renameSync(join(d, '.git'), join(d, '.git-moved'));
     writeFileSync(join(d, '.git'), `gitdir: ${join(d, 'gone').replaceAll('\\', '/')}\n`);
   }, /^warning: the rules on tracked files \(memory files at the plugin root, and the plugin directory's limits on tracked files\) were skipped: git ls-files failed: \S/m, 0, /AGENTS\.md/],
+  // So is the check that .gitignore hides no file a case names, which asks git check-ignore.
+  ['warns that the check of ignored case files was skipped when git can\'t read the repository', (d) => {
+    renameSync(join(d, '.git'), join(d, '.git-moved'));
+    writeFileSync(join(d, '.git'), `gitdir: ${join(d, 'gone').replaceAll('\\', '/')}\n`);
+  }, /^warning: the check that \.gitignore hides no file a case names \(scaffold_script, history_file, baseline_file\) was skipped: git check-ignore failed: \S/m, 0],
   // A fixture a case names but git ignores works here and is missing from a clean checkout
   // (finding 67). A tracked one is in every checkout, so it passes.
   ['rejects a fixture that a case names but git ignores', (d) => {

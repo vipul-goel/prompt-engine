@@ -506,7 +506,7 @@ const mediaIds = new Set();
 // applies this repo's rules for how the cases run and score, and checkConversations checks each
 // history case's recording against the method and its graders against the recording, and the
 // request text that any case's rubric quotes against the case.
-const cases = checkEvalCases(root, err);
+const cases = checkEvalCases(root, err, warn);
 checkSuiteRules(root, cases, err);
 // It reads the contract's headings, menu and reply line: skipped when data/contract.json didn't read.
 if (contract) checkConversations(root, cases, { err, contract });

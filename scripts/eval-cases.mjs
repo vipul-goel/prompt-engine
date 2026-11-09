@@ -403,7 +403,8 @@ function checkGrader(err, where, g, abs, referenced, dir) {
 // it found, for other checks to reuse: { name, dir, caseYaml, prompt: { data, body }, graders:
 // [{ name, file, data, body }] }, where caseYaml or prompt is null when the file is missing or
 // didn't parse, graders lists the files with front matter that parsed, and bodies are trimmed.
-export function checkEvalCases(root, err) {
+// warn(message) says when a check was skipped.
+export function checkEvalCases(root, err, warn = () => {}) {
   const cases = [];
   if (!isDir(join(root, 'evals'))) return cases;
   const referenced = new Set();
@@ -520,11 +521,18 @@ export function checkEvalCases(root, err) {
 
   // A referenced fixture that git ignores works here but is missing from a clean checkout. Only
   // files that exist are asked about, since check-ignore also lists a missing path that matches
-  // a pattern. Exit 0: some are ignored; 1: none; 128 or no git at all: skipped. Tracked files
-  // are never listed, which is right: a clean checkout has them.
+  // a pattern. Exit 0: some are ignored; 1: none. Anything else (no git on PATH, or a repository
+  // git can't read, such as one owned by another user or with a damaged index) skips the check
+  // with a warning that says why: skipped quietly, the run passed as if it had run. In a copy
+  // without .git, it is skipped quietly. Tracked files are never listed, which is right: a clean
+  // checkout has them.
   if (referenced.size && existsSync(join(root, '.git'))) {
     const r = spawnSync('git', ['-C', root, 'check-ignore', '--stdin', '-z'], { input: `${[...referenced].join('\0')}\0`, encoding: 'utf8' });
     if (r.status === 0) for (const p of r.stdout.split('\0').filter(Boolean)) err(`${p}: ignored by .gitignore, so a clean checkout lacks it (git check-ignore -v ${p} names the rule)`);
+    else if (r.status !== 1) {
+      const why = r.error?.code === 'ENOENT' ? 'git isn\'t on PATH' : `git check-ignore failed: ${String(r.stderr ?? '').trim().split('\n')[0] || r.error?.message || `exit ${r.status ?? r.signal}`}`;
+      warn(`the check that .gitignore hides no file a case names (scaffold_script, history_file, baseline_file) was skipped: ${why}`);
+    }
   }
   return cases;
 }
