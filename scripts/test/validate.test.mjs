@@ -142,6 +142,7 @@ const KEY_RULE = 'frontmatter key must start with a letter and not read as a YAM
 const TAB_RULE = (line) => `frontmatter must not contain tabs outside a "double-quoted string": ${JSON.stringify(line)}`;
 const CONTROL_RULE = (line) => `frontmatter must not contain control characters: ${JSON.stringify(line)}`;
 const metadataLine = (line) => (d) => edit(d, SKILL, (t) => t.replace(/^ {2}version:/m, () => `${line}\n  version:`));
+const SPLIT_RULE = 'frontmatter must open and close with a line of exactly "---", with no other "---" in between: Claude Code ends it at the first "---" after the opening line, even inside a value or in a line such as "--- " or "----"';
 const FRONTMATTER_REJECTED = [
   ['a line that is not a key', (d) => edit(d, SKILL, (t) => t.replace('license: MIT', 'license: MIT\n- stray')), 'unsupported frontmatter line: - stray'],
   ['an unquoted value with ": "', setFront('description', 'description: Use to improve: critique or write a prompt'), `${VALUE_RULE}description: Use to improve: critique or write a prompt`],
@@ -164,6 +165,14 @@ const FRONTMATTER_REJECTED = [
   // JSON.stringify leaves a C1 control character as it is; the message escapes it, so it shows.
   ['a C1 control character in a quoted value', setFront('description', 'description: "Use to improve\u{85} a prompt"'),
     CONTROL_RULE('description: "Use to improve a prompt"').replace('improve', 'improve\\u0085')],
+  // Claude Code ends the frontmatter at the first "---" after the opening line, wherever it is, so
+  // a value that holds one, or a closing line with more than "---", would load another way than
+  // validate.mjs and build.mjs read it.
+  ['a quoted value that holds ---', setFront('description', 'description: "Use to improve --- or write a prompt for any AI tool."'), SPLIT_RULE],
+  ['a bare metadata word that holds ---', metadataLine('  tag: a---b'), SPLIT_RULE],
+  ['a closing line with a space after ---', (d) => edit(d, SKILL, (t) => t.replace(/\n---\n/, '\n--- \n')), SPLIT_RULE],
+  ['a closing line of ----', (d) => edit(d, SKILL, (t) => t.replace(/\n---\n/, '\n----\n')), SPLIT_RULE],
+  ['an opening line with a space after ---', (d) => edit(d, SKILL, (t) => t.replace(/^---\n/, '--- \n')), SPLIT_RULE],
 ];
 
 // Eval cases (scripts/eval-cases.mjs): a grader file with front matter, then its body.
@@ -223,6 +232,11 @@ const ROWS = [
   ...FRONTMATTER_REJECTED.map(([name, mutate, msg]) => [`rejects frontmatter with ${name}, and reports only that`, mutate, onlyError(msg)]),
   ['accepts extra spaces after a frontmatter colon and trailing spaces', (d) => edit(d, SKILL, (t) => t.replace(/^description: /m, 'description:    ').replace('license: MIT', 'license: MIT   ')), /validate: OK/, 0],
   ['accepts a tab inside a quoted value and a line of spaces', (d) => edit(d, SKILL, (t) => t.replace('description: "Use to', 'description: "Use\tto').replace('license: MIT', 'license: MIT\n   ')), /validate: OK/, 0],
+  // Claude Code skips the blank line too, and a --- line after the closing one is body text.
+  ['accepts a blank line at the top of the frontmatter, and a --- line in the body', (d) => {
+    edit(d, SKILL, (t) => t.replace(/^---\n/, '---\n\n').replace(/\n## /, '\n---\n\n## '));
+    rebuild(d);
+  }, /validate: OK/, 0],
   ['rejects a SKILL.md without frontmatter', (d) => edit(d, SKILL, (t) => t.replace(/^---\n[\s\S]*?\n---\n/, '')), /SKILL\.md: missing YAML frontmatter/],
   // build.mjs reads past the mark, so this is the only error.
   ['rejects a SKILL.md that starts with a byte-order mark', (d) => edit(d, SKILL, (t) => `\u{FEFF}${t}`),

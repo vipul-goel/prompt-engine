@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { root, normalize } from './build.mjs';
+import { root, normalize, splitFrontmatter } from './build.mjs';
 
 const next = process.argv[2];
 if (!/^\d+\.\d+\.\d+$/.test(next ?? '')) {
@@ -59,16 +59,20 @@ if (existsSync(lockFile)) {
   pending.push([lockFile, `${JSON.stringify(lock, null, 2)}\n`, lockRel]);
 }
 
-// SKILL.md: only the metadata.version line inside the frontmatter.
+// SKILL.md: only the metadata.version line inside the frontmatter, which ends where build.mjs
+// and validate.mjs end it (splitFrontmatter).
 const skillRel = 'skills/prompt-engine/SKILL.md';
 const skillFile = join(root, skillRel);
 const skill = normalize(readFileSync(skillFile, 'utf8'));
-const front = skill.match(/^---\n[\s\S]*?\n---\n/);
-if (!front || !/^ {2}version: "[^"]*"$/m.test(front[0])) fail(`${skillRel}: no metadata.version line in the frontmatter`);
-// Concatenate instead of skill.replace(front[0], …): a replacement string would expand any
+let split;
+try { split = splitFrontmatter(skill); } catch (e) { fail(`${skillRel}: ${e.message}`); }
+// The frontmatter with its "---" lines: the text before the body.
+const front = split && skill.slice(0, skill.length - split.body.length);
+if (!front || !/^ {2}version: "[^"]*"$/m.test(split.front)) fail(`${skillRel}: no metadata.version line in the frontmatter`);
+// Concatenate instead of skill.replace(front, …): a replacement string would expand any
 // $$, $&, $` or $' in the frontmatter.
-const newFront = front[0].replace(/^( {2}version: ")[^"]*(")$/m, `$1${next}$2`);
-pending.push([skillFile, newFront + skill.slice(front[0].length), skillRel]);
+const newFront = front.replace(/^( {2}version: ")[^"]*(")$/m, `$1${next}$2`);
+pending.push([skillFile, newFront + split.body, skillRel]);
 
 for (const [file, text, rel] of pending) {
   writeFileSync(file, text);

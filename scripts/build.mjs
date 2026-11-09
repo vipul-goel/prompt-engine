@@ -19,6 +19,20 @@ export const root = process.env.PE_ROOT || join(dirname(fileURLToPath(import.met
 // so a CRLF checkout (Git for Windows' default) or a BOM an editor added changes nothing.
 export const normalize = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s).replace(/\r\n/g, '\n');
 const read = (p) => normalize(readFileSync(join(root, p), 'utf8'));
+// SKILL.md's frontmatter and body, from normalized text, or null when the text has none. Claude
+// Code (2.1.319, read in its code) ends the frontmatter at the first "---" after the opening line,
+// wherever it is (/^---\s*\n([\s\S]*?)---\s*\n?/): inside a value, or in a closing line such as
+// "--- " or "----". The scripts end it at the first line of exactly "---". Where the two would
+// differ, this throws instead, so that the skill can't load one way and be checked, versioned and
+// copied into recordings another.
+export function splitFrontmatter(text) {
+  const strict = text.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
+  // Where Claude Code's closing "---" starts; strict's starts after "---\n", the block and "\n".
+  const close = text.match(/^---\s*\n[\s\S]*?(?=---)/)?.[0].length;
+  if (!strict && close === undefined) return null;
+  if (!strict || close !== strict[1].length + 5) throw new Error('frontmatter must open and close with a line of exactly "---", with no other "---" in between: Claude Code ends it at the first "---" after the opening line, even inside a value or in a line such as "--- " or "----"');
+  return { front: strict[1], body: text.slice(strict[0].length) };
+}
 // Files the operating system writes into folders (Finder, Explorer). Git ignores them
 // (.gitignore), validate.mjs skips them and release.mjs leaves them out of the skill zip.
 export const OS_JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
@@ -300,7 +314,11 @@ export function buildAll() {
     refs[k] = outputs[p] ?? read(p);
   }
   outputs['universal/prompt-engine-knowledge.md'] = renderKnowledge(refs);
-  const skillBody = read('skills/prompt-engine/SKILL.md').replace(/^---\n[\s\S]*?\n---\n/, '').trim();
+  // The body as Claude Code loads it: without the frontmatter, or the whole file when it has none.
+  const skillText = read('skills/prompt-engine/SKILL.md');
+  let skill;
+  try { skill = splitFrontmatter(skillText); } catch (e) { throw new Error(`skills/prompt-engine/SKILL.md: ${e.message}`); }
+  const skillBody = (skill ? skill.body : skillText).trim();
   // A file on disk is read only when it is still in the skill's folder once links are followed,
   // so a link there can't bring a file from elsewhere into a recording.
   const skillDir = join(root, SKILL_FILES);

@@ -136,6 +136,26 @@ test("keeps $$, $&, $' and $` in SKILL.md's frontmatter as they are", () => {
   }
 });
 
+test('refuses a SKILL.md whose frontmatter Claude Code would end elsewhere, and changes nothing', () => {
+  const dir = copyRepo();
+  try {
+    const rel = 'skills/prompt-engine/SKILL.md';
+    const files = ['.claude-plugin/plugin.json', rel];
+    const original = read(dir, rel);
+    for (const variant of [(t) => t.replace(/\n---\n/, '\n--- \n'), (t) => t.replace(/\n---\n/, '\n----\n'), (t) => t.replace(/^ {2}version:/m, '  tag: a---b\n  version:')]) {
+      writeFileSync(join(dir, rel), variant(original));
+      const before = files.map((f) => read(dir, f));
+      assert.notEqual(before[1], original);
+      const r = run(dir, 'version.mjs', '9.8.7');
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /^skills\/prompt-engine\/SKILL\.md: frontmatter must open and close with a line of exactly "---"/m);
+      assert.deepEqual(files.map((f) => read(dir, f)), before);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('reminds about CHANGELOG.md until the version has a dated heading', () => {
   const dir = copyRepo();
   try {

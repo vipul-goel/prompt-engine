@@ -20,7 +20,7 @@
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, relative, basename } from 'node:path';
-import { buildAll, root, normalize, OS_JUNK, KNOWLEDGE_ORDER } from './build.mjs';
+import { buildAll, root, normalize, splitFrontmatter, OS_JUNK, KNOWLEDGE_ORDER } from './build.mjs';
 import { checkEvalCases, checkSuiteRules, checkConversations } from './eval-cases.mjs';
 import { scanText, publicText } from './eval/sanitize.mjs';
 
@@ -38,13 +38,18 @@ const SKILL_DIR = 'skills/prompt-engine';
 const SKILL = `${SKILL_DIR}/SKILL.md`;
 
 // ---------- frontmatter ----------
-// A small YAML subset that strict YAML parsers and Claude Code read the same way:
+// The block ends where Claude Code ends it too: at a line of exactly "---", with no other "---"
+// before it (splitFrontmatter in build.mjs, which build.mjs and version.mjs use as well). In it,
+// a small YAML subset that strict YAML parsers and Claude Code read the same way:
 // `key: value` lines, one level of `  key: value` lines under a bare `key:` line, no
 // duplicate keys, and every value either a "double-quoted string" with no " or \ inside,
 // or a single bare word. Single-quoted values are valid YAML but refused, to keep one
 // form (scripts/version.mjs writes the version in double quotes). No tabs outside a quoted
 // string, and no control characters.
-const FRONTMATTER = /^---\n([\s\S]*?)\n---\n?/;
+// After a frontmatter error, the other checks read the body from the line after the first line
+// that starts with "---" (past the opening one), so that one error doesn't bring others that
+// say nothing new.
+const BODY_AFTER_ERROR = /^---[^\n]*\n[\s\S]*?\n---[^\n]*(?:\n|$)/;
 const QUOTED = /^"[^"\\]*"$/;
 const BARE = /^[A-Za-z][\w./+-]*$/;
 // Words that don't read as strings, refused as values and as keys: YAML 1.1 reads the first
@@ -66,13 +71,13 @@ function scalar(value, line) {
   throw new Error(`frontmatter value must be a "double-quoted string" without " or \\ inside, or a single bare word: ${line}`);
 }
 export function parseFrontmatter(text) {
-  const m = text.match(FRONTMATTER);
-  if (!m) return { data: null, body: text };
+  const split = splitFrontmatter(text);
+  if (!split) return { data: null, body: text };
   // Maps without a prototype, so that a __proto__ key is an ordinary key, reported as not portable,
   // instead of going to Object.prototype's setter (which drops it, or makes its mapping the prototype).
   const data = Object.create(null);
   let parent = null;
-  for (const line of m[1].split('\n')) {
+  for (const line of split.front.split('\n')) {
     if (/^ *$/.test(line)) continue;
     if (CONTROL.test(line)) throw new Error(`frontmatter must not contain control characters: ${shown(line)}`);
     // PyYAML refuses a tab between a key and its value, at the end of a line and on a blank line.
@@ -91,7 +96,7 @@ export function parseFrontmatter(text) {
       throw new Error(`unsupported frontmatter line: ${line}`);
     }
   }
-  return { data, body: text.slice(m[0].length) };
+  return { data, body: split.body };
 }
 
 const skillText = read(SKILL);
@@ -109,7 +114,7 @@ try {
   err(`${SKILL}: ${e.message}`);
   frontError = true;
   front = null;
-  skillBody = skillText.replace(FRONTMATTER, '');
+  skillBody = skillText.replace(BODY_AFTER_ERROR, '');
 }
 if (!front) {
   if (!frontError) err(`${SKILL}: missing YAML frontmatter`);
@@ -371,9 +376,10 @@ if (histories.length) {
 }
 
 // ---------- generated files ----------
-// buildAll() throws on sources it can't render: list that with the other errors.
+// buildAll() throws on sources it can't render: list that with the other errors, unless it is one
+// listed already, such as a SKILL.md frontmatter that doesn't end where Claude Code ends it.
 let built = null;
-try { built = buildAll(); } catch (e) { err(`build failed: ${e.message}`); }
+try { built = buildAll(); } catch (e) { if (!errors.includes(e.message)) err(`build failed: ${e.message}`); }
 for (const [p, content] of Object.entries(built ?? {})) {
   if (!exists(p) || read(p) !== content) err(`${p}: stale; run node scripts/build.mjs`);
 }

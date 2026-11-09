@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { KNOWLEDGE_ORDER, normalize, refreshHistory, renderKnowledge, renderMediaTargets } from '../build.mjs';
+import { KNOWLEDGE_ORDER, normalize, refreshHistory, renderKnowledge, renderMediaTargets, splitFrontmatter } from '../build.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Build output and tool state the checks don't read: copying them only slows the tests down.
@@ -123,6 +123,46 @@ test('a byte-order mark at the start of a source file changes nothing, though va
     const validate = node(join(dir, 'scripts', 'validate.mjs'));
     assert.equal(validate.code, 1, validate.out);
     assert.match(validate.stderr, /^error: skills\/prompt-engine\/SKILL\.md: starts with a byte-order mark[^\n]*\n\n1 error\(s\)$/m);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------- SKILL.md's frontmatter ----------
+// Claude Code (2.1.319) ends the frontmatter at the first "---" after the opening line, wherever it is.
+const SPLIT_RULE = 'frontmatter must open and close with a line of exactly "---", with no other "---" in between: Claude Code ends it at the first "---" after the opening line, even inside a value or in a line such as "--- " or "----"';
+
+test('splitFrontmatter ends the frontmatter only where Claude Code ends it too', () => {
+  const body = '# Title\n\nText.\n\n---\n\nMore.\n';
+  assert.deepEqual(splitFrontmatter(`---\nname: x\n---\n${body}`), { front: 'name: x', body });
+  // A blank line at the top, which Claude Code's \s* skips, and a closing line at the end of the file.
+  assert.deepEqual(splitFrontmatter('---\n\nname: x\n---'), { front: '\nname: x', body: '' });
+  // No frontmatter: no "---" first, or none that closes it.
+  for (const text of [body, '---\nname: x\n']) assert.equal(splitFrontmatter(text), null, text);
+  for (const text of ['---\nname: x\n--- \nbody', '---\nname: x\n----\nbody', '---\nname: "a --- b"\n---\nbody', '---\nmetadata:\n  tag: a---b\n---\nbody', '--- \nname: x\n---\nbody']) {
+    assert.throws(() => splitFrontmatter(text), { message: SPLIT_RULE }, text);
+  }
+});
+
+test('build.mjs stops on a SKILL.md whose frontmatter Claude Code would end elsewhere, and writes nothing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-front-'));
+  try {
+    copyTo(dir);
+    const skill = join(dir, 'skills/prompt-engine/SKILL.md');
+    const original = readFileSync(skill, 'utf8');
+    const histories = () => HISTORIES.map((c) => readFileSync(join(dir, 'evals', c, 'history.jsonl'), 'utf8'));
+    const before = histories();
+    for (const variant of [original.replace(/\n---\n/, '\n--- \n'), original.replace(/\n---\n/, '\n----\n'), original.replace(/^description: "/m, 'description: "--- ')]) {
+      assert.notEqual(variant, original);
+      writeFileSync(skill, variant);
+      for (const args of [[], ['--check']]) {
+        const r = node(join(dir, 'scripts', 'build.mjs'), args);
+        assert.equal(r.code, 1, r.out);
+        assert.equal(r.stdout, '');
+        assert.equal(r.stderr, `build failed: skills/prompt-engine/SKILL.md: ${SPLIT_RULE}\n`);
+      }
+      assert.deepEqual(histories(), before, 'no history changed');
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
