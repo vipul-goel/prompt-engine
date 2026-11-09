@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: followup-fill-placeholders
+context:
+  history_file: history.jsonl
+expected_outcome: |
+  At the What next? menu, with the mug's details still open as placeholders, the user picks 1, Fill placeholders: the reply asks for the open details and runs nothing. It doesn't write the description or fill a placeholder with a detail of its own.
