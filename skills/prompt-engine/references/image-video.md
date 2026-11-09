@@ -120,7 +120,7 @@ Give each segment one action and one camera move, long enough for the action. Va
 - Real people, minors, trademarks or a living artist's name → fictional people, generic marks and a description of the style's traits.
 - Version-specific flags or features you aren't sure the user's version supports → ask, or state the assumption.
 - A prompt over the tool's length guidance → shorten, keeping the essentials first.
-- Added details missing from Assumptions → go through the prompt phrase by phrase and compare each detail with the request: framing and camera, light, colors, style, settings, exclusions, sound and scene details. Each one the user didn't give, down to one word such as a material, is in an Assumption, whatever its tag under "What I added & why"; small scene details share one item. Stay within eight items by merging related picks, not by leaving any out.
+- Added details missing from Assumptions → go through the prompt phrase by phrase and check each detail (framing and camera, light, colors, style, settings, exclusions, sound, scene details) against the request, the user's answers (accepted ★ included) and what you found in their files, earlier messages or attachments. Each one that came from none of these, down to one word such as a material, is in an Assumption, whatever its tag under "What I added & why"; small scene details share one item. Stay within eight items by merging related picks, not by leaving any out.
 
 ## Language
 
