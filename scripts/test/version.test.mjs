@@ -65,12 +65,22 @@ test('sets the version everywhere and the repository still validates', () => {
   }
 });
 
-test('rejects a version that is not major.minor.patch', () => {
+// A part with a leading zero isn't semver: npm publish refuses 01.2.3 (EBADSEMVER), though npm pack
+// keeps it.
+test('rejects a version that is not major.minor.patch, or has a leading zero, and changes nothing', () => {
   const dir = copyRepo();
   try {
-    const r = run(dir, 'version.mjs', 'v1.0');
-    assert.equal(r.code, 2);
-    assert.match(r.out, /usage/);
+    const before = read(dir, '.claude-plugin/plugin.json');
+    for (const v of ['v1.0', '01.2.3', '1.02.3', '1.2.03']) {
+      const r = run(dir, 'version.mjs', v);
+      assert.equal(r.code, 2, `${v}: ${r.out}`);
+      assert.match(r.out, /^usage: /, v);
+      assert.equal(read(dir, '.claude-plugin/plugin.json'), before, v);
+    }
+    // 0 alone is a part without a leading zero.
+    const ok = run(dir, 'version.mjs', '10.0.20');
+    assert.equal(ok.code, 0, ok.out);
+    assert.equal(JSON.parse(read(dir, '.claude-plugin/plugin.json')).version, '10.0.20');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

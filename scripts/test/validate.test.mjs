@@ -267,6 +267,8 @@ const ROWS = [
   ['allows only Read in allowed-tools', setFront('allowed-tools', 'allowed-tools: Bash'), /allowed-tools should be exactly "Read"/],
   ['requires metadata to be a mapping', (d) => edit(d, SKILL, (t) => t.replace(/^metadata:\n(?: {2}.*\n)+/m, 'metadata: none\n')), /SKILL\.md: metadata must be a mapping/],
   ['requires a semver metadata.version', (d) => edit(d, SKILL, (t) => t.replace(/^ {2}version: "[^"]*"$/m, '  version: "1.0"')), /SKILL\.md: metadata\.version must be semver/],
+  // semver.org item 2, which npm follows: no leading zeros.
+  ['rejects a metadata.version with a leading zero', (d) => edit(d, SKILL, (t) => t.replace(/^ {2}version: "[^"]*"$/m, '  version: "01.2.3"')), /SKILL\.md: metadata\.version must be semver/],
   // ---- skill folder
   ['rejects more files in the skill folder than its budget', (d) => { for (let i = 0; i < BUDGETS.skillFolderMaxFiles; i++) put(d, `skills/prompt-engine/extra/f${i}.md`, '# Extra\n'); },
     new RegExp(`skills/prompt-engine: \\d+ files \\(max ${BUDGETS.skillFolderMaxFiles}\\)`)],
@@ -383,6 +385,7 @@ const ROWS = [
   // ---- manifests
   ['requires the plugin name prompt-engine', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.name = 'prompt-engine-x'; }), /plugin\.json: name must be prompt-engine/],
   ['requires a semver plugin version', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.version = '1.0'; }), /plugin\.json: version must be semver/],
+  ['rejects a plugin version with a leading zero', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.version = '1.2.03'; }), /plugin\.json: version must be semver/],
   ['requires a marketplace entry for prompt-engine', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins[0].name = 'other'; }), /marketplace\.json: no entry for prompt-engine/],
   ['requires the marketplace source ./', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins[0].source = './plugin'; }), /prompt-engine source should be "\.\/"/],
   ['rejects a version in the marketplace entry', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins[0].version = '0.1.0'; }), /marketplace\.json: set version only in plugin\.json/],

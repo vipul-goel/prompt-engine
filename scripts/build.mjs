@@ -41,6 +41,11 @@ export function splitFrontmatter(text) {
   if (!strict || close !== strict[1].length + 5) throw new Error('frontmatter must open and close with a line of exactly "---", with no other "---" in between: Claude Code ends it at the first "---" after the opening line, even inside a value or in a line such as "--- " or "----"');
   return { front: strict[1], body: text.slice(strict[0].length) };
 }
+// A release version: major.minor.patch, each part 0 or a number without a leading zero, as
+// semver.org (item 2) and npm read it. /^\d+\.\d+\.\d+$/ also took 01.2.3: npm pack keeps it, and npm
+// publish refuses it (EBADSEMVER) only in the release workflow, whose GitHub release job doesn't
+// wait for the npm one. version.mjs and validate.mjs use it.
+export const SEMVER = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 // Files the operating system writes into folders (Finder, Explorer). Git ignores them
 // (.gitignore), validate.mjs skips them and release.mjs leaves them out of the skill zip.
 export const OS_JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);

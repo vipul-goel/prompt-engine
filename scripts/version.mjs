@@ -14,11 +14,11 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { root, normalize, splitFrontmatter } from './build.mjs';
+import { root, normalize, splitFrontmatter, SEMVER } from './build.mjs';
 
 const next = process.argv[2];
-if (!/^\d+\.\d+\.\d+$/.test(next ?? '')) {
-  console.error('usage: node scripts/version.mjs <major.minor.patch>');
+if (!SEMVER.test(next ?? '')) {
+  console.error('usage: node scripts/version.mjs <major.minor.patch>, each part 0 or a number without a leading zero');
   process.exit(2);
 }
 
