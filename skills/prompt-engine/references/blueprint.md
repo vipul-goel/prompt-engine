@@ -79,7 +79,7 @@ The method is the same for every model; only delimiters, placement and a few lin
 | Length | State it explicitly | State it explicitly | Ask explicitly for detail when you want it | State it explicitly |
 | Verification | A concrete check rather than a generic "double-check"; for Claude Opus 5, leave out added verification steps and re-check instructions: it verifies its own work, and they cause over-verification. Coding prompts still name the test command to run and report (the method's own inference from Claude Code's guidance) | Completion criteria and stop rules | A validation step is fine | Concrete criteria |
 
-**Gemini.** Google's prompt design guide ends its Gemini 3 example template with `Remember to think step-by-step before answering.` (https://aistudio.google.com/docs/prompting-strategies, checked on 2026-11-09). Leave such lines out for every target, Gemini included: reasoning models don't need them, and current Claude models may refuse requests to show their reasoning. A user who wants one can add it themselves.
+**Gemini.** Google's prompt design guide ends its Gemini 3 example template with `Remember to think step-by-step before answering.` (https://aistudio.google.com/docs/prompting-strategies, checked on 2026-11-09). Leave such lines out for every target, Gemini included: the method treats them as requests for visible reasoning, which it doesn't add. A user who wants one can add it themselves.
 
 **Coding agents** (Claude Code, Codex, Cursor, Copilot and similar):
 - name the files or areas involved;
