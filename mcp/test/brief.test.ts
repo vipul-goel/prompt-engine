@@ -97,7 +97,7 @@ describe('the method brief', () => {
     // The server's steps replace the instruction to send the questions in your own message, so the
     // line is the form's intro, and it opens the reply when the questions come back as text.
     expect(UNIVERSAL_METHOD).toMatch(/A request to critique a prompt or find what's missing gets the same flow: open the questions with one line naming the biggest gaps\./);
-    expect(REFERENCES['output-format']!.text).toMatch(/\*\*Questions round\.\*\*[^\n]*one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it\./);
+    expect(REFERENCES['output-format']!.text).toMatch(/\*\*Questions round\.\*\*[^\n]*one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so\./);
     const questions = buildReference('questions');
     for (const [name, text] of [['brief', brief], ['questions', questions]]) {
       expect(text, name).toMatch(/If the round opens with a line of its own \(the biggest gaps for a request to critique a prompt or find what's missing, that the prompt is already strong, or that you removed a pasted secret, suggesting rotating it\), pass that line as intro, in 200 characters or fewer\./);
