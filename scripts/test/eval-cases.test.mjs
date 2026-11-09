@@ -299,6 +299,20 @@ test('checkEvalCases checks the form of each grader option, not only that it is 
   ]);
 });
 
+test('checkEvalCases refuses a grader type that is not a string, as claude plugin eval does', () => {
+  // A one-entry list looked up as an object key reads as its one string, so its options passed
+  // unchecked; the CLI refuses a type that isn't a string when it loads the case.
+  const { errors } = check({
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-ok.md': REGEX,
+    'evals/demo/graders/02-list.md': "---\ntype: [regex]\npattern: '('\nflags: zz\nmatch: sometimes\ntarget: nowhere\n---\n",
+    'evals/demo/graders/03-list-no-tool.md': '---\ntype: [tool_used]\n---\n',
+    'evals/demo/graders/04-quoted-list.md': '---\ntype: ["llm"]\n---\nPASS.\n',
+  });
+  const types = 'type must be one of regex, tool_used, tool_order, file_exists, llm, baseline';
+  assert.deepEqual(errors, ['02-list', '03-list-no-tool', '04-quoted-list'].map((n) => `evals/demo/graders/${n}.md: ${types}`));
+});
+
 test('checkEvalCases checks case values at the edges of the CLI\'s limits', () => {
   const at = (name, front) => ({ [`evals/${name}/prompt.md`]: `---\n${front}---\n\n${PROMPT}`, [`evals/${name}/graders/01-x.md`]: REGEX });
   const { errors } = check({

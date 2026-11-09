@@ -309,7 +309,9 @@ function checkSchemaVersion(err, where, v) {
 
 function checkGrader(err, where, g, abs, referenced, dir) {
   const d = g.data;
-  if (!Object.hasOwn(GRADER_TYPES, d.type)) { err(`${where}: type must be one of ${Object.keys(GRADER_TYPES).join(', ')}`); return; }
+  // A string only: Object.hasOwn reads a one-entry list such as [regex] as its string, and the
+  // switch below would then check none of its options. The CLI refuses a type that isn't a string.
+  if (typeof d.type !== 'string' || !Object.hasOwn(GRADER_TYPES, d.type)) { err(`${where}: type must be one of ${Object.keys(GRADER_TYPES).join(', ')}`); return; }
   for (const k of Object.keys(d)) {
     if (k === 'name') err(`${where}: name: the file name is the grader's name; don't override it (repo rule)`);
     else if (!['type', 'weight', 'arm', ...GRADER_TYPES[d.type]].includes(k)) err(`${where}: key "${k}" is not a ${d.type} grader option`);
