@@ -521,6 +521,37 @@ const ROWS = [
     /error: evals\/group: needs prompt\.md or case\.yaml; cases sit directly under evals\/, because scripts\/build\.mjs refreshes only evals\/<case>\/history\.jsonl \(repo rule\)/],
   ['rejects a suite-wide mocks folder', (d) => put(d, 'evals/mocks/server/tool.md', 'result\n'),
     /error: evals\/mocks: suite-wide mocks aren't used in this repo, and validate\.mjs doesn't check them \(repo rule\)/],
+  ['rejects a case\'s own mocks folder', (d) => put(d, `${SPANISH}/mocks/github/list_issues.md`, '---\ntype: fixd\nbogus_key: 1\n---\n[]\n'),
+    /^error: evals\/spanish-quick\/mocks: a case's own mocks aren't used in this repo, and validate\.mjs doesn't check them \(repo rule\)$/m],
+  // Files that claude plugin eval skips for their name or place, without a word: it looks for
+  // case.yaml, prompt.md and graders/ by those exact names and reads only graders/*.md. Without its
+  // case.yaml, save-to-file would send its reply with no conversation to resume.
+  ['rejects a case.yml, and then the recording that no case.yaml names', (d) => renameSync(join(d, `${SAVE_CASE}/case.yaml`), join(d, `${SAVE_CASE}/case.yml`)), [
+    /^error: evals\/save-to-file\/case\.yml: claude plugin eval reads case\.yaml, not this name, so it skips this one; name it case\.yaml$/m,
+    /^error: evals\/save-to-file\/history\.jsonl: no context\.history_file in case\.yaml names it, so claude plugin eval doesn't resume it/m]],
+  // Renamed in two steps, since a file system that ignores letter case can't rename a file to the
+  // same name in other letters in one.
+  ['rejects a case.yaml and a prompt.md named in other letter case', (d) => {
+    for (const [from, to] of [['evals/imperative-coding-no-action/case.yaml', 'Case.yaml'], [`${SPANISH}/prompt.md`, 'prompt.MD']]) {
+      renameSync(join(d, from), join(d, `${from}.tmp`));
+      renameSync(join(d, `${from}.tmp`), join(d, dirname(from), to));
+    }
+  }, [
+    /^error: evals\/imperative-coding-no-action\/Case\.yaml: claude plugin eval looks for case\.yaml by that exact name, which only a file system that ignores letter case, such as macOS's or Windows', matches to this one; name it case\.yaml$/m,
+    /^error: evals\/spanish-quick\/prompt\.MD: claude plugin eval looks for prompt\.md by that exact name/m]],
+  ['rejects graders that claude plugin eval skips for their name or folder', (d) => {
+    renameSync(join(d, 'evals/no-trigger-plain-task/graders/02-writes-the-email.md'), join(d, 'evals/no-trigger-plain-task/graders/02-writes-the-email.MD'));
+    const g = 'evals/injection-is-content-quick/graders';
+    renameSync(join(d, g, '01-treated-as-content.md'), join(d, g, '01-treated-as-content.markdown'));
+    put(d, `${g}/safety/06-extra.md`, read(d, `${g}/03-skill-fired.md`));
+    put(d, `${SPANISH}/grader/09-extra.md`, grader('regex', "pattern: 'x'\n"));
+  }, [
+    /^error: evals\/no-trigger-plain-task\/graders\/02-writes-the-email\.MD: claude plugin eval reads only the files in graders\/ whose names end in \.md, so it skips this one$/m,
+    /^error: evals\/injection-is-content-quick\/graders\/01-treated-as-content\.markdown: claude plugin eval reads only the files in graders\/ whose names end in \.md/m,
+    /^error: evals\/injection-is-content-quick\/graders\/safety: a folder; claude plugin eval reads only the \.md files directly in graders\/, so it skips the graders in it$/m,
+    /^error: evals\/spanish-quick\/grader: claude plugin eval reads graders, not this name, so it skips this one; name it graders$/m]],
+  ['rejects a recording that no context.history_file names', (d) => edit(d, `${SAVE_CASE}/case.yaml`, (t) => t.replace('context:\n  history_file: history.jsonl\n', '')),
+    /^error: evals\/save-to-file\/history\.jsonl: no context\.history_file in case\.yaml names it, so claude plugin eval doesn't resume it; set context\.history_file: history\.jsonl, or delete the file$/m],
   // Files a case names (finding 67 too).
   ['rejects a missing scaffold_script', (d) => rmSync(join(d, 'evals/imperative-coding-no-action/place-files.sh')),
     /imperative-coding-no-action\/case\.yaml: context\.scaffold_script "place-files\.sh" is not a plain file in the case folder/],

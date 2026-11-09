@@ -1,11 +1,12 @@
 // Checks the eval cases under evals/ for free, before a billed `claude plugin eval` run: the
 // keys, values and referenced files of each case.yaml, prompt.md and graders/*.md. claude plugin
-// eval drops an unknown case.yaml key and skips a grader file without front matter, both without
-// a message; a missing baseline_file or a pattern that doesn't compile fails only after the
-// billed agent run; and `claude plugin validate` doesn't read evals/. checkSuiteRules adds this
-// repo's rules for how the cases run and score, and checkConversations its rules for the history
-// cases' recordings and the graders that depend on them, and for the request text that any
-// rubric quotes. scripts/validate.mjs runs all three. Zero dependencies.
+// eval drops an unknown case.yaml key, and skips a grader file without front matter and a file or
+// folder whose name or place it doesn't read, all without a message; a missing baseline_file or a
+// pattern that doesn't compile fails only after the billed agent run; and `claude plugin validate`
+// doesn't read evals/. checkSuiteRules adds this repo's rules for how the cases run and score, and
+// checkConversations its rules for the history cases' recordings and the graders that depend on
+// them, and for the request text that any rubric quotes. scripts/validate.mjs runs all three. Zero
+// dependencies.
 //
 // The rules follow claude plugin eval's code (read in versions 2.1.312, 2.1.317, 2.1.318 and
 // 2.1.319) and code.claude.com/docs/en/plugin-evals. Messages that end in "(repo rule)" are
@@ -17,7 +18,7 @@
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync } from 'node:fs';
 import { join, isAbsolute, win32, posix } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { normalize, LINT_GRADER_CASES } from './build.mjs';
+import { normalize, LINT_GRADER_CASES, OS_JUNK } from './build.mjs';
 
 // ---------- YAML subset ----------
 // Lines: blank, "# comment", "key: value" at indent 0, and under a "key:" line with no value
@@ -475,7 +476,28 @@ export function checkEvalCases(root, err) {
     if (fm && fm.body === '' && execPrompt === '' && caseParsed) err(`${dir}/prompt.md: the body (the prompt) is empty`);
     else if (!hasPrompt && cy && execPrompt === '') err(`${dir}: no prompt (a prompt.md body, or execution.prompt in case.yaml)`);
 
+    // Entries that claude plugin eval skips without a word (its code, read in 2.1.321): it looks for
+    // case.yaml, prompt.md and graders/ by those exact names, so a name that differs only in letter
+    // case is read on macOS and Windows and skipped on Linux; it reads only the .md files directly
+    // in graders/; and it layers a case's own mocks/ over the suite's. A recording that no
+    // context.history_file names isn't resumed, so the case runs without it.
+    for (const n of readdirSync(abs).sort()) {
+      const lower = n.toLowerCase();
+      const want = /^case\.ya?ml$/.test(lower) ? 'case.yaml' : /^prompt\.(?:md|markdown)$/.test(lower) ? 'prompt.md' : /^graders?$/.test(lower) ? 'graders' : null;
+      if (lower === 'mocks') err(`${dir}/${n}: a case's own mocks aren't used in this repo, and validate.mjs doesn't check them (repo rule)`);
+      else if (want === null || n === want) continue;
+      else if (lower === want) err(`${dir}/${n}: claude plugin eval looks for ${want} by that exact name, which only a file system that ignores letter case, such as macOS's or Windows', matches to this one; name it ${want}`);
+      else err(`${dir}/${n}: claude plugin eval reads ${want}, not this name, so it skips this one; name it ${want}`);
+    }
+    if (caseParsed && isFile(join(abs, 'history.jsonl')) && !(isMapping(cy?.context) && cy.context.history_file !== undefined)) {
+      err(`${dir}/history.jsonl: no context.history_file in case.yaml names it, so claude plugin eval doesn't resume it; set context.history_file: history.jsonl, or delete the file`);
+    }
     const gdir = join(abs, 'graders');
+    for (const f of isDir(gdir) ? readdirSync(gdir).sort() : []) {
+      if (OS_JUNK.has(f)) continue;
+      if (isDir(join(gdir, f))) err(`${dir}/graders/${f}: a folder; claude plugin eval reads only the .md files directly in graders/, so it skips the graders in it`);
+      else if (!f.endsWith('.md')) err(`${dir}/graders/${f}: claude plugin eval reads only the files in graders/ whose names end in .md, so it skips this one`);
+    }
     const files = isDir(gdir) ? readdirSync(gdir).filter((f) => f.endsWith('.md')).sort() : [];
     let count = 0;
     for (const f of files) {

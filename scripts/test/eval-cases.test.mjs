@@ -193,7 +193,7 @@ test('checkEvalCases returns each case with what it read', () => {
     'evals/.DS_Store': 'x',
     'evals/results/run/out.json': '{}',
   });
-  assert.deepEqual(errors, []);
+  assert.deepEqual(errors, ['evals/demo/graders/notes.txt: claude plugin eval reads only the files in graders/ whose names end in .md, so it skips this one']);
   assert.deepEqual(cases, [{
     name: 'demo', dir: 'evals/demo',
     caseYaml: { schema_version: '1.1', name: 'demo', expected_outcome: 'Works.\n' },
@@ -268,7 +268,10 @@ test('checkEvalCases refuses an add_dirs entry the CLI refuses: the case folder,
     'evals/other/prompt.md': PROMPT,
     'evals/other/graders/01-x.md': REGEX,
   });
-  assert.deepEqual(errors, ['.', './graders', 'mocks/x', '../other'].map((d) => `evals/demo/case.yaml: add_dirs entry "${d}" is not a fixture folder in the case folder (one that isn't the case folder, graders/ or mocks/)`));
+  assert.deepEqual(errors, [
+    ...['.', './graders', 'mocks/x', '../other'].map((d) => `evals/demo/case.yaml: add_dirs entry "${d}" is not a fixture folder in the case folder (one that isn't the case folder, graders/ or mocks/)`),
+    'evals/demo/mocks: a case\'s own mocks aren\'t used in this repo, and validate.mjs doesn\'t check them (repo rule)',
+  ]);
 });
 
 test('checkEvalCases refuses a fixture path that leaves the case folder on any platform', () => {
@@ -400,6 +403,74 @@ test('checkEvalCases reads a case.yaml with nothing but comments as no file, as 
   });
   assert.deepEqual(errors, ['evals/bare: no prompt (a prompt.md body, or execution.prompt in case.yaml)']);
   assert.deepEqual(cases.find((c) => c.name === 'demo').caseYaml, {});
+});
+
+// claude plugin eval looks for case.yaml, prompt.md and graders/ by those exact names, reads only the
+// .md files directly in graders/, and layers a case's own mocks/ over the suite's (its code, read in
+// 2.1.321). It skips anything else without a word, so each such entry is named, and so is a
+// recording that no context.history_file names. A name that differs only in letter case is read on
+// macOS and Windows and skipped on Linux.
+test('checkEvalCases names the entries that claude plugin eval skips for their name or place', () => {
+  const ASKED = 'schema_version: "1.1"\nname: NAME\nexecution:\n  prompt: Improve my prompt.\n';
+  const asked = (name) => ASKED.replace('NAME', name);
+  const { errors } = check({
+    'evals/a-yml/case.yml': asked('a-yml'),
+    'evals/a-yml/prompt.md': PROMPT,
+    'evals/a-yml/graders/01-x.md': REGEX,
+    'evals/b-case/Case.yaml': asked('b-case'),
+    'evals/b-case/prompt.md': PROMPT,
+    'evals/b-case/graders/01-x.md': REGEX,
+    'evals/c-markdown/case.yaml': asked('c-markdown'),
+    'evals/c-markdown/prompt.markdown': PROMPT,
+    'evals/c-markdown/graders/01-x.md': REGEX,
+    'evals/d-upper/case.yaml': asked('d-upper'),
+    'evals/d-upper/PROMPT.MD': PROMPT,
+    'evals/d-upper/graders/01-x.md': REGEX,
+    'evals/e-graders/prompt.md': PROMPT,
+    'evals/e-graders/graders/01-x.md': REGEX,
+    'evals/e-graders/graders/02-y.MD': REGEX,
+    'evals/e-graders/graders/03-z.markdown': REGEX,
+    'evals/e-graders/graders/safety/04-w.md': REGEX,
+    'evals/e-graders/graders/.DS_Store': 'x',
+    'evals/f-grader/prompt.md': PROMPT,
+    'evals/f-grader/graders/01-x.md': REGEX,
+    'evals/f-grader/grader/02-y.md': REGEX,
+    'evals/g-mocks/prompt.md': PROMPT,
+    'evals/g-mocks/graders/01-x.md': REGEX,
+    'evals/g-mocks/mocks/github/list_issues.md': '---\ntype: fixed\n---\n[]\n',
+    'evals/h-orphan/prompt.md': PROMPT,
+    'evals/h-orphan/graders/01-x.md': REGEX,
+    'evals/h-orphan/history.jsonl': '{}\n',
+    'evals/i-comments/case.yaml': '# notes only\n',
+    'evals/i-comments/prompt.md': PROMPT,
+    'evals/i-comments/graders/01-x.md': REGEX,
+    'evals/i-comments/history.jsonl': '{}\n',
+    // Named by context.history_file: resumed.
+    'evals/j-resumed/case.yaml': 'schema_version: "1.1"\nname: j-resumed\ncontext:\n  history_file: history.jsonl\n',
+    'evals/j-resumed/prompt.md': PROMPT,
+    'evals/j-resumed/graders/01-x.md': REGEX,
+    'evals/j-resumed/history.jsonl': '{}\n',
+    // Other files in a case folder, such as fixtures, are not checked here.
+    'evals/k-fixtures/prompt.md': PROMPT,
+    'evals/k-fixtures/graders/01-x.md': REGEX,
+    'evals/k-fixtures/notes.txt': 'x\n',
+  });
+  const skipped = (p, want) => `evals/${p}: claude plugin eval reads ${want}, not this name, so it skips this one; name it ${want}`;
+  const letterCase = (p, want) => `evals/${p}: claude plugin eval looks for ${want} by that exact name, which only a file system that ignores letter case, such as macOS's or Windows', matches to this one; name it ${want}`;
+  const orphan = (c) => `evals/${c}/history.jsonl: no context.history_file in case.yaml names it, so claude plugin eval doesn't resume it; set context.history_file: history.jsonl, or delete the file`;
+  assert.deepEqual(errors, [
+    skipped('a-yml/case.yml', 'case.yaml'),
+    letterCase('b-case/Case.yaml', 'case.yaml'),
+    skipped('c-markdown/prompt.markdown', 'prompt.md'),
+    letterCase('d-upper/PROMPT.MD', 'prompt.md'),
+    'evals/e-graders/graders/02-y.MD: claude plugin eval reads only the files in graders/ whose names end in .md, so it skips this one',
+    'evals/e-graders/graders/03-z.markdown: claude plugin eval reads only the files in graders/ whose names end in .md, so it skips this one',
+    'evals/e-graders/graders/safety: a folder; claude plugin eval reads only the .md files directly in graders/, so it skips the graders in it',
+    skipped('f-grader/grader', 'graders'),
+    'evals/g-mocks/mocks: a case\'s own mocks aren\'t used in this repo, and validate.mjs doesn\'t check them (repo rule)',
+    orphan('h-orphan'),
+    orphan('i-comments'),
+  ]);
 });
 
 // The git check (finding 67): a fixture the case names that git ignores.
