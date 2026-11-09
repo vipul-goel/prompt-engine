@@ -55,7 +55,7 @@ Tool-specific syntax for image and video prompts, used with `references/image-vi
 - **Settings:** UI or API settings (steps, sampler, size, CFG).
 - **References:** Depends on the interface and extensions.
 - **Text in the image:** Unreliable; plan to add text afterwards.
-- **Note:** Square brackets reduce emphasis, so leave [[placeholders]] out of the prompt itself and ask for the value instead.
+- **Note:** Square brackets reduce emphasis, so leave [[placeholders]] out of the prompt itself and ask for the value instead. For a secret or another person's private detail you removed, say where it goes rather than asking for it.
 - **Sources:** https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Features
 
 ## Google Veo
