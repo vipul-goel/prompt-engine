@@ -58,6 +58,21 @@ describe('worker entry', () => {
     expect(warn.mock.calls.map((c) => String(c[0]))).toEqual(['prompt-engine-mcp: warning: ALLOWED_HOSTS takes exact hostnames, so these entries were ignored: :8787, a b']);
   });
 
+  it('says so, rather than throwing on every request, when ALLOWED_HOSTS is not a string', async () => {
+    // Wrangler's vars take JSON values too, so a list written as one arrives as an array.
+    const values: Array<[unknown, string]> = [[['localhost', '127.0.0.1'], 'list'], [8787, 'number'], [{ host: 'localhost' }, 'object'], [true, 'boolean']];
+    for (const [value, kind] of values) {
+      const res = await worker.fetch(post('localhost'), { ALLOWED_HOSTS: value });
+      expect(res.status, kind).toBe(500);
+      expect(await res.json(), kind).toEqual({
+        error: `ALLOWED_HOSTS is a JSON ${kind}, not a string. Set it to the hostnames clients use as one comma-separated string, such as "mcp.example.com,localhost".`,
+      });
+    }
+    // null counts as not set.
+    const unset = await worker.fetch(post('localhost'), { ALLOWED_HOSTS: null });
+    expect(await unset.json()).toEqual({ error: 'ALLOWED_HOSTS is not set. Set it to the hostnames clients use, such as your workers.dev name.' });
+  });
+
   it('serves the largest valid request and refuses a larger body with 413', async () => {
     const env = { ALLOWED_HOSTS: 'localhost' };
     // The schema counts code points, so the longest prompt is PROMPT_MAX_CHARS
