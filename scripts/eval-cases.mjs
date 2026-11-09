@@ -805,18 +805,22 @@ export function checkConversations(root, cases, { err, contract }) {
       }
     }
 
-    // A regex grader on the file that the recorded menu offers to save (finding 55) must tell the
-    // recorded Full prompt from the Short version: a contains pattern matches the Full prompt and
-    // not the Short version, and a not_contains pattern doesn't match the Full prompt (count:N
-    // isn't checked). A case with a scaffold_script is skipped, since the scaffold can put other
-    // text at that path; so are graders on other paths, compared in samePath's form.
-    if (s.scaffold != null) continue;
+    // A regex grader on the file that the save writes (finding 55) must tell the recorded Full
+    // prompt from the Short version: a contains pattern matches the Full prompt and not the Short
+    // version, and a not_contains pattern doesn't match the Full prompt (count:N isn't checked).
+    // The save writes the path that the recorded menu offers. In a case with a scaffold_script,
+    // which can put a file at that path first, the checked path is that one with -2 added to the
+    // name (SKILL.md: never overwrite an existing file; add -2 to the name instead), and graders on
+    // the menu's path are skipped, since the scaffold can put other text there. Graders on other
+    // paths are skipped too, compared in samePath's form.
     const output = rec.assistantTexts.findLast((t) => full.test(t));
     const savePath = savePathOf(output, saveLineRe);
+    const checked = s.scaffold == null ? savePath : savePath?.replace(/(\.[^./\\]*)?$/, '-2$1');
     const fileGraders = c.graders.filter((g) => g.data.type === 'regex' && isMapping(g.data.target) && g.data.target.source === 'file');
-    if (fileGraders.length && savePath === undefined) err(`${c.dir}: ${fileGraders.map((g) => `${g.name}.md`).join(', ')} read a saved file, but the recording shows no output whose ${NEXT} menu names a save path to check them against (repo rule)`);
+    // A scaffold case's file graders can read files that the scaffold wrote, with no save at all.
+    if (s.scaffold == null && fileGraders.length && savePath === undefined) err(`${c.dir}: ${fileGraders.map((g) => `${g.name}.md`).join(', ')} read a saved file, but the recording shows no output whose ${NEXT} menu names a save path to check them against (repo rule)`);
     for (const g of fileGraders) {
-      if (savePath === undefined || !samePath(g.data.target.path, savePath)) continue;
+      if (checked === undefined || !samePath(g.data.target.path, checked)) continue;
       const fullPrompt = fencedAfter(output, FULL);
       if (fullPrompt === null) {
         err(`${g.file}: reads the saved file, but the recorded output has no fenced ${FULL} to check it against (repo rule)`);

@@ -818,6 +818,35 @@ test('checkConversations takes the save path that looks like a file, and compare
   assert.deepEqual(errors, [unmatched('keyword-first/graders/01-saved.md'), unmatched('spelled/graders/01-dot-slash.md'), unmatched('spelled/graders/02-double-slash.md')]);
 });
 
+test('checkConversations checks a scaffold case\'s saved-file regexes on the save path with -2 added, not on the menu\'s path', () => {
+  const output = (save) => ['### Full prompt', '```text', 'Write the notes.', '```', '', '### Short version', '```text', 'Notes.', '```', '', '### What next?', '1. Run it now ★', save].join('\n');
+  // A case whose scaffold_script can put a file at the save path first, so a save writes the -2 file.
+  const scaffolded = (name, save, graders) => ({
+    ...recordedCase(name, [userRow('write the notes'), assistantRow(output(save))], '3', graders),
+    [`evals/${name}/case.yaml`]: `schema_version: "1.1"\nname: ${name}\ncontext:\n  history_file: history.jsonl\n  scaffold_script: setup.sh\n`,
+    [`evals/${name}/prompt.md`]: `---\ntags: [needs-write]\nmodel: ${MODEL}\n---\n\n3\n`,
+    [`evals/${name}/setup.sh`]: 'true\n',
+  });
+  const { errors } = histories({
+    ...scaffolded('existing', '3. Save to file: `out/notes.md`', {
+      // The scaffold's own text at the menu's path, which the save must keep: not checked.
+      '01-original-kept.md': savedFile('^ORIGINAL$'),
+      '02-second.md': savedFile('zzz', '', 'out/notes-2.md'),
+      '03-second-spelled.md': savedFile('otes', '', './out/notes-2.md'),
+    }),
+    // A save path without an extension takes -2 at its end.
+    ...scaffolded('no-extension', '3. Save to file: `out/notes`', { '01-second.md': savedFile('zzz', '', 'out/notes-2') }),
+    // The file graders of a scaffold case can read the scaffold's own files, so a recording with
+    // no save path is fine.
+    ...scaffolded('no-path', '3. Save to file', { '01-workspace.md': savedFile('zzz', '', 'src/app.js') }),
+  });
+  assert.deepEqual(errors, [
+    'evals/existing/graders/02-second.md: pattern doesn\'t match the recorded Full prompt, so a correct save would fail; derive it again from history.jsonl (repo rule)',
+    'evals/existing/graders/03-second-spelled.md: pattern also matches the recorded Short version, so it can\'t tell the two apart (repo rule)',
+    'evals/no-extension/graders/01-second.md: pattern doesn\'t match the recorded Full prompt, so a correct save would fail; derive it again from history.jsonl (repo rule)',
+  ]);
+});
+
 test('checkConversations reports a request marker that it cannot read, instead of skipping it', () => {
   const { errors } = histories({
     'evals/quick/prompt.md': `---\nmodel: ${MODEL}\n---\n\nwrite a launch email\n`,

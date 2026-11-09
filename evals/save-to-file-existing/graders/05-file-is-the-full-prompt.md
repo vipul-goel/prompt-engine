@@ -1,8 +1,8 @@
 ---
 # The -2 file holds the Full prompt, not the Short version, with save-to-file's 05 pattern; that
-# file's comments say how it was derived and why it is linear. validate.mjs checks that 05 against
-# the recording, but not this one, whose path isn't the menu's save path and whose case has a
-# scaffold_script.
+# file's comments say how it was derived and why it is linear. validate.mjs checks this one against
+# the recording too: in a case with a scaffold_script, it checks the graders on the menu's save
+# path with -2 added to the name, the file a save writes when that path is taken.
 type: regex
 target:
   source: file

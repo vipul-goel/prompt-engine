@@ -182,6 +182,9 @@ const OK6 = `${OK_CASE}/graders/06-accepted-not-assumed.md`;
 const PARTIAL6 = `${PARTIAL_CASE}/graders/06-accepted-not-assumed.md`;
 const SAVE05 = `${SAVE_CASE}/graders/05-file-is-the-full-prompt.md`;
 const SAVE06 = `${SAVE_CASE}/graders/06-file-is-not-the-whole-reply.md`;
+// save-to-file-existing resumes a copy of save-to-file's recording, with a scaffold_script that
+// puts a file at the save path first; its 05 reads the -2 file that the save writes instead.
+const SAVE_EXISTING05 = 'evals/save-to-file-existing/graders/05-file-is-the-full-prompt.md';
 // The save path that save-to-file's recorded menu offers.
 const SAVE_PATH = 'prompts/etsy-mug-description.md';
 // The message id of the repeated menu in save-to-file's old recording, whose problems only warned
@@ -582,12 +585,16 @@ const ROWS = [
   ['does not check a saved-file regex on another path', (d) => edit(d, SAVE05, (t) => t.replace('Food-safe', 'Food safe').replace(`path: ${SAVE_PATH}`, 'path: prompts/other.md')), /validate: OK/, 0],
   ['checks a saved-file regex that spells the save path another way', (d) => edit(d, SAVE05, (t) => t.replace('Food-safe', 'Food safe').replace(`path: ${SAVE_PATH}`, `path: ./${SAVE_PATH}`)),
     /^error: evals\/save-to-file\/graders\/05-file-is-the-full-prompt\.md: pattern doesn't match the recorded Full prompt/m],
-  // A scaffold can put other text at the save path, such as a file the save must not overwrite.
-  ['does not check saved-file regexes in a case with a scaffold_script', (d) => {
+  // A scaffold can put other text at the save path, such as a file the save must not overwrite, so
+  // in a case with a scaffold_script the checked file is the one a save writes when that path is
+  // taken: the save path with -2 added to the name.
+  ['does not check a saved-file regex on the menu\'s save path in a case with a scaffold_script', (d) => {
     edit(d, SAVE05, (t) => t.replace('Food-safe', 'Food safe'));
     edit(d, `${SAVE_CASE}/case.yaml`, (t) => t.replace('  history_file: history.jsonl', '  history_file: history.jsonl\n  scaffold_script: place-files.sh'));
     put(d, `${SAVE_CASE}/place-files.sh`, '#!/bin/sh\n');
   }, /validate: OK/, 0],
+  ['checks a saved-file regex on the save path with -2 added in a case with a scaffold_script', (d) => edit(d, SAVE_EXISTING05, (t) => t.replace('Food-safe', 'Food safe')),
+    /^error: evals\/save-to-file-existing\/graders\/05-file-is-the-full-prompt\.md: pattern doesn't match the recorded Full prompt, so a correct save would fail; derive it again from history\.jsonl \(repo rule\)\n\n1 error\(s\)$/m],
   // ---- generated files
   ['rejects a stale generated file', (d) => edit(d, `${REF}/media-targets.md`, (t) => `${t}\nhand edit\n`), /references\/media-targets\.md: stale; run node scripts\/build\.mjs/],
   // The eval lint graders are generated from data/lint-rules.json (finding 59, D36). build.mjs
