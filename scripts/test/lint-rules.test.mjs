@@ -358,7 +358,10 @@ test('fragments samples characters that two classes both match', () => {
 // "Help the student reason step by step" or "Encourage learners to think
 // step-by-step". Other wordings of the request pass, such as "Think it through
 // step by step", "Think carefully, step by step" and "Let's work this out in a
-// step by step way". Whether to widen the rule to them is left to step 1e.
+// step by step way", and so does the phrase written with an en, em or figure
+// dash, or with a no-break space (check_prompt turns that into a plain space
+// first). Whether to widen the rule to them is left to step 1e, whose list in
+// the review record's step_1d.follow_ups names these limits.
 const reasoningRule = rules.find((r) => r.id === 'visible-reasoning-request');
 const asksForReasoning = (text) => new RegExp(reasoningRule.pattern, reasoningRule.flags).test(text);
 
