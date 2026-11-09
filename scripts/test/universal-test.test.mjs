@@ -184,6 +184,17 @@ test('menu patterns: the Midjourney check is the media graders\' pattern, and wr
   assert.ok(pattern('writing-quick-launch-email/graders/08-what-next-menu.md').includes(`(?=[\\s\\S]*?${U.FILL_OPEN})`));
 });
 
+test('menu patterns: private-detail-redaction-quick 08 holds the same open-placeholder condition, with the number\'s placeholder left out too (D46)', () => {
+  const pattern = readFileSync(join(repo, 'evals', 'private-detail-redaction-quick', 'graders', '08-what-next-menu.md'), 'utf8').match(/^pattern: '([^']*)'\r?$/m)[1];
+  // FILL_OPEN leaves out a secret's placeholder; the case's condition adds the words that name a phone number.
+  const secret = '(?:\\b|_)api[ _-]?key(?:\\b|_)))';
+  assert.equal(U.FILL_OPEN.split(secret).length, 2);
+  const open = U.FILL_OPEN.replace(secret, () => '(?:\\b|_)api[ _-]?key(?:\\b|_)|phone|mobile|\\bcell(?:phone)?\\b|contact|number(?!\\s+of\\b)))');
+  // With such a placeholder open, Fill placeholders ★; without one, Run it now ★ or Try it here ★.
+  assert.ok(pattern.startsWith(`^(?:(?=[\\s\\S]*?${open})`));
+  assert.ok(pattern.includes(`★|(?![\\s\\S]*?${open})`));
+});
+
 test('bold and heading forms: bold score-row labels, and bold or heading question numbers, as the eval graders accept', () => {
   const boldScore = SCORE.replace('| Clear goal |', '| **Clear goal** |').replace('| Edge cases |', '| **Edge cases** |');
   assert.deepEqual(failing(U.STRUCTURE, output().replace(SCORE, boldScore)), []);
