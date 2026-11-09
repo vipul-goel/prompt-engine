@@ -352,9 +352,13 @@ test('fragments samples characters that two classes both match', () => {
 // step", "your reasoning step-by-step"), and between "your" and one of those
 // two words ("your step-by-step reasoning"). Next to other words the phrase
 // asks for an ordered answer or procedure.
-// Known limit: a sentence in which "think" or "reason" only happens to stand
+// Known limits: a sentence in which "think" or "reason" only happens to stand
 // before the phrase, such as "I think step-by-step instructions would help",
-// is flagged too.
+// is flagged too, and so is one where the reasoning is someone else's, such as
+// "Help the student reason step by step" or "Encourage learners to think
+// step-by-step". Other wordings of the request pass, such as "Think it through
+// step by step", "Think carefully, step by step" and "Let's work this out in a
+// step by step way". Whether to widen the rule to them is left to step 1e.
 const reasoningRule = rules.find((r) => r.id === 'visible-reasoning-request');
 const asksForReasoning = (text) => new RegExp(reasoningRule.pattern, reasoningRule.flags).test(text);
 

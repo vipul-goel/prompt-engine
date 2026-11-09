@@ -161,7 +161,7 @@ Reused utilities, from `/root/.claude/skills/synced/…/skill-creator/`:
 ## Verification
 - **Static.** `node scripts/build.mjs && git diff --exit-code`; `node scripts/validate.mjs` checks:
   - frontmatter keys and rules, plus a description length cap;
-  - forbidden patterns: `$ARGUMENTS`, `$N`, `${CLAUDE_`, `!`+backtick, ```` ```! ````, and visible-reasoning wording, which the skill describes abstractly; the lint rule also catches the hyphenated `step-by-step` (D48);
+  - forbidden patterns: `$ARGUMENTS`, `$N`, `${CLAUDE_`, `!`+backtick, ```` ```! ````, and visible-reasoning wording, which the skill describes abstractly; the lint rule also catches `think` or `reason` followed by `step by step`, with spaces or hyphens, but not other wordings such as `think it through step by step` (D48);
   - pressure words (MUST, NEVER, CRITICAL…, not acronyms) in SKILL.md, the references and the universal core, skipping text in code spans (D11);
   - a SKILL.md character budget, with the key headings in the first ~8k chars;
   - core ≤7,500;
