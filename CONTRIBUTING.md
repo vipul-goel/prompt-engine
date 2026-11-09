@@ -76,7 +76,7 @@ Edit the tool's entry in `data/media-targets.json`:
 - List what you read in `sources`.
 - Set `last_verified` to today's date.
 
-Then run `node scripts/build.mjs`.
+Then run `node scripts/build.mjs`. A new entry needs an `id` that no other entry has, a `name` and a `kind`; the other keys it can have are the text fields that the existing entries use. The validator names any other key, which the build would leave out of `references/media-targets.md`.
 
 ### Edit the questions or output-format reference
 

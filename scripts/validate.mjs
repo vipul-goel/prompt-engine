@@ -362,17 +362,31 @@ if (exists('mcp/package.json')) {
 }
 
 // ---------- data ----------
+// Each entry of data/media-targets.json has the keys build.mjs renders into
+// references/media-targets.md and no others, so that a misspelled key is named instead of
+// rendered as "undefined" or left out: an id (the MCP server's check also reads it as a tool name)
+// that no other entry has, a name and a kind, text fields that are strings, a status, https
+// sources and a date. An entry without an id is named by its place in the list.
+const MEDIA_TEXT = ['prompt_style', 'exclusions', 'settings', 'references', 'text', 'notes'];
+const MEDIA_KEYS = new Set(['id', 'name', 'kind', ...MEDIA_TEXT, 'status', 'sources', 'last_verified']);
 const media = JSON.parse(read('data/media-targets.json'));
-for (const t of media.targets) {
-  if (!['verified', 'secondary', 'unverified'].includes(t.status)) err(`data/media-targets.json ${t.id}: bad status "${t.status}"`);
-  if (!Array.isArray(t.sources) || !t.sources.length || t.sources.some((s) => !/^https:\/\//.test(s))) err(`data/media-targets.json ${t.id}: needs https sources`);
+const mediaIds = new Set();
+media.targets.forEach((t, i) => {
+  const at = `data/media-targets.json ${typeof t.id === 'string' && t.id.trim() ? t.id : `targets[${i}]`}`;
+  for (const k of ['id', 'name', 'kind']) if (typeof t[k] !== 'string' || !t[k].trim()) err(`${at}: ${k} must be a non-empty string`);
+  if (typeof t.id === 'string' && mediaIds.has(t.id)) err(`${at}: another entry has this id too`);
+  mediaIds.add(t.id);
+  for (const k of Object.keys(t)) if (!MEDIA_KEYS.has(k)) err(`${at}: unknown key "${k}"`);
+  for (const k of MEDIA_TEXT) if (t[k] !== undefined && typeof t[k] !== 'string') err(`${at}: ${k} must be a string`);
+  if (!['verified', 'secondary', 'unverified'].includes(t.status)) err(`${at}: bad status "${t.status}"`);
+  if (!Array.isArray(t.sources) || !t.sources.length || t.sources.some((s) => !/^https:\/\//.test(s))) err(`${at}: needs https sources`);
   const d = t.last_verified ?? '';
   const ms = Date.parse(`${d}T00:00:00Z`);
   // The round trip catches dates that Date.parse rolls over, such as 2024-02-30.
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== d) err(`data/media-targets.json ${t.id}: last_verified must be a real YYYY-MM-DD date`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== d) err(`${at}: last_verified must be a real YYYY-MM-DD date`);
   // One day of slack, for dates written in a time zone ahead of UTC.
-  else if (ms > Date.now() + 864e5) err(`data/media-targets.json ${t.id}: last_verified ${d} is in the future`);
-}
+  else if (ms > Date.now() + 864e5) err(`${at}: last_verified ${d} is in the future`);
+});
 
 // ---------- eval cases ----------
 // scripts/eval-cases.mjs checks each case's case.yaml, prompt.md and graders/*.md, and returns

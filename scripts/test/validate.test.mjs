@@ -390,6 +390,21 @@ const ROWS = [
       new RegExp(`error: build failed: media-targets: unknown status "verifed" for ${MEDIA_ID_RE}`)]],
   ['names the entry whose sources array is missing', target((t) => { delete t.sources; }),
     [new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: needs https sources`), new RegExp(`error: build failed: media-targets: ${MEDIA_ID_RE} needs a sources array`)]],
+  // Each entry's own keys: build.mjs renders the name and kind, so a misspelled or missing one
+  // went into references/media-targets.md, the knowledge file and the MCP server's content as
+  // "undefined". Rows whose data the build can still render rebuild first, so the error is the only one.
+  ['names an entry whose name is misspelled', target((t) => { t.title = t.name; delete t.name; }), [
+    new RegExp(`error: data/media-targets\\.json ${MEDIA_ID_RE}: name must be a non-empty string`),
+    new RegExp(`error: data/media-targets\\.json ${MEDIA_ID_RE}: unknown key "title"`),
+    new RegExp(`error: build failed: media-targets: ${MEDIA_ID_RE} needs a name`)]],
+  ['requires a kind', target((t) => { t.kind = ' '; }), [new RegExp(`error: data/media-targets\\.json ${MEDIA_ID_RE}: kind must be a non-empty string`),
+    new RegExp(`error: build failed: media-targets: ${MEDIA_ID_RE} needs a kind`)]],
+  ['names an entry without an id by its place', (d) => { target((t) => { delete t.id; })(d); rebuild(d); },
+    /^error: data\/media-targets\.json targets\[0\]: id must be a non-empty string\n\n1 error\(s\)$/m],
+  ['rejects two entries with one id', (d) => { editJson(d, 'data/media-targets.json', (j) => { j.targets[1].id = j.targets[0].id; }); rebuild(d); },
+    new RegExp(`^error: data/media-targets\\.json ${MEDIA_ID_RE}: another entry has this id too\\n\\n1 error\\(s\\)$`, 'm')],
+  ['rejects a text field that is not a string', (d) => { target((t) => { t.notes = 5; })(d); rebuild(d); },
+    new RegExp(`^error: data/media-targets\\.json ${MEDIA_ID_RE}: notes must be a string\\n\\n1 error\\(s\\)$`, 'm')],
   // ---- eval cases
   ['rejects an eval case without prompt.md or case.yaml', (d) => mkdirSync(join(d, 'evals/empty-case')), /evals\/empty-case: needs prompt\.md or case\.yaml/],
   ['rejects an eval case without graders', (d) => put(d, 'evals/no-graders/prompt.md', 'hello\n'), /evals\/no-graders: needs at least one grader in graders\//],

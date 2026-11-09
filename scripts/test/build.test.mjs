@@ -209,6 +209,12 @@ test('renderMediaTargets names the entry it cannot render', () => {
   assert.match(renderMediaTargets(data({})), /^## Midjourney$/m);
   assert.throws(() => renderMediaTargets(data({ status: 'verifed' })), { message: 'media-targets: unknown status "verifed" for midjourney' });
   assert.throws(() => renderMediaTargets(data({ sources: undefined })), { message: 'media-targets: midjourney needs a sources array' });
+  // The fields it writes into the Markdown, which a missing or misspelled key turned into "undefined".
+  for (const [key, what] of [['name', 'a name'], ['kind', 'a kind'], ['last_verified', 'a last_verified date']]) {
+    for (const value of [undefined, ' ', 5]) {
+      assert.throws(() => renderMediaTargets(data({ [key]: value })), { message: `media-targets: midjourney needs ${what}` }, `${key}: ${value}`);
+    }
+  }
 });
 
 test('build.mjs reports data it cannot render in one line, without a stack trace', () => {

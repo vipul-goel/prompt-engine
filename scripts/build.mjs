@@ -56,6 +56,10 @@ export function renderMediaTargets(data) {
   for (const t of data.targets) {
     if (!STATUS_LABEL[t.status]) throw new Error(`media-targets: unknown status "${t.status}" for ${t.id}`);
     if (!Array.isArray(t.sources)) throw new Error(`media-targets: ${t.id} needs a sources array`);
+    // The fields written into the Markdown below: a missing or misspelled one became "undefined".
+    for (const [k, what] of [['name', 'a name'], ['kind', 'a kind'], ['last_verified', 'a last_verified date']]) {
+      if (typeof t[k] !== 'string' || !t[k].trim()) throw new Error(`media-targets: ${t.id} needs ${what}`);
+    }
     lines.push(`## ${t.name}`, '');
     lines.push(`*${t.kind} · ${STATUS_LABEL[t.status]} (last checked ${t.last_verified})*`, '');
     const fields = [
