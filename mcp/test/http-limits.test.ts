@@ -1,6 +1,6 @@
 // The --http server's limits on connections, requests in flight and slow
 // clients, against the built CLI. Each test starts its own server, and they
-// run concurrently because the timeout test waits 10-15 s.
+// run concurrently because the timeout tests wait 10-15 s and 30-35 s.
 
 import { connect, type Socket } from 'node:net';
 import { describe, it } from 'vitest';
@@ -230,6 +230,34 @@ describe.concurrent('--http limits', () => {
       expect(seconds).toBeGreaterThanOrEqual(9.5);
       expect(seconds).toBeLessThan(17);
       expect(server.stderr().split('\n').slice(1).join('')).toBe('');
+    } finally {
+      server.proc.kill('SIGTERM');
+    }
+  });
+
+  // The request timeout is what frees the slot a stalled upload holds. It can take up to 5 s past
+  // its 30 s; the bound leaves room for a loaded machine, and Node's default of 300 s fails it.
+  it('answers 408 and closes a connection whose body stalls, after 30-35 s', { timeout: 90_000 }, async ({ expect }) => {
+    const server = await startHttp();
+    try {
+      const started = Date.now();
+      const sock = connect(server.port, '127.0.0.1');
+      let text = '';
+      sock.on('data', (d) => (text += d));
+      // A tools/list POST that announces 100,000 bytes and sends the first kilobyte.
+      sock.write(
+        `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
+          `MCP-Protocol-Version: 2025-11-25\r\nContent-Length: 100000\r\n\r\n${'a'.repeat(1024)}`,
+      );
+      const closed = await closesWithin(sock, 40_000);
+      const seconds = (Date.now() - started) / 1000;
+      sock.destroy();
+      expect(closed, `still open after ${seconds} s`).toBe(true);
+      expect(text).toMatch(/^HTTP\/1\.1 408 /);
+      expect(seconds).toBeGreaterThanOrEqual(29.5);
+      expect(seconds).toBeLessThan(40);
+      // The cut-off upload may be logged, as the README says, but nothing that quotes it.
+      expect(server.stderr().split('\n').slice(1).filter((line) => line && line !== '[prompt-engine-mcp] Error: aborted')).toEqual([]);
     } finally {
       server.proc.kill('SIGTERM');
     }
