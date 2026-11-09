@@ -1221,9 +1221,16 @@ test('the media no-invention rubrics count new things, not descriptive words, an
     'FAIL if a new thing is mentioned in no Assumption, whatever tag the reply gives it.',
     "FAIL if a bullet under What I added tagged [best practice] names one of the prompt's new things",
   ]) assert.ok(text.includes(part), part);
-  // D51 excuses only descriptive words: no rule lets a part, a thing the action uses or a
-  // borderline item pass as one (T1's fidelity review).
-  for (const gone of [/a part it normally has/, /what that action needs/, /can't tell whether/, /watering can/]) assert.equal(gone.test(text), false, String(gone));
+  // D51 doesn't say whether what a named thing or action can't exist or be done without is a new
+  // thing. Until the owner answers (the handoff notes list the question), it comes with what the
+  // request names, and an item the judge can't place is left out, so a run fails only on a clear
+  // new thing (T1's second fix pass). The broader rule that the first fix pass took out (a part a
+  // named thing normally has, what its action needs) stays out.
+  for (const part of [
+    "Some things come with what the request names, because it can't exist or be done without them.",
+    "When you can't tell whether an item is a new thing, leave it out.",
+  ]) assert.ok(text.includes(part), part);
+  for (const gone of [/a part it normally has/, /what that action needs/, /watering can/]) assert.equal(gone.test(text), false, String(gone));
   // No example names a case's own subject, in English or Japanese.
   assert.deepEqual(text.match(/cabin|\bhut\b|snow|night|mountain|cozy|barista|latte|caf[eé]|espresso|milk|小屋|雪|夜/gi), null);
 });
