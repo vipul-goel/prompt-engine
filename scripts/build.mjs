@@ -237,8 +237,11 @@ export function refreshHistory(jsonl, skillBody, readPluginFile) {
           cut = part.text.lastIndexOf('\n\nARGUMENTS: ');
           if (cut < SKILL_TEXT_HEAD.length) throw new Error('arguments were recorded, but the skill text has no ARGUMENTS line; re-record it');
         } else if (/\n\nARGUMENTS:[^\n]*$/.test(part.text)) throw new Error('no arguments were recorded, but the skill text ends with an ARGUMENTS line; re-record it');
+        // The old body's trailing white space is kept. trimEnd drops what \s matches, in time in step
+        // with the text; /\s*$/ tried the end from each character of a long run of spaces inside the
+        // body, which took quadratic time.
         const old = part.text.slice(SKILL_TEXT_HEAD.length, cut);
-        const text = `${SKILL_TEXT_HEAD}${skillBody}${old.match(/\s*$/)[0]}${part.text.slice(cut)}`;
+        const text = `${SKILL_TEXT_HEAD}${skillBody}${old.slice(old.trimEnd().length)}${part.text.slice(cut)}`;
         if (text !== part.text) { part.text = text; changed = true; }
       } else if (part.type === 'text' && /^Base directory for this skill: .*[\\/]skills[\\/]prompt-engine\n/.test(part.text)) {
         throw new Error('the skill text names a plugin path other than /plugin; record it with scripts/eval/record-history.mjs');

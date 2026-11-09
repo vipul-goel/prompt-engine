@@ -1084,3 +1084,28 @@ test('checkConversations wants a rubric that judges the answers of the round the
     quotesNone('round/graders/08-recommended-option.md'), quotesNone('round/graders/09-accepted.md'), quotesNone('round/graders/10-options.md'),
   ]);
 });
+
+// The module's patterns take time in step with the text they read. Each input here took quadratic
+// time on one long run of a character: the flow reader's checks of the entry so far, for each # and
+// each quote (about 10 seconds at 400,000 characters), and the trailing punctuation that answerKey
+// drops, in an option and in a rubric's quote (more than a minute at 200,000). Each must finish in
+// under 2 seconds, which leaves room for a busy machine.
+const RUN = 200_000;
+const roundWith = (option) => `1. Who will read it?\n   a) ${option} ★ (they decide)\n   b) Employees\n\n${REPLY_LINE}`;
+const FAST = [
+  ['a flow entry with a run of #', () => parseYaml(`tags: [a${'#'.repeat(2 * RUN)}]\n`, 'f.yaml')],
+  ['a flow entry with a run of quotes', () => parseYaml(`tags: [a${"'".repeat(2 * RUN)}]\n`, 'f.yaml')],
+  ['an option with a run of dots inside it', () => histories(recordedCase('dots', [userRow('write a post'), assistantRow(roundWith(`Managers${'.'.repeat(RUN)}x`))], 'ok', {
+    '01-answers.md': judge('The answer "Employees" is used.'),
+  }))],
+  ['a rubric quote with a run of dots inside it', () => histories(recordedCase('dots', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
+    '01-answers.md': judge(`The answer "Managers${'.'.repeat(RUN)}x" is used.`),
+  }))],
+];
+for (const [name, fn] of FAST) {
+  test(`eval-cases.mjs finishes fast on ${name}`, () => {
+    const t0 = performance.now();
+    fn();
+    assert.ok(performance.now() - t0 < 2_000, `${Math.round(performance.now() - t0)} ms`);
+  });
+}

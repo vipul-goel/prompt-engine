@@ -88,11 +88,14 @@ function quoted(v, where) {
 }
 
 // One-level [a, b] or {k: v} on one line: entries split at commas outside quotes, a trailing
-// comma allowed.
+// comma allowed. Whether the entry so far holds only spaces, and whether it ends in white space,
+// is kept up as it grows: reading it again for each quote or # took quadratic time on a long entry.
 function flow(v, where) {
   const close = v[0] === '[' ? ']' : '}';
   const entries = [];
   let cur = '';
+  let onlySpaces = true;
+  let endsInSpace = false;
   let q = null;
   let i = 1;
   for (; i < v.length; i++) {
@@ -105,12 +108,15 @@ function flow(v, where) {
       continue;
     }
     if (ch === close) break;
-    if ((ch === "'" || ch === '"') && trimSp(cur) === '') q = ch;
+    if ((ch === "'" || ch === '"') && onlySpaces) q = ch;
     else if ('[]{}'.includes(ch)) throw new Error(`${where}: nested [ ] or { } isn't supported; quote the entry: ${v}`);
     // YAML reads the rest of the line, closing bracket included, as a comment.
-    else if (ch === '#' && (cur === '' || /\s$/.test(cur))) throw new Error(`${where}: a # comment inside ${v[0]} ${close}: ${v}`);
-    if (ch === ',') { entries.push(cur); cur = ''; continue; }
+    else if (ch === '#' && (cur === '' || endsInSpace)) throw new Error(`${where}: a # comment inside ${v[0]} ${close}: ${v}`);
+    if (ch === ',') { entries.push(cur); cur = ''; onlySpaces = true; endsInSpace = false; continue; }
     cur += ch;
+    // A quoted part ends in its closing quote, so neither flag changes inside it.
+    onlySpaces &&= ch === ' ';
+    endsInSpace = /\s/.test(ch);
   }
   if (q || i >= v.length) throw new Error(`${where}: ${v[0]} without its closing ${close} on the same line: ${v}`);
   if (!/^(?: +#.*)?$/.test(v.slice(i + 1))) throw new Error(`${where}: text after the closing ${close}: ${v}`);
@@ -751,7 +757,9 @@ const QUOTE = /"([^"\n]+)"|\u{201C}([^\u{201C}\u{201D}\n]+)\u{201D}/gu;
 const ANSWER_CHECK = /\banswer(?:s|ed)?\b|★|\brecommend|\boptions?\b|\baccept/iu;
 // An option's answer as a rubric quotes it: the option's text before its ★ and the reason after
 // it, in normalizeQuote's form, without trailing punctuation or the · between options on one line.
-const answerKey = (text) => normalizeQuote(text.replace(/★[\s\S]*$/u, '')).replace(/[\s.,;:·•|]+$/u, '');
+// The run it drops starts where no such character comes before it: tried from each character of a
+// long run inside the text, the match took quadratic time.
+const answerKey = (text) => normalizeQuote(text.replace(/★[\s\S]*$/u, '')).replace(/(?<![\s.,;:·•|])[\s.,;:·•|]+$/u, '');
 
 // Whether a quote of the request runs to the request's end in text: some occurrence of it is
 // followed only by white space to the end of the text, or right by </command-args>, where a

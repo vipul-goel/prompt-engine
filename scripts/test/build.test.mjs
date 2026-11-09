@@ -361,6 +361,15 @@ test('arguments that contain "ARGUMENTS:" survive intact', () => {
   assert.equal(refresh(once), once);
 });
 
+// The white space at the end of the old body is found in time in step with its length: a pattern
+// tried from each character of a long run of spaces inside the body took quadratic time, about a
+// minute at 200,000 characters.
+test('refreshing skill text with a long run of spaces inside it is fast', () => {
+  const t0 = performance.now();
+  refresh(variant(`${HEAD}a${' '.repeat(200_000)}b\n`, undefined));
+  assert.ok(performance.now() - t0 < 2_000, `${Math.round(performance.now() - t0)} ms`);
+});
+
 test('the old body\'s trailing white space is kept', () => {
   const once = refresh(variant(`${HEAD}${OLD_BODY}\n\n`, undefined));
   assert.equal(skillText(once), `${HEAD}${body}\n\n`);
