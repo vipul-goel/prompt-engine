@@ -218,6 +218,7 @@ test('release.yml grants nothing to the whole workflow, and to each job only wha
   assert.deepEqual(release.permissions, {});
   assert.deepEqual(Object.fromEntries(jobs(release).map(([name, j]) => [name, j.permissions])), {
     build: { contents: 'read' },
+    'pack-check': { contents: 'read' },
     'github-release': { contents: 'write' },
     npm: { contents: 'read', 'id-token': 'write' },
     registry: { contents: 'read', 'id-token': 'write' },
@@ -245,15 +246,44 @@ test('release.yml: the build stops on a tag that differs from the version before
   assert.ok(tag > 0 && pack > tag, 'release.mjs --tag "${GITHUB_REF_NAME}" runs, before npm pack');
 });
 
-test('release.yml: the packed npm package is installed and started before anything is published (finding 79)', () => {
+// test:pack installs the packed package as npx does, so its dependencies' own dependencies come
+// fresh from the registry, outside mcp/package-lock.json. Code that nothing pins must not run
+// where it could change the files that the publishing jobs take.
+const UNPINNED = /\bnpm run test:pack\b|\bnpm (?:install|i|add|exec|x)\b|\bnpx\b/;
+
+test('release.yml: the packed npm package is installed and started in a read-only job of its own, and nothing is published before it passes (finding 79)', () => {
   const check = steps(release).find(runs(/^npm run test:pack -- "\.\.\/dist\/prompt-engine-mcp-\$\{GITHUB_REF_NAME#v\}\.tgz"$/m));
   assert.ok(check, 'a step runs test:pack on the tarball the release publishes');
   assert.equal(check['working-directory'], 'mcp');
-  if (check.job === 'build') {
-    const all = release.jobs.build.steps;
-    assert.ok(all.findIndex(runs(/\bnpm pack\b/)) < check.i, 'after npm pack');
+  inOrder(check.run, ['npm ci\n', 'npm run build\n', 'npm run test:pack -- '], 'the pack check installs from the lockfile and builds before test:pack');
+  const job = release.jobs[check.job];
+  assert.ok(!job.steps.some((s) => uses(s, 'actions/upload-artifact')), `job ${check.job} uploads nothing`);
+  assert.deepEqual(job.permissions, { contents: 'read' });
+  assert.ok(job.steps.findIndex((s) => uses(s, 'actions/download-artifact')) < check.i, 'it checks the uploaded tarball');
+  for (const name of ['github-release', 'npm']) assert.ok([].concat(release.jobs[name].needs).includes(check.job), `${name} waits for job ${check.job}`);
+});
+
+test('release.yml: the build job, which uploads the release files, runs only what mcp/package-lock.json pins', () => {
+  const uploading = jobs(release).filter(([, j]) => j.steps.some((s) => uses(s, 'actions/upload-artifact'))).map(([n]) => n);
+  assert.deepEqual(uploading, ['build'], 'one job uploads the release files');
+  const all = release.jobs.build.steps;
+  const upload = all.findIndex((s) => uses(s, 'actions/upload-artifact'));
+  assert.equal(upload, all.length - 1, 'the upload is the build job\'s last step');
+  assert.deepEqual(all.filter(runs(UNPINNED)).map((s) => s.name ?? s.run), [], 'steps that install or run packages the lockfile does not pin');
+});
+
+test("release.yml: every job takes the release files by the ID the build job's upload returned, not by name", () => {
+  // Any job of the run can upload an artifact under a name that's taken (overwrite deletes the
+  // old one); an ID names one upload. download-artifact also checks the artifact's digest.
+  const up = step(release, 'build', (s) => uses(s, 'actions/upload-artifact'), 'that uploads the release files');
+  assert.ok(up.id, 'the upload step has an id');
+  assert.deepEqual(release.jobs.build.outputs, { 'artifact-id': `\${{ steps.${up.id}.outputs.artifact-id }}` });
+  const downloads = steps(release).filter((s) => uses(s, 'actions/download-artifact'));
+  assert.deepEqual([...new Set(downloads.map((s) => s.job))].sort(), ['github-release', 'npm', 'pack-check']);
+  for (const s of downloads) {
+    assert.deepEqual(s.with, { 'artifact-ids': '${{ needs.build.outputs.artifact-id }}', path: 'dist' }, label(s));
+    assert.ok([].concat(release.jobs[s.job].needs).includes('build'), `${s.job} lists build in needs:, so needs.build.outputs is set`);
   }
-  for (const name of ['github-release', 'npm']) assert.ok(after(release, name).has(check.job), `${name} waits for job ${check.job}`);
 });
 
 test('release.yml: npm publishes the packed tarball through trusted publishing, on Node 24 (findings 26 and 27, D15)', () => {

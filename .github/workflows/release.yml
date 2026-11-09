@@ -4,9 +4,12 @@ name: Release
 # No secrets: npm (trusted publishing) and the MCP Registry log in with GitHub OIDC.
 # Variables: NPM_OWNER, the npm account that owns prompt-engine-mcp, checked before a
 # release treats an existing npm version as already published.
-# Each job gets only the permissions it needs, so the job that installs and runs
-# dependencies can only read the repository. A failed run can be re-run: each
-# publishing job skips what is already published.
+# Each job gets only the permissions it needs, so the jobs that install and run
+# dependencies can only read the repository. The build job installs only what
+# mcp/package-lock.json pins; test:pack, which installs the packed package as npx
+# does, runs in its own job after the upload, and the other jobs take the files by
+# the upload's ID. A failed run can be re-run: each publishing job skips what is
+# already published.
 on:
   push:
     tags: ['v*']
@@ -18,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
     steps:
       - name: The tagged commit is on main
         env:
@@ -45,25 +50,49 @@ jobs:
       - name: Pack the npm package (prepack adds LICENSE)
         working-directory: mcp
         run: npm pack --pack-destination ../dist
-      - name: Install and start the packed npm package
-        working-directory: mcp
-        run: npm run test:pack -- "../dist/prompt-engine-mcp-${GITHUB_REF_NAME#v}.tgz"
-      - uses: actions/upload-artifact@v7
+      - id: upload
+        uses: actions/upload-artifact@v7
         with:
           name: release
           path: dist/
           if-no-files-found: error
           overwrite: true
 
-  github-release:
+  # test:pack installs the packed package as npx does, with its dependencies' own
+  # dependencies resolved afresh, outside the lockfile. So it runs here, in a job that
+  # doesn't produce the files the publishing jobs take, and they wait for it.
+  pack-check:
     needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: dist
+      - name: Install and start the packed npm package
+        working-directory: mcp
+        run: |
+          npm ci
+          npm run build
+          npm run test:pack -- "../dist/prompt-engine-mcp-${GITHUB_REF_NAME#v}.tgz"
+
+  github-release:
+    needs: [build, pack-check]
     runs-on: ubuntu-latest
     permissions:
       contents: write   # create the GitHub release
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: release
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
           path: dist
       - name: Create the GitHub release (pre-release while the version is 0.x)
         env:
@@ -83,7 +112,7 @@ jobs:
             dist/prompt-engine.md dist/prompt-engine-knowledge.md dist/SHA256SUMS
 
   npm:
-    needs: build
+    needs: [build, pack-check]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -95,7 +124,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - uses: actions/download-artifact@v8
         with:
-          name: release
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
           path: dist
       - name: Publish to npm
         env:
