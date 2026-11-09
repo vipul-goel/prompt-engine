@@ -1,6 +1,7 @@
 name: Release
 
-# Push a tag such as v0.1.0 (matching .claude-plugin/plugin.json) on a commit that is on main.
+# Push a tag such as v0.1.0 (matching .claude-plugin/plugin.json) on a commit that is on main,
+# once CHANGELOG.md has a dated heading for that version.
 # No secrets: npm (trusted publishing) and the MCP Registry log in with GitHub OIDC.
 # Variables: NPM_OWNER, the npm account that owns prompt-engine-mcp, checked before a
 # release treats an existing npm version as already published.
@@ -43,6 +44,20 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+      # The tagged tree is what ships, and step 3 of docs/publishing.md's Cut a release dates
+      # this version's heading. version.mjs only reminds, so a tag pushed before then stops here.
+      - name: CHANGELOG.md dates this version
+        run: |
+          node -e '
+            const heading = "## [" + process.argv[1].replace(/^v/, "") + "] - ";
+            let text = "";
+            try { text = require("fs").readFileSync("CHANGELOG.md", "utf8"); } catch {}
+            const dated = text.split(/\r?\n/).some((l) => l.startsWith(heading) && /^\d{4}-\d{2}-\d{2}$/.test(l.slice(heading.length)));
+            if (!dated) {
+              console.log("::error::CHANGELOG.md has no \"" + heading + "YYYY-MM-DD\" heading. Date it on main (docs/publishing.md, Cut a release, step 3), then tag again (step 6).");
+              process.exit(1);
+            }
+          ' "${GITHUB_REF_NAME}"
       - name: Install and test the MCP server
         working-directory: mcp
         run: |

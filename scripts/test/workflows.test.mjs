@@ -290,6 +290,27 @@ test('release.yml: the build stops on a tag that differs from the version before
   assert.ok(tag > 0 && pack > tag, 'release.mjs --tag "${GITHUB_REF_NAME}" runs, before npm pack');
 });
 
+// Step 3 of Cut a release dates the version's CHANGELOG.md heading, and the tagged tree is what
+// ships. version.mjs only reminds, so a tag pushed before then must stop in the build job.
+test("release.yml stops unless CHANGELOG.md has a dated heading for the tag's version, before it builds anything", { skip: NO_BASH }, () => {
+  const s = step(release, 'build', runs(/CHANGELOG\.md/), 'that reads CHANGELOG.md');
+  assert.ok(s.i < step(release, 'build', runs(/release\.mjs --tag/), 'that builds the release files').i, 'before the release files are built');
+  const go = (tag, heading) => runStep(s.run, {
+    stubs: {},
+    env: { GITHUB_REF_NAME: tag },
+    files: heading === undefined ? {} : { 'CHANGELOG.md': `# Changelog\n\n## [Unreleased]\n\n${heading}\n\nFirst version.\n` },
+  });
+  for (const [tag, heading] of [['v0.2.0', '## [0.2.0] - 2026-11-10'], ['v0.2.0', '## [0.2.0] - 2026-11-10\r'], ['v1.0.0-rc.1', '## [1.0.0-rc.1] - 2027-01-31']]) {
+    const r = go(tag, heading);
+    assert.equal(r.code, 0, `${tag} with ${JSON.stringify(heading)}: ${r.out}`);
+  }
+  for (const heading of [undefined, '## [0.2.0] - not yet released', '## [0.2.0]', '## [0.1.0] - 2026-11-10', '## [10.2.0] - 2026-11-10', '## [0x2y0] - 2026-11-10', '### [0.2.0] - 2026-11-10', ' ## [0.2.0] - 2026-11-10', '## [0.2.0] - 2026-11-10 (yanked)', '## [0.2.0] - 10/11/2026']) {
+    const r = go('v0.2.0', heading);
+    assert.equal(r.code, 1, `${heading === undefined ? 'no CHANGELOG.md' : JSON.stringify(heading)} stops the release: ${r.out}`);
+    assert.match(r.out, /^::error::CHANGELOG\.md has no "## \[0\.2\.0\] - YYYY-MM-DD" heading/m);
+  }
+});
+
 // test:pack installs the packed package as npx does, so its dependencies' own dependencies come
 // fresh from the registry, outside mcp/package-lock.json. Code that nothing pins must not run
 // where it could change the files that the publishing jobs take.
