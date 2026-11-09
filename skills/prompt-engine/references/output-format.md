@@ -4,7 +4,7 @@ The reply that delivers an enhanced prompt always has the same shape, so users l
 
 ## Template
 
-The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★`, and the keywords `modifier 2 : …` and `approfondir`. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
+The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★`, and the keywords `modifier 2 : …` and `approfondir` (the French words for `change N` and `deep`; other languages use their own). The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
 
 ````markdown
 <One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it. For a strong prompt: "Your prompt is already strong — small edits below.">
@@ -63,7 +63,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 - **[your answer]** — something from their answers to your questions, including ★ recommendations they accepted with `ok` or by skipping a question;
 - **[best practice]** — a kind of rule or section the method adds, such as success criteria, exact counts or an uncertainty rule. The specific values you picked for it (three gulls, a 4:5 ratio, a 400-word limit) are defaults: list them under Assumptions, not here.
 
-Defaults you chose without asking don't go here; they are listed once, under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. That includes a ★ that declines something, such as "None": it is the user's choice, not a gap, so the prompt states it ("Name no competitors.") and it is tagged [your answer]. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
+Defaults you chose without asking don't go here; they are listed once, under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. That includes an accepted ★ that declines something, such as "None", even on a skipped question: it is the user's answer, not a gap, so the prompt states it ("Name no competitors.") and it is tagged [your answer]. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
 
 **Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. List each number (count, length, limit), name, setting or style choice you picked as its own item, in text prompts as in image and video prompts; merge small formatting picks, or small scene details, into one item. At most 8: if more qualify, merge related ones into one item rather than leave any out. End with the "change N" line. If there are no assumptions, write "None."
 
