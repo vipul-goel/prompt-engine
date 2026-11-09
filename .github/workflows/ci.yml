@@ -92,8 +92,9 @@ jobs:
       - name: MCPB bundle (packs it, then starts the packed server)
         run: npm run pack:mcpb
       # release.yml's build and pack-check commands, which otherwise first run on a tag push:
-      # release.mjs's full build and tag check, npm pack, and test:pack on that tarball, with the
-      # tag this version would get. On Node 22, as the release builds. Nothing is published.
+      # release.mjs's full build, given the tag this version would get (so its tag check passes),
+      # npm pack, and test:pack on that tarball. On Node 22, as the release builds. Nothing is
+      # published.
       - name: The release build's commands (nothing is published)
         if: matrix.node == 22
         run: |
