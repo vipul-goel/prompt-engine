@@ -556,6 +556,35 @@ test('ci.yml: the MCP job tests both Node versions, runs the Inspector gates and
   inOrder(again.run, ['[ "$(node --version)" = v22.19.0 ]', 'exit 1;', 'npm run pack:mcpb', 'npm run test:pack'], 'the 22.19.0 step');
 });
 
+// release.yml's build and pack-check jobs run only on a tag push, so a change that breaks them would
+// first show there. The MCP job runs their commands on each pull request, on the release's Node
+// version, with the tag this version would get: release.mjs's full build and tag check, npm pack, and
+// test:pack on that tarball. Each line is release.yml's own, run from mcp/.
+test("ci.yml runs the release build's commands on the release's Node version, with the version's tag, and publishes nothing", () => {
+  const s = step(ci, 'mcp', runs(/release\.mjs --tag/), "that runs release.yml's build commands");
+  const node = step(release, 'build', (x) => uses(x, 'actions/setup-node'), 'that sets up Node').with['node-version'];
+  assert.equal(step(release, 'pack-check', (x) => uses(x, 'actions/setup-node'), 'that sets up Node').with['node-version'], node);
+  assert.deepEqual(ci.jobs.mcp.strategy.matrix.node.filter((n) => n === node), [node], `the MCP job has a Node ${node} leg`);
+  assert.equal(s.if, `matrix.node == ${node}`, `the Node ${node} leg, as release.yml builds on Node ${node}`);
+  assert.equal(s['working-directory'], undefined, 'it runs in mcp/, the MCP job\'s working directory');
+  const lines = s.run.split('\n');
+  assert.equal(lines[0], `tag="v$(node -p 'require("../.claude-plugin/plugin.json").version')"`, 'the tag comes from plugin.json, as a release tag must');
+  const asCi = (rs, re) => {
+    const line = re.exec(rs.run)?.[0];
+    assert.ok(line, `${label(rs)} runs ${re.source}`);
+    const fromMcp = rs['working-directory'] === 'mcp' ? line : line.replace(/^node scripts\//, 'node ../scripts/');
+    return fromMcp.replaceAll('${GITHUB_REF_NAME#v}', '${tag#v}').replaceAll('${GITHUB_REF_NAME}', '${tag}');
+  };
+  inOrder(s.run, [
+    asCi(step(release, 'build', runs(/release\.mjs --tag/), 'that builds the release files'), /^node scripts\/release\.mjs .*$/m),
+    asCi(step(release, 'build', runs(/\bnpm pack\b/), 'that packs the npm package'), /^npm pack .*$/m),
+    asCi(step(release, 'pack-check', runs(/npm run test:pack/), 'that starts the packed package'), /^npm run test:pack .*$/m),
+  ].map((l) => `\n${l}\n`), 'the release build step runs release.yml\'s commands in order');
+  assert.doesNotMatch(s.run, /\bnpm publish\b|\bgh release\b|mcp-publisher|\bgit (?:push|tag)\b/, 'nothing is published');
+  const after = step(ci, 'mcp', (x) => uses(x, 'actions/setup-node') && x.with?.['node-version'] === '22.19.0', 'that switches to Node 22.19.0');
+  assert.ok(s.i < after.i, 'before the switch to Node 22.19.0');
+});
+
 test('ci.yml lints the workflow files with actionlint and shellcheck, at a pinned version checked against its SHA-256 before it runs', () => {
   const s = step(ci, 'skill', runs(/actionlint/), 'that runs actionlint');
   assert.match(s.env?.ACTIONLINT_VERSION ?? '', /^\d+\.\d+\.\d+$/);

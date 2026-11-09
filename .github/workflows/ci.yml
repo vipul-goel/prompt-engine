@@ -91,6 +91,16 @@ jobs:
         run: npm run test:pack
       - name: MCPB bundle (packs it, then starts the packed server)
         run: npm run pack:mcpb
+      # release.yml's build and pack-check commands, which otherwise first run on a tag push:
+      # release.mjs's full build and tag check, npm pack, and test:pack on that tarball, with the
+      # tag this version would get. On Node 22, as the release builds. Nothing is published.
+      - name: The release build's commands (nothing is published)
+        if: matrix.node == 22
+        run: |
+          tag="v$(node -p 'require("../.claude-plugin/plugin.json").version')"
+          node ../scripts/release.mjs --tag "${tag}"
+          npm pack --pack-destination ../dist
+          npm run test:pack -- "../dist/prompt-engine-mcp-${tag#v}.tgz"
       # node-version 22 doesn't mean 22.19.0, so the lowest version mcp/package.json's
       # engines allow gets its own run of the two package checks.
       - name: Switch to the lowest supported Node (22.19.0)

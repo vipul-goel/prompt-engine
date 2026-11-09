@@ -40,7 +40,7 @@ If you changed `mcp/`:
 cd mcp && npm test && npm run test:inspector
 ```
 
-CI also runs `npm run test:pack`, which packs the build that `npm test` leaves in `dist/`, installs the package from its tarball and starts it (the install needs the npm registry), and `npm run pack:mcpb`, which packs the `.mcpb` bundle and starts its server. Run them too when your change touches what the packages contain, their dependencies or how they start.
+CI also runs `npm run test:pack`, which packs the build that `npm test` leaves in `dist/`, installs the package from its tarball and starts it (the install needs the npm registry), and `npm run pack:mcpb`, which packs the `.mcpb` bundle and starts its server. On Node 22 it then runs the Release workflow's build commands, which otherwise first run when a tag is pushed, without publishing anything: `node scripts/release.mjs --tag v<version>`, `npm pack`, and `npm run test:pack` on that tarball. Run them too when your change touches what the packages contain, their dependencies or how they start, or what `release.mjs` builds.
 
 The validator explains each failure. The most common ones:
 - **Generated file is stale.** Run `node scripts/build.mjs`.
