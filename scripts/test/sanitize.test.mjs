@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sanitize, scanText, publicText, FIXED_SESSION, PRIVATE_PATTERNS } from '../eval/sanitize.mjs';
+import { sanitize, scanText, publicText, machinePatterns, FIXED_SESSION, PRIVATE_PATTERNS } from '../eval/sanitize.mjs';
 import { refreshHistory } from '../build.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -206,6 +206,21 @@ test('Windows paths become /plugin and /workspace paths, which build.mjs then re
   assert.equal(rows[2].message.content[0].text, 'Saved to /workspace/prompt.md');
   const refreshed = refreshHistory(rows.map((r) => JSON.stringify(r)).join('\n'), 'BODY', (p) => `NEW ${p}`).split('\n').map((l) => JSON.parse(l));
   assert.equal(refreshed[1].message.content[0].content, '1\tNEW skills/prompt-engine/references/questions.md');
+});
+
+// A home folder that is a file-system root, as a container user without one can have, holds nothing
+// private. Rewritten as a folder, "/" turned every "//" and lone "/" into "~", and C:\ every C:\ path.
+test('a home folder that is a file-system root is neither rewritten nor looked for, and the other folders still are', () => {
+  for (const home of ['/', 'C:\\', 'C:/', 'c:', '']) assert.deepEqual(machinePatterns({ home }), [], JSON.stringify(home));
+  const posix = { repo: '/srv/build/prompt-engine', cwd: '/srv/tmp/pe-history-abc', home: '/', host: 'ci' };
+  const user = 'compare REST and/or GraphQL, see https://example.com/api';
+  const reply = `Saved to ${posix.cwd}/notes.md. See https://example.com/docs and use 1/2 cup, then a/b test or / slash, or file:///etc/hosts.`;
+  const rows = run([ev('user', 'u1', null, user), ev('assistant', 'a1', 'u1', [{ type: 'text', text: reply }])].join('\n'), posix).trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(rows[0].message.content, user);
+  assert.equal(rows[1].message.content[0].text, reply.replace(posix.cwd, '/workspace'));
+  const win = { repo: 'C:\\src\\prompt-engine', cwd: 'C:\\Temp\\pe-history-abc', home: 'C:\\', host: 'ci' };
+  const text = `Open C:\\Windows\\System32 and D:\\data, then ${win.repo}\\skills\\prompt-engine\\SKILL.md.`;
+  assert.equal(JSON.parse(run(textEvent(text), win)).message.content[0].text, 'Open C:\\Windows\\System32 and D:\\data, then /plugin/skills/prompt-engine/SKILL.md.');
 });
 
 test('a token right after an escaped newline or tab in a history row is found', () => {
