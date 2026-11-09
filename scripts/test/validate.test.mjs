@@ -8,7 +8,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -274,6 +274,11 @@ const ROWS = [
     new RegExp(`extra/big\\.md: ${BUDGETS.skillFileMaxBytes + 1} bytes \\(max ${BUDGETS.skillFileMaxBytes} per file\\)`)],
   ['rejects a non-Markdown file in the skill folder', (d) => put(d, 'skills/prompt-engine/helper.py', 'print(1)\n'), /helper\.py: only Markdown files belong in the skill folder/],
   ['rejects a second SKILL.md', (d) => put(d, 'skills/prompt-engine/extra/SKILL.md', '# Extra\n'), /extra\/SKILL\.md: a skill must contain exactly one SKILL\.md/],
+  // release.mjs zips the whole folder, so anything at its top but SKILL.md and references/ would ship.
+  ['rejects a stray Markdown file or folder at the top of the skill folder', (d) => {
+    put(d, 'skills/prompt-engine/SKILL copy.md', read(d, SKILL));
+    put(d, 'skills/prompt-engine/notes/todo.md', '# Todo\n');
+  }, [...['SKILL copy.md', 'notes'].map((f) => new RegExp(`^error: skills/prompt-engine/${reEsc(f)}: only SKILL\\.md and the references folder belong at the top of the skill folder`, 'm')), /^2 error\(s\)$/m]],
   ['rejects a skill folder over its total size budget', (d) => {
     // Files just under the per-file limit, enough of them to pass the folder's total.
     const n = Math.ceil(BUDGETS.skillFolderMaxBytes / (BUDGETS.skillFileMaxBytes - 1)) + 1;
@@ -803,6 +808,21 @@ test('copies a checkout in a folder named like a skipped entry, still without it
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// An entry in the skill folder that is neither a plain file nor a folder: the lock file Emacs keeps
+// next to a file with unsaved changes (a link that leads nowhere) stopped validate.mjs, and a link to
+// a reference drew the rules for a reference's name. Each is named in one line, and the checks
+// after the walk still run.
+test('names a link in the skill folder, such as an editor\'s lock file, and keeps checking', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => withMutation((d) => {
+  symlinkSync('someone@host.4242:1700000000', join(d, 'skills/prompt-engine/.#SKILL.md'));
+  symlinkSync('someone@host.4242:1700000000', join(d, `${REF}/.#writing.md`));
+  symlinkSync('writing.md', join(d, `${REF}/notes.md`));
+  editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins[0].version = '0.1.0'; });
+}, [
+  ...['skills/prompt-engine/.#SKILL.md', `${REF}/.#writing.md`, `${REF}/notes.md`].map((f) => new RegExp(`^error: ${reEsc(f)}: not a plain file or folder \\(a link`, 'm')),
+  /^error: \.claude-plugin\/marketplace\.json: set version only in plugin\.json/m,
+  /^4 error\(s\)$/m,
+], 1, NO_STACK));
 
 // The git copies under conditions that broke them: a gitignore that covers every path, and the
 // repository variables that git exports to a hook. Each runs a GIT_ROWS row through the helpers.

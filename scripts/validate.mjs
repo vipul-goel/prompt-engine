@@ -194,11 +194,28 @@ if (!front) {
 }
 
 // ---------- skill folder ----------
-const walk = (dir) => readdirSync(join(root, dir)).filter((f) => !OS_JUNK.has(f)).flatMap((f) => {
-  const p = `${dir}/${f}`;
-  return statSync(join(root, p)).isDirectory() ? walk(p) : [p];
+// release.mjs zips this folder as it is on disk. entries() lists a folder without the files the
+// operating system writes into folders, and without following links: the walk reports an entry
+// that is neither a plain file nor a folder, and leaves it out of the checks below. statSync
+// followed links, and stopped validate.mjs on one that leads nowhere, such as the lock file Emacs
+// keeps next to a file with unsaved changes.
+const entries = (dir) => readdirSync(join(root, dir), { withFileTypes: true }).filter((e) => !OS_JUNK.has(e.name));
+const walk = (dir) => entries(dir).flatMap((e) => {
+  const p = `${dir}/${e.name}`;
+  if (e.isDirectory()) return walk(p);
+  if (e.isFile()) return [p];
+  err(`${p}: not a plain file or folder (a link, such as the lock file Emacs keeps while a file has unsaved changes, doesn't survive every checkout, and the skill zip is built from this folder)`);
+  return [];
 });
 const skillFiles = walk(SKILL_DIR);
+// Only SKILL.md and the references folder at the top: anything else there, such as a stray "SKILL
+// copy.md" or another folder, would ship in the skill zip. A file that isn't Markdown is reported
+// below instead.
+for (const e of entries(SKILL_DIR)) {
+  if (e.isDirectory() ? e.name !== 'references' : e.isFile() && e.name.endsWith('.md') && e.name !== 'SKILL.md') {
+    err(`${SKILL_DIR}/${e.name}: only SKILL.md and the references folder belong at the top of the skill folder, which the skill zip is built from`);
+  }
+}
 if (skillFiles.length > B.skillFolderMaxFiles) err(`${SKILL_DIR}: ${skillFiles.length} files (max ${B.skillFolderMaxFiles})`);
 let total = 0;
 for (const f of skillFiles) {
@@ -256,17 +273,21 @@ for (const h of B.skillKeySections ?? []) {
 const core = read('universal/prompt-engine.md');
 if (chars(core) > B.universalCoreMaxChars) err(`universal/prompt-engine.md: ${chars(core)} chars (max ${B.universalCoreMaxChars})`);
 
-// References: every file is linked from SKILL.md, every link resolves, one level deep.
+// References: every file is linked from SKILL.md, every link resolves, one level deep. An entry
+// that is neither a plain file nor a folder, reported by the walk above, counts as there, and the
+// rules for a reference's own name skip it.
 const linked = new Set([...skillBody.matchAll(/references\/([\w-]+\.md)/g)].map((m) => m[1]));
-const refFiles = readdirSync(join(root, SKILL_DIR, 'references')).filter((f) => !OS_JUNK.has(f));
-for (const f of refFiles) {
-  if (statSync(join(root, SKILL_DIR, 'references', f)).isDirectory()) err(`${SKILL_DIR}/references/${f}: keep references one level deep`);
-  else if (!linked.has(f)) err(`${SKILL_DIR}/references/${f}: not linked from SKILL.md`);
+const refEntries = entries(`${SKILL_DIR}/references`);
+const refFiles = refEntries.filter((e) => !e.isDirectory()).map((e) => e.name);
+const plainRefs = new Set(refEntries.filter((e) => e.isFile()).map((e) => e.name));
+for (const e of refEntries) {
+  if (e.isDirectory()) err(`${SKILL_DIR}/references/${e.name}: keep references one level deep`);
+  else if (plainRefs.has(e.name) && !linked.has(e.name)) err(`${SKILL_DIR}/references/${e.name}: not linked from SKILL.md`);
 }
 for (const f of linked) if (!refFiles.includes(f)) err(`${SKILL}: links references/${f}, which does not exist`);
 // build.mjs builds the universal knowledge file and the MCP server's content from KNOWLEDGE_ORDER only.
 const ordered = new Set(KNOWLEDGE_ORDER.map((k) => `${k}.md`));
-for (const f of refFiles) if (f.endsWith('.md') && !ordered.has(f)) err(`${SKILL_DIR}/references/${f}: add "${f.slice(0, -3)}" to KNOWLEDGE_ORDER in scripts/build.mjs, or the universal knowledge file and the MCP server won't include it`);
+for (const f of plainRefs) if (f.endsWith('.md') && !ordered.has(f)) err(`${SKILL_DIR}/references/${f}: add "${f.slice(0, -3)}" to KNOWLEDGE_ORDER in scripts/build.mjs, or the universal knowledge file and the MCP server won't include it`);
 for (const k of KNOWLEDGE_ORDER) if (!refFiles.includes(`${k}.md`)) err(`scripts/build.mjs: KNOWLEDGE_ORDER lists ${k}, but references/${k}.md does not exist`);
 
 // ---------- output contract ----------
