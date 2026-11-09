@@ -83,10 +83,11 @@ export function machinePatterns({ home, host } = {}) {
 
 // Escapes that end in a letter or digit, so that a token right after one has no word boundary
 // where it starts: a colour code (its escape character as itself or written out), a backslash
-// escape written out (\n, \t, =, \x3d; in a deeper JSON level its backslash is escaped too,
-// and the last backslash still matches) and a %XX escape. Each part is matched without
-// backtracking into a long run, so the scan stays linear.
-const ESCAPES = /(?:\x1b|\\(?:u001[bB]|x1[bB]|0?33|e))\[[0-9;?]*[ -/]*[@-~]|\\(?:[nrtfvb0]|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2})|%[0-9A-Fa-f]{2}/g;
+// escape written out (\n, \t, \a, an octal one such as \012, \x3d, and \u or \U with four or
+// eight hex digits; in a deeper JSON level its backslash is escaped too, and the last backslash
+// still matches) and a %XX escape. Each part is matched without backtracking into a long run,
+// so the scan stays linear.
+const ESCAPES = /(?:\x1b|\\(?:u001[bB]|x1[bB]|0?33|e))\[[0-9;?]*[ -/]*[@-~]|\\(?:[nrtfvba]|[0-7]{1,3}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2})|%[0-9A-Fa-f]{2}/g;
 
 // The texts the patterns run on for one line. For a line of JSON, such as a history row,
 // every key and string value as decoded text; for any other line, the line itself. Each text
