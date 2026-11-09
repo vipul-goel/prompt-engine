@@ -20,7 +20,7 @@ Use it when the user asks to improve, enhance, rewrite, expand or optimize a pro
 
 Don't use it for ordinary requests such as "write me a cold email" — just do the task. If the user pastes text without saying what they want, ask once whether they want it improved or carried out.
 
-A request to critique a prompt or find what's missing gets the same workflow: open the question round with one line naming the biggest gaps.
+A request to critique a prompt or find what's missing gets the same workflow: open the question round with one sentence, not a list, naming the biggest gaps.
 
 ## Workflow
 
@@ -44,7 +44,7 @@ Go through the pack's checklist and mark each item explicit, inferable or missin
 
 For each missing item decide: **ask** it, **assume** the recommended default (it goes under Assumptions), or **skip** it because it would not change the result. Use the priority rule in `references/questions.md`: ask only when different answers would lead to materially different prompts.
 
-If the prompt is already strong, say so, keep the user's text, make small edits, and ask at most two questions.
+If the prompt is already strong, say so, keep the user's text and layout (no new headings), make small edits that add at most about half its length, and ask at most two questions.
 
 ### 3. Ask (standard and deep modes)
 
@@ -57,7 +57,7 @@ How to ask depends on the app:
 
 If AskUserQuestion isn't among your tools, use the text format straight away rather than searching for it. Don't tell the user which tools are or aren't available; just use the format that fits.
 
-Reading replies to the questions: `ok`, `yes` or the user's local equivalent accept every ★. Partial answers keep the ★ for the rest. Free text wins over options. Use each accepted ★ answer as offered, without rewording its meaning, and tag it [your answer]; it is not an assumption. A reply of just `quick` accepts every ★ and moves on; `deep` asks a further round. In deep mode, after each round look for new high-impact gaps opened by the answers and ask up to two more rounds of at most 4 questions; stop when nothing qualifies or the user says go.
+Reading replies to the questions: `ok`, `yes` or the user's local equivalent accept every ★. Partial answers keep the ★ for the rest. Free text wins over options. State each accepted ★ answer in the prompt as offered, without rewording its meaning (one that rules something out becomes a line saying so), and tag it [your answer]; it is not an assumption. A reply of just `quick` accepts every ★ and moves on; `deep` asks a further round. In deep mode, after each round look for new high-impact gaps opened by the answers and ask up to two more rounds of at most 4 questions; stop when nothing qualifies or the user says go.
 
 ### 4. Build
 
@@ -73,15 +73,15 @@ Follow `references/blueprint.md` and the domain pack. In short:
 
 ### 5. Present
 
-Use the structure in `references/output-format.md`, in the user's language (headings, score rows, caveat line and menu included), in this order and nothing else:
+Use the structure in `references/output-format.md`, with every label in the user's language: the headings below, score rows, caveat line, menu options and `change N` (a French reply has `### Prompt complet` and `modifier 2`; the tags, ★ and `[[` stay as written). Show these parts in this order and nothing else:
 
 1. One line saying what you made and for which tool.
 2. **Full prompt** in a fenced block.
 3. **Short version** in a fenced block, with a note on when to use each.
 4. **Fill before running** — only if placeholders remain.
-5. **What I added & why** — at most 6 bullets, each tagged [you], [your answer] (including ★ answers the user accepted) or [best practice]. Specific values you picked yourself go under Assumptions, not [best practice].
+5. **What I added & why** — at most 6 bullets, each tagged [you], [your answer] (including ★ answers the user accepted) or [best practice]; to fit, merge related ones rather than move an answer to Assumptions. Specific values you picked yourself go under Assumptions, not [best practice].
 6. **Assumptions** — only the defaults you chose without asking, numbered; "change 2: …" edits one.
-7. **Score** — original vs enhanced, 0–5 on Clear goal, Context, Constraints, Output format and Edge cases, then the caveat line "Self-assessed coverage of five areas, not a prediction of output quality." A dimension that rests only on unconfirmed defaults, or has an open placeholder, scores at most 3.
+7. **Score** — original vs enhanced, 0–5 on Clear goal, Context, Constraints, Output format and Edge cases, then the caveat line "Self-assessed coverage of five areas, not a prediction of output quality." in the user's language. A dimension that rests only on unconfirmed defaults, or has an open placeholder, scores at most 3.
 8. **What next?** — Run it now ★ · Refine · Save to file.
 
 Show "What next?" with AskUserQuestion (header "Next step") when that tool is among your tools. Otherwise end the same message with the menu as a numbered list, because some apps show only your final message.

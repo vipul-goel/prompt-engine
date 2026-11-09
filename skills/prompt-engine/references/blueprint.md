@@ -4,7 +4,9 @@ This file describes how to write the full prompt: which sections to use, how to 
 
 ## Skeleton
 
-Use the sections that carry task-specific content and drop the rest. A two-line task doesn't need nine headings, and empty boilerplate sections dilute the instructions that matter.
+Use the sections that carry task-specific content and drop the rest. A two-line task doesn't need nine headings, and empty boilerplate sections dilute the instructions that matter. Write the headings in the prompt's language: a prompt in German has `# Ziel`, `# Kontext` and `# Ausgabe`, not `# Goal`.
+
+If the prompt is already strong, don't rebuild it on this skeleton: keep the user's wording, sentence order and layout, edit in place and add only short lines, so it grows by at most about half its length.
 
 ```text
 # Goal
@@ -48,6 +50,8 @@ Use the sections that carry task-specific content and drop the rest. A two-line 
 **Ordering.** With short inputs, use the order above. With long inputs (several documents or many pages), put a one- or two-line goal first, then the inputs, then the instructions, and end with the restated task, because models answer long-context questions better when the question comes after the material.
 
 **Numbered steps.** Use them only when order matters. For reasoning-heavy tasks, describe the outcome and the constraints and let the model plan.
+
+**Answers.** Every answer the user gave or accepted goes into the prompt with its meaning unchanged, even one that only rules something out: if they accept the ★ "None" for "Which competitors may it name?", the prompt says "Name no competitors." Such a line stays even when the model wouldn't do the thing by default, because it records the user's choice; it is not an assumption.
 
 ## Phrasing that models follow well
 
@@ -93,7 +97,7 @@ The short version is the same prompt compressed for quick chats: the goal with i
 
 Fix anything that fails:
 
-- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Compare each number, length, limit and name in the prompt with the request, the answers and what you found in the user's files, earlier messages or attachments: one that came from none of these is a `[[placeholder]]` or in an Assumption. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.

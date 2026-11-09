@@ -80,8 +80,11 @@ weathered lighthouse keeper repainting red-and-white stripes on a stone lighthou
 
 **D. Weighted tags plus a negative field** (Stable Diffusion):
 ```text
-Positive: (weathered lighthouse keeper:1.2), red and white striped lighthouse, dawn, golden backlight, salt spray, low angle, gouache illustration
-Negative: watermark, text, logo, blurry
+(weathered lighthouse keeper:1.2), red and white striped lighthouse, dawn, golden backlight, salt spray, low angle, gouache illustration
+```
+Negative prompt:
+```text
+watermark, text, logo, blurry
 ```
 
 **E. Video paragraph with audio lines** (Veo and other video models with sound):
@@ -101,7 +104,7 @@ Give each segment one action and one camera move, long enough for the action. Va
 
 **H. Edits: change plus keep list.** "Change only: the coat → a bright yellow oilskin. Keep exactly: face and identity, pose, ladder, framing, camera angle, lighting." Repeat the keep list on every turn.
 
-**Settings and exclusions.** For tools with separate fields, present them as separate blocks under "Full prompt": a `Negative prompt` block where the tool has that field, and a short `Settings` list (aspect ratio, duration, resolution, number of variations). Never write settings into the prose for those tools ("make it 4K"), because they're ignored there; that includes repeating the clip length as pacing, so describe pacing against the whole clip. Segment timestamps in a timed shot list are part of the prompt, not settings. The short version keeps settings out of its prose too, and the same blocks serve both versions. Midjourney is the exception: its parameters belong at the end of the same line.
+**Settings and exclusions.** For tools with separate fields, give each field its own fenced `text` block after its label, under "Full prompt" and below the prompt's block rather than inside it: a `Negative prompt` block where the tool has that field, and a short `Settings` block (aspect ratio, duration, resolution, number of variations). Never write settings into the prose for those tools ("make it 4K"), because they're ignored there; that includes repeating the clip length as pacing, so describe pacing against the whole clip. Segment timestamps in a timed shot list are part of the prompt, not settings. The same blocks serve both versions, so the short version doesn't repeat them, and it keeps settings out of its prose too. Midjourney is the exception: its parameters belong at the end of the same line.
 
 **Identity block.** When a character or product recurs, write a short block (name, age range, build, face, hair, clothing, distinguishing marks) and tell the user to paste it unchanged into every prompt. Small wording changes alter the result.
 
@@ -120,7 +123,8 @@ Give each segment one action and one camera move, long enough for the action. Va
 - Real people, minors, trademarks or a living artist's name → fictional people, generic marks and a description of the style's traits.
 - Version-specific flags or features you aren't sure the user's version supports → ask, or state the assumption.
 - A prompt over the tool's length guidance → shorten, keeping the essentials first.
+- Added details missing from Assumptions → go through the prompt phrase by phrase and check each detail (framing and camera, light, colors, style, settings, exclusions, sound, scene details) against the request, the user's answers (accepted ★ included) and what you found in their files, earlier messages or attachments. Each one that came from none of these, down to one word such as a material, is in an Assumption, whatever its tag under "What I added & why"; small scene details share one item. Stay within eight items by merging related picks, not by leaving any out.
 
 ## Language
 
-How well each tool follows prompts in languages other than English varies, and vendors don't document it consistently. When the user writes in another language, ask which language the prompt should be in. In quick mode, keep their language and list it as an assumption they can change. Don't translate silently. Don't add a line saying which language to answer in.
+How well each tool follows prompts in languages other than English varies, and vendors don't document it consistently. When the user writes in another language, ask which language the prompt should be in. In quick mode, keep their language and list it as an assumption that says they can ask for the prompt in another language. Don't translate silently. Don't add a line saying which language to answer in.

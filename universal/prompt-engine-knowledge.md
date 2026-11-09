@@ -17,9 +17,11 @@ Sections:
 
 ## Output format
 
-The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Write the headings, score rows, caveat line, menu labels and reply keywords (`change N`, `deep`) below in the user's language, like everything else. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language. Add nothing before the first line and nothing after the menu.
+The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Add nothing before the first line and nothing after the menu.
 
 ### Template
+
+The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★` and `modifier 2 : …`. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
 
 ````markdown
 <One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it. For a strong prompt: "Your prompt is already strong — small edits below.">
@@ -73,7 +75,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 **Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable), never ask for its value.
 
-**What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. Tag every bullet:
+**What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. If more qualify, merge related ones, such as two answers, into one bullet; an answer never moves to Assumptions to make room. Tag every bullet:
 - **[you]** — something the user said, restated or made precise;
 - **[your answer]** — something from their answers to your questions, including ★ recommendations they accepted with `ok` or by skipping a question;
 - **[best practice]** — a kind of rule or section the method adds, such as success criteria, exact counts or an uncertainty rule. The specific values you picked for it (three gulls, a 4:5 ratio, a 400-word limit) are defaults: list them under Assumptions, not here.
@@ -120,8 +122,8 @@ For image and video prompts, read the dimensions as: Clear goal = subject, actio
 
 ### Variants
 
-- **Questions round.** When you are asking questions, the reply is only the questions (see the "Asking clarifying questions" section), plus one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it. Don't show a draft prompt yet.
-- **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, but don't regroup the prompt under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
+- **Questions round.** When you are asking questions, the reply is only the questions (see the "Asking clarifying questions" section), plus one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it. That line is one sentence, not a list: the questions carry the detail. Don't show a draft prompt yet.
+- **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, as long as the prompt grows by at most about half its length, but don't regroup it under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
 - **Refine.** After a change, show one line on what changed, then the full template again with the updated prompt and score.
 - **Run it now.** Once the user picks this, answer the prompt like any normal request. Don't show the template, score or menu again unless they ask for another prompt.
 
@@ -225,7 +227,9 @@ This file describes how to write the full prompt: which sections to use, how to 
 
 ### Skeleton
 
-Use the sections that carry task-specific content and drop the rest. A two-line task doesn't need nine headings, and empty boilerplate sections dilute the instructions that matter.
+Use the sections that carry task-specific content and drop the rest. A two-line task doesn't need nine headings, and empty boilerplate sections dilute the instructions that matter. Write the headings in the prompt's language: a prompt in German has `# Ziel`, `# Kontext` and `# Ausgabe`, not `# Goal`.
+
+If the prompt is already strong, don't rebuild it on this skeleton: keep the user's wording, sentence order and layout, edit in place and add only short lines, so it grows by at most about half its length.
 
 ```text
 # Goal
@@ -269,6 +273,8 @@ Use the sections that carry task-specific content and drop the rest. A two-line 
 **Ordering.** With short inputs, use the order above. With long inputs (several documents or many pages), put a one- or two-line goal first, then the inputs, then the instructions, and end with the restated task, because models answer long-context questions better when the question comes after the material.
 
 **Numbered steps.** Use them only when order matters. For reasoning-heavy tasks, describe the outcome and the constraints and let the model plan.
+
+**Answers.** Every answer the user gave or accepted goes into the prompt with its meaning unchanged, even one that only rules something out: if they accept the ★ "None" for "Which competitors may it name?", the prompt says "Name no competitors." Such a line stays even when the model wouldn't do the thing by default, because it records the user's choice; it is not an assumption.
 
 ### Phrasing that models follow well
 
@@ -314,7 +320,7 @@ The short version is the same prompt compressed for quick chats: the goal with i
 
 Fix anything that fails:
 
-- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Compare each number, length, limit and name in the prompt with the request, the answers and what you found in the user's files, earlier messages or attachments: one that came from none of these is a `[[placeholder]]` or in an Assumption. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
@@ -656,8 +662,11 @@ weathered lighthouse keeper repainting red-and-white stripes on a stone lighthou
 
 **D. Weighted tags plus a negative field** (Stable Diffusion):
 ```text
-Positive: (weathered lighthouse keeper:1.2), red and white striped lighthouse, dawn, golden backlight, salt spray, low angle, gouache illustration
-Negative: watermark, text, logo, blurry
+(weathered lighthouse keeper:1.2), red and white striped lighthouse, dawn, golden backlight, salt spray, low angle, gouache illustration
+```
+Negative prompt:
+```text
+watermark, text, logo, blurry
 ```
 
 **E. Video paragraph with audio lines** (Veo and other video models with sound):
@@ -677,7 +686,7 @@ Give each segment one action and one camera move, long enough for the action. Va
 
 **H. Edits: change plus keep list.** "Change only: the coat → a bright yellow oilskin. Keep exactly: face and identity, pose, ladder, framing, camera angle, lighting." Repeat the keep list on every turn.
 
-**Settings and exclusions.** For tools with separate fields, present them as separate blocks under "Full prompt": a `Negative prompt` block where the tool has that field, and a short `Settings` list (aspect ratio, duration, resolution, number of variations). Never write settings into the prose for those tools ("make it 4K"), because they're ignored there; that includes repeating the clip length as pacing, so describe pacing against the whole clip. Segment timestamps in a timed shot list are part of the prompt, not settings. The short version keeps settings out of its prose too, and the same blocks serve both versions. Midjourney is the exception: its parameters belong at the end of the same line.
+**Settings and exclusions.** For tools with separate fields, give each field its own fenced `text` block after its label, under "Full prompt" and below the prompt's block rather than inside it: a `Negative prompt` block where the tool has that field, and a short `Settings` block (aspect ratio, duration, resolution, number of variations). Never write settings into the prose for those tools ("make it 4K"), because they're ignored there; that includes repeating the clip length as pacing, so describe pacing against the whole clip. Segment timestamps in a timed shot list are part of the prompt, not settings. The same blocks serve both versions, so the short version doesn't repeat them, and it keeps settings out of its prose too. Midjourney is the exception: its parameters belong at the end of the same line.
 
 **Identity block.** When a character or product recurs, write a short block (name, age range, build, face, hair, clothing, distinguishing marks) and tell the user to paste it unchanged into every prompt. Small wording changes alter the result.
 
@@ -696,10 +705,11 @@ Give each segment one action and one camera move, long enough for the action. Va
 - Real people, minors, trademarks or a living artist's name → fictional people, generic marks and a description of the style's traits.
 - Version-specific flags or features you aren't sure the user's version supports → ask, or state the assumption.
 - A prompt over the tool's length guidance → shorten, keeping the essentials first.
+- Added details missing from Assumptions → go through the prompt phrase by phrase and check each detail (framing and camera, light, colors, style, settings, exclusions, sound, scene details) against the request, the user's answers (accepted ★ included) and what you found in their files, earlier messages or attachments. Each one that came from none of these, down to one word such as a material, is in an Assumption, whatever its tag under "What I added & why"; small scene details share one item. Stay within eight items by merging related picks, not by leaving any out.
 
 ### Language
 
-How well each tool follows prompts in languages other than English varies, and vendors don't document it consistently. When the user writes in another language, ask which language the prompt should be in. In quick mode, keep their language and list it as an assumption they can change. Don't translate silently. Don't add a line saying which language to answer in.
+How well each tool follows prompts in languages other than English varies, and vendors don't document it consistently. When the user writes in another language, ask which language the prompt should be in. In quick mode, keep their language and list it as an assumption that says they can ask for the prompt in another language. Don't translate silently. Don't add a line saying which language to answer in.
 
 ---
 

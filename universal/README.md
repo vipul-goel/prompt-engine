@@ -5,7 +5,7 @@ These files let you use Prompt Engine in apps that don't support Agent Skills, s
 | File | What it is | Size |
 |---|---|---|
 | [`prompt-engine.md`](prompt-engine.md) | The instructions. Works on its own. | just under 7,500 characters |
-| [`prompt-engine-knowledge.md`](prompt-engine-knowledge.md) | Optional detailed checklists for coding, writing, research, image and video prompts | about 66,000 characters |
+| [`prompt-engine-knowledge.md`](prompt-engine-knowledge.md) | Optional detailed checklists for coding, writing, research, image and video prompts | about 68,000 characters |
 
 ## Quickest: paste into any chat
 

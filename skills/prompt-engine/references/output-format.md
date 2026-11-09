@@ -1,8 +1,10 @@
 # Output format
 
-The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Write the headings, score rows, caveat line, menu labels and reply keywords (`change N`, `deep`) below in the user's language, like everything else. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language. Add nothing before the first line and nothing after the menu.
+The reply that delivers an enhanced prompt always has the same shape, so users learn where to look and can copy the prompt in one move. Add nothing before the first line and nothing after the menu.
 
 ## Template
+
+The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★` and `modifier 2 : …`. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
 
 ````markdown
 <One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it. For a strong prompt: "Your prompt is already strong — small edits below.">
@@ -56,7 +58,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 **Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable), never ask for its value.
 
-**What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. Tag every bullet:
+**What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. If more qualify, merge related ones, such as two answers, into one bullet; an answer never moves to Assumptions to make room. Tag every bullet:
 - **[you]** — something the user said, restated or made precise;
 - **[your answer]** — something from their answers to your questions, including ★ recommendations they accepted with `ok` or by skipping a question;
 - **[best practice]** — a kind of rule or section the method adds, such as success criteria, exact counts or an uncertainty rule. The specific values you picked for it (three gulls, a 4:5 ratio, a 400-word limit) are defaults: list them under Assumptions, not here.
@@ -103,7 +105,7 @@ For image and video prompts, read the dimensions as: Clear goal = subject, actio
 
 ## Variants
 
-- **Questions round.** When you are asking questions, the reply is only the questions (see `references/questions.md`), plus one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it. Don't show a draft prompt yet.
-- **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, but don't regroup the prompt under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
+- **Questions round.** When you are asking questions, the reply is only the questions (see `references/questions.md`), plus one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it. That line is one sentence, not a list: the questions carry the detail. Don't show a draft prompt yet.
+- **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, as long as the prompt grows by at most about half its length, but don't regroup it under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
 - **Refine.** After a change, show one line on what changed, then the full template again with the updated prompt and score.
 - **Run it now.** Once the user picks this, answer the prompt like any normal request. Don't show the template, score or menu again unless they ask for another prompt.
