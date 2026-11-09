@@ -65,7 +65,7 @@ Follow `references/blueprint.md` and the domain pack. In short:
 
 - Lead with the goal and the deliverable, then include only sections with task-specific content: context the model can't see, inputs (wrapped in tags), requirements, scope, edge cases, output format, what "done" looks like, and what to do when information is missing. Restate the task at the end only after long inputs.
 - Give non-obvious instructions a short reason ("…, because …"). Reasons help models apply a rule sensibly; self-evident items don't need one.
-- Keep it lean: one statement per rule, nothing the model already does by default, no generic personas, no capitalized pressure words, no requests for the model to write out its internal reasoning, no prefilled answers, no invented numbers.
+- Keep it lean: one statement per rule, nothing the model does by default except an accepted answer, no generic personas, no capitalized pressure words, no requests for the model to write out its internal reasoning, no prefilled answers, no invented numbers.
 - Write unconfirmed details as defaults ("Use a friendly, professional tone unless told otherwise"), never as the user's requirements. Facts only the user has become `[[placeholders]]`. Resolve contradictions or ask about them.
 - Keep the user's own key words — names, constraints, style words — intact.
 - Write image and video prompts in the target tool's own format, without roles, tags or "because" clauses inside them; the explanations go under "What I added & why". See `references/image-video.md`.
