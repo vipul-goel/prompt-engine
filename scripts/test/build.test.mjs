@@ -56,6 +56,30 @@ test('build.mjs finds and rewrites stale files from a folder with a space, and t
   }
 });
 
+// Any argument but --check meant "write": a misspelled --check, --check=true or a stray word
+// rewrote the stale files and exited 0, so a check run with a typo passed, and validate.mjs then
+// compared against the rewritten files.
+test('build.mjs refuses an argument it does not know, and reads and writes nothing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-build-args-'));
+  try {
+    copyTo(dir);
+    appendFileSync(join(dir, MEDIA), '\nstale\n');
+    const stale = readFileSync(join(dir, MEDIA), 'utf8');
+    for (const args of [['--chekc'], ['--check=true'], ['-c'], ['--dry-run'], ['check'], ['--check', 'extra'], ['--', '--check']]) {
+      const r = node(join(dir, 'scripts', 'build.mjs'), args);
+      assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}`);
+      assert.equal(r.stdout, '', args.join(' '));
+      assert.match(r.stderr, /\nusage: node scripts\/build\.mjs \[--check\]\n$/, args.join(' '));
+      assert.equal(readFileSync(join(dir, MEDIA), 'utf8'), stale, `${args.join(' ')}: the stale file was left as it was`);
+    }
+    const check = node(join(dir, 'scripts', 'build.mjs'), ['--check']);
+    assert.equal(check.code, 1, check.out);
+    assert.match(check.stderr, /stale: skills\/prompt-engine\/references\/media-targets\.md/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('importing build.mjs does not run it, not even under node -e with its own path as the first argument', () => {
   // With --check in process.argv, a main() that ran would print its verdict. Under -e,
   // process.argv[1] is the first argument after the code, which can be build.mjs's own path.

@@ -7,11 +7,13 @@
 //   data/lint-rules.json                 -> evals/<case>/graders/lint-prompt*.md (LINT_GRADER_CASES)
 // Zero dependencies: Node >= 22.19 built-ins only. Output is deterministic (no timestamps),
 // so `node scripts/build.mjs && git diff --exit-code` detects stale generated files.
-// `node scripts/build.mjs --check` exits 1 instead of writing when anything is stale.
+// `node scripts/build.mjs --check` exits 1 instead of writing when anything is stale. Any other
+// argument is a usage error (exit 2), before anything is read or written.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 
 // PE_ROOT lets tests point the scripts at a temporary copy of the repository.
 export const root = process.env.PE_ROOT || join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -384,7 +386,15 @@ export function buildAll() {
 }
 
 function main() {
-  const check = process.argv.includes('--check');
+  // Read strictly: any argument but --check meant "write", so a misspelled --check, --check=true or
+  // a stray word rewrote the stale files and exited 0.
+  let check;
+  try {
+    check = parseArgs({ args: process.argv.slice(2), options: { check: { type: 'boolean' } } }).values.check === true;
+  } catch (e) {
+    console.error(`${e.message}\nusage: node scripts/build.mjs [--check]`);
+    process.exit(2);
+  }
   // A source the build can't render is a data error to fix, not a crash: one line, no stack.
   let outputs;
   try { outputs = buildAll(); } catch (e) { console.error(`build failed: ${e.message}`); process.exit(1); }
