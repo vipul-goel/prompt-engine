@@ -93,14 +93,15 @@ describe('the method brief', () => {
 
   it("says where a question round's opening line goes when ask_user asks the questions", () => {
     // A question round may open with one line of its own: a critique's biggest gaps (the core's
-    // section 3), an already-strong prompt, or a removed secret (output-format.md's Questions round).
+    // section 3), an already-strong prompt, a removed secret or a removed private detail
+    // (output-format.md's Questions round).
     // The server's steps replace the instruction to send the questions in your own message, so the
     // line is the form's intro, and it opens the reply when the questions come back as text.
     expect(UNIVERSAL_METHOD).toMatch(/A request to critique a prompt or find what's missing gets the same flow: open the questions with one line naming the biggest gaps\./);
     expect(REFERENCES['output-format']!.text).toMatch(/\*\*Questions round\.\*\*[^\n]*one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so\./);
     const questions = buildReference('questions');
     for (const [name, text] of [['brief', brief], ['questions', questions]]) {
-      expect(text, name).toMatch(/If the round opens with a line of its own \(the biggest gaps for a request to critique a prompt or find what's missing, that the prompt is already strong, or that you removed a pasted secret, suggesting rotating it\), pass that line as intro, in 200 characters or fewer\./);
+      expect(text, name).toMatch(/If the round opens with a line of its own \(the biggest gaps for a request to critique a prompt or find what's missing; that the prompt is already strong; that you removed a pasted secret, suggesting rotating it; or that you removed another person's private detail\), pass that line as intro, in 200 characters or fewer\./);
     }
     expect(brief).toMatch(/returns the questions as text: show them to the user in their language, after that line if there is one, then stop and wait/);
     expect(questions).toMatch(/returns the questions in Format B: send them as your whole reply, opened by that line if there is one, and wait\./);
