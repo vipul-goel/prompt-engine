@@ -49,6 +49,6 @@ Use the app's custom instructions or space or agent instructions field, and atta
 - **What's different outside Claude.**
   - Questions arrive as a numbered list rather than clickable dialogs.
   - "Run it now" carries out the prompt in the same chat.
-  - "Save to file" only appears in tools that can write files.
+  - "Save to file" appears only when the app has a tool that saves files on your computer; most chat apps don't.
 - **Privacy.** Prompt Engine is just instructions: your prompts go only to the AI app you're already using.
 - **Testing status.** A conversation test checks these instructions on Claude through `claude -p`, with no tools or MCP servers loaded. It makes billed calls and is run by hand; [docs/compatibility.md](../docs/compatibility.md) has the date and result of the last run. Results in other apps may differ.

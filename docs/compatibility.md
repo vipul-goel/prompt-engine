@@ -22,14 +22,14 @@ Platforms change quickly. Recheck the secondary and unverified rows before relyi
 | Gemini CLI 0.66 | SKILL.md | ✓ docs | Skills are activated by the model after you approve; there is no `/skill` command. |
 | GitHub Copilot (VS Code, CLI) | SKILL.md | ✓ docs | `/prompt-engine` runs the skill. |
 | Cursor, Cline, OpenCode, Goose, Mistral Vibe, Zed, Devin Desktop (formerly Windsurf), Kiro | SKILL.md | ✓ docs | Skill folders checked on 2026-11-08 in each vendor's docs, and for Cline's `.agents/skills/` folders, which its docs don't list, in its code. Kiro's docs list only its own `.kiro/skills/` folders. See [install.md](install.md#other-agents-that-read-skillmd). |
-| ChatGPT, Gemini app, Microsoft Copilot, Perplexity, Grok, Le Chat | Universal prompt | ✓ tested on Claude (2026-10-29, an earlier version of the prompt, built-in tools off) / ? in those apps | The conversation test now runs the prompt on Claude through `claude -p`, with no tools or MCP servers loaded, and a turn fails if any loads; it hasn't been run in that form yet. Its only recorded run (see [Behavior evals](#behavior-evals)) predates the current prompt and turned off only Claude Code's built-in tools. Instruction limits are confirmed only for Microsoft 365 Copilot agents (8,000 characters). A manual check in ChatGPT and Gemini is pending. |
+| ChatGPT, Gemini app, Microsoft Copilot, Perplexity, Grok, Le Chat | Universal prompt | ✓ tested on Claude (2026-11-09, commit 0f65705) / ? in those apps | The conversation test runs the prompt on Claude through `claude -p`, with no tools or MCP servers loaded, and a turn fails if any loads. Its last run passed every check (see [Behavior evals](#behavior-evals)); the prompt hasn't changed since. Instruction limits are confirmed only for Microsoft 365 Copilot agents (8,000 characters). A manual check in ChatGPT and Gemini is pending. |
 | Cross-agent installer (`npx skills add`, skills 1.7.4) | Copies `skills/prompt-engine` into each agent's folder | ✓ tested | Finds and lists the skill from a clone of this repository. Installing into each agent's folder wasn't tested here. |
 | Claude Desktop (`.mcpb` from a release) | MCP bundle | ? unverified | Checked in CI: `npm run pack:mcpb` starts the packed server under Node, as its `manifest.json` describes, and checks that it lists the manifest's tools. Untested: installing it in Claude Desktop, running it on Claude Desktop's built-in Node, whether `ask_user`'s form appears, and whether the `enhance` prompt attaches from the + menu. See [manual-checks.md](manual-checks.md#claude-desktop-with-the-mcp-bundle). |
 | MCP clients | `prompt-engine-mcp` | see [mcp/README.md](../mcp/README.md) | Questions appear as forms where the client supports MCP elicitation (per vendor docs: Claude Code, VS Code, Cursor, Codex); other clients get a numbered list. |
 
 ## Behavior evals
 
-Behavior evals use `claude plugin eval`, with the plugin and without it. Each case's `prompt.md` pins Claude Sonnet 5.5 as the agent under test, and the eval commands in [CONTRIBUTING.md](../CONTRIBUTING.md) and the evals workflow pin `claude-haiku-5-5` as the judge. The rounds below ran on 2026-10-29, before those pins: they used a Haiku judge (the CLI's default judge; which version wasn't recorded), and their agent model wasn't recorded.
+Behavior evals use `claude plugin eval`, with the plugin and without it. Each case's `prompt.md` pins Claude Sonnet 5.5 as the agent under test, and the eval commands in [CONTRIBUTING.md](../CONTRIBUTING.md) and the evals workflow pin `claude-haiku-5-5` as the judge. Rounds 1 and 2 ran on 2026-10-29, before those pins: they used a Haiku judge (the CLI's default judge; which version wasn't recorded), and their agent model wasn't recorded. Round 3 (step 1d) used the pins.
 
 Each case runs once per arm during development, so one result can pass or fail by chance. `followup-ok-accepts-recommendations` passed on 2026-11-03 and failed on 2026-11-04 with the same fixture, grader and skill text, though on Claude Code 2.1.317 and then 2.1.318 and with an unpinned judge, so that pair can't separate chance from those changes. Within a single run, the three judge votes on one of `video-veo-quick`'s checks split 2-1. A failing case is re-checked at three runs before it's recorded.
 
@@ -42,13 +42,34 @@ In two-arm runs, `claude plugin eval` leaves the checks that the skill started (
 | 2 (save-to-file, with the skill only) | 1 | 1/1 passed | — | $0.10 |
 | 2 (full suite) | 17 | 14/17 passed (mean score 0.94) | 6/14 passed (mean score 0.65) | $2.04 |
 | 2 (re-run after fixes) | 5 | 5/5 passed | — | $0.69 |
+| 3 (full suite, 0f65705) | 20 | 12/20 passed (mean score 0.91) | 4/17 passed (mean score 0.55) | $2.54 |
+| 3 (re-checks with the skill only) | 13 | see below | — | $9.69 |
+| 3 (new and re-recorded history cases, ec57909) | 8 | 8/8 passed | — | $0.85 |
 
 Round 2's three failures and their fixes:
 - **Research prompt.** The output was right, but after writing it the model looked for the question-dialog tool, which headless runs don't have. It then sent the "What next?" menu as a separate last message. `claude -p` prints only the last message, so headless users would have seen the menu without the prompt. The skill now uses the text format straight away when the dialog tool isn't loaded, and keeps the menu in the same message as the output.
 - **Partial answers to the questions.** The recorded first turn carried an older copy of the output rules, so the model listed skipped ★ answers as assumptions and reworded one of them. The build now keeps the skill text and reference files inside recorded conversations current. The skill also now says to use accepted ★ answers as offered.
 - **Secret redaction.** The skill replaced the API key with an `OPENAI_API_KEY` environment variable and told the user to rotate the key, but the grader accepted only a `[[placeholder]]`. The grader was changed to accept either. Since 65f893b, the skill names an environment variable for a secret in prompts for code or agents; since fbf61a4, the case requires one and fails a key placeholder in the prompt.
 
-The universal prompt's conversation test, round 1 (2026-10-29, before d63abbf changed the universal prompt): 4 cases, 36/36 checks passed, $0.17. That version of the test turned off Claude Code's built-in tools with `--tools ""`, but didn't keep MCP servers out or check what loaded.
+Round 3 (step 1d, 2026-11-09) ran on Claude Code 2.1.319 (`claude --version`), with Claude Sonnet 5.5 as the agent in every case (`cases[].model`, the `prompt.md` pins) and `claude-haiku-5-5` as the judge (`suite.judgeModel`), both arms, threshold 1 and one run per arm. The skill started in all 15 with-skill runs that check it, and no with-only indicator failed. `save-to-file` still resumed its old recording in that run (it passed); it was recorded again afterwards.
+
+The full suite's eight failures were all the skill's, not the graders': the Spanish and Japanese replies kept the template's English labels; both follow-up cases left the accepted "None" ★ out of the prompt (one listed it as an assumption); the critique reply listed its gaps instead of naming them in one line; the already-strong prompt was rebuilt under new headings at 1,255 characters, over its 1,130-character ceiling; and the image and video replies left some of their own picks (a style, a framing, small scene details) out of Assumptions, the video one also putting its negative prompt inside the prompt's fence. The method was changed where the model does each step (f54bcdf, then 835eb7a, ec57909 and b8c9328), and each failing case was re-checked with the skill only (`--ablation none`), three runs each:
+
+| Case | f54bcdf | 835eb7a | Last run | What still fails |
+|---|---|---|---|---|
+| `spanish-quick` | 0/3 | 1/3 | 1/3 (b8c9328) | Labels and reply keywords are now in Spanish in every run; small added values missing from Assumptions (2 runs) |
+| `japanese-midjourney-quick` | 0/3 | 0/3 | 0/3 (b8c9328) | Labels are now in Japanese in every run, but `deep` and often `change N` stay in English |
+| `image-midjourney-quick` | 0/3 | 1/3 | 1/3 (ec57909) | Small added scene details missing from Assumptions |
+| `video-veo-quick` | 1/3 | 0/3 | 0/3 (ec57909) | The negative prompt and settings now have their own blocks; small added details, such as soft shadows, missing from Assumptions |
+| `followup-ok-accepts-recommendations` | 0/3 | 1/3 | 2/3 (ec57909) | Once, an accepted answer left out of the prompt |
+| `followup-partial-answers` | 1/3 | 0/3 | 1/3 (ec57909) | An accepted answer left out of the prompt once, and listed under Assumptions once |
+| `critique-opens-with-gaps` | 2/3 | — | 2/3 (f54bcdf) | Once, the gaps came as a list |
+| `strong-prompt-minimal-changes` | 2/3 | — | 2/3 (f54bcdf) | Once, the judge failed the reply's first line or layout |
+| `secret-redaction-quick` | 0/1 | — | 2/3 (b8c9328) | Once, a count (an overview of 3-5 bullets) missing from Assumptions |
+
+After f54bcdf, single runs of `whats-missing-opens-with-gaps`, `writing-quick-launch-email`, `research-quick-vector-databases` and `coding-quick-code-block` passed. The other cases weren't re-run after the method changes. The judges' votes come without reasons, and a few of them differ on replies that behave the same way, such as an Assumptions item that adds a detail the answers left open.
+
+The universal prompt's conversation test, round 1 (2026-10-29, before d63abbf changed the universal prompt): 4 cases, 36/36 checks passed, $0.17. That version of the test turned off Claude Code's built-in tools with `--tools ""`, but didn't keep MCP servers out or check what loaded. Round 2 (2026-11-09, commit 0f65705, Claude Code 2.1.319, Claude Sonnet 5.5): 7 conversations of up to three turns, 107/107 checks passed, $0.47; no turn loaded a tool or MCP server. It covers `ok` and `thanks` at the "What next?" menu (nothing runs), a pasted key followed by `1` (the key is never asked for or repeated), `deep`, `change 1` and an override, and checks that Save to file isn't offered without a file tool.
 
 ## Trigger tests
 
@@ -61,6 +82,7 @@ Tuning held out 8 of the 24 requests. Both descriptions passed all 8, so the hel
 
 ## Known limits
 
+- **Open after step 1d's re-checks** (see [Behavior evals](#behavior-evals)): Japanese replies keep the reply keywords `deep` and `change N` in English; the no-invention judges still find small added details or values missing from Assumptions, mostly in image and video prompts; an accepted ★ that declines something is sometimes left out of the prompt or listed as an assumption. The writing, research and coding cases ask for the same prompts as the method's worked examples, so they can't tell following the method from copying an example.
 - In the eval runner and in headless runs, the question dialog isn't available, so automated tests exercise the numbered-list path. The dialog path is checked by hand, with the [Claude Code checklist](manual-checks.md#claude-code-interactive). The last recorded check, on 2026-10-29, predates the skill's current dialog, menu and save instructions (see the Claude Code row under [Surfaces](#surfaces)).
 - Scores in the output are the model's own coverage check against a fixed rubric. They are not a measurement of output quality.
 - Media tool details (flags, versions, limits) change often. Each entry in `data/media-targets.json` carries its own status and last-checked date.
