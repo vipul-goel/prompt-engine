@@ -1,5 +1,5 @@
-// Tests for scripts/eval/record-history.mjs, run from a copy of scripts/eval in a folder whose
-// name has a space. PATH holds only a stand-in for `claude`, so no test can reach the real,
+// Tests for scripts/eval/record-history.mjs, run from a copy of scripts/eval and scripts/build.mjs
+// in a folder whose name has a space. PATH holds only a stand-in for `claude`, so no test can reach the real,
 // billed one. The refusal tests check that the stand-in never starts; the recording tests let
 // it run and check what the recorder does with its output.
 // Run with: node --test scripts/test/*.test.mjs
@@ -58,6 +58,8 @@ function setup() {
   // that publicText() reads: each eval case's prompt.md and the skill's Markdown files.
   const dir = join(parent, 'has space');
   cpSync(join(repo, 'scripts', 'eval'), join(dir, 'scripts', 'eval'), { recursive: true });
+  // The recorder imports its entry-point check from build.mjs.
+  cpSync(join(repo, 'scripts', 'build.mjs'), join(dir, 'scripts', 'build.mjs'));
   cpSync(join(repo, 'skills', 'prompt-engine'), join(dir, 'skills', 'prompt-engine'), { recursive: true });
   for (const c of readdirSync(join(repo, 'evals'))) {
     if (existsSync(join(repo, 'evals', c, 'prompt.md'))) cpSync(join(repo, 'evals', c, 'prompt.md'), join(dir, 'evals', c, 'prompt.md'));
@@ -82,19 +84,26 @@ function setup() {
 }
 
 test('record-history.mjs prints its usage, and importing it runs nothing', () => {
-  const { dir, env, started, out, record, cleanup } = setup();
+  const { parent, dir, env, started, out, record, cleanup } = setup();
   try {
     const r = record([]);
     assert.equal(r.status, 2, r.stderr);
     assert.match(r.stderr, /^usage: record-history\.mjs <out\.jsonl>/);
-    // With two arguments after the script, a recorder that ran on import would record.
-    const url = pathToFileURL(join(dir, 'scripts', 'eval', 'record-history.mjs')).href;
-    const imp = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(url)}); console.log('imported');`, 'x', out, 'hello'], { encoding: 'utf8', env });
-    assert.equal(imp.status, 0, imp.stderr);
-    assert.equal(imp.stdout, 'imported\n');
-    assert.equal(imp.stderr, '');
-    assert.ok(!existsSync(started), 'claude was not started');
-    assert.ok(!existsSync(out));
+    // With two arguments after the script and a transcript folder, a recorder that ran on import
+    // would start claude. Under -e, process.argv[1] is the first argument after the code, which
+    // can be the recorder's own path.
+    const script = join(dir, 'scripts', 'eval', 'record-history.mjs');
+    const cfg = join(parent, 'cfg');
+    mkdirSync(join(cfg, 'projects'), { recursive: true });
+    for (const first of ['x', script]) {
+      const imp = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(pathToFileURL(script).href)}); console.log('imported');`, first, out, 'hello'],
+        { encoding: 'utf8', env: { ...env, CLAUDE_CONFIG_DIR: cfg } });
+      assert.equal(imp.status, 0, imp.stderr);
+      assert.equal(imp.stdout, 'imported\n', first);
+      assert.equal(imp.stderr, '');
+      assert.ok(!existsSync(started), 'claude was not started');
+      assert.ok(!existsSync(out));
+    }
   } finally {
     cleanup();
   }

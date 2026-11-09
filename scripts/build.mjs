@@ -394,9 +394,16 @@ function main() {
   if (check) console.log('generated files are up to date');
 }
 
-// Run only as the entry point. Compare real paths: import.meta.url is percent-encoded and
-// symlink-free, process.argv[1] is neither (spaces, /tmp and /var on macOS, Windows).
-const isEntry = () => {
-  try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); } catch { return false; }
-};
-if (isEntry()) main();
+// Whether a module is the entry point, so that importing it runs nothing (record-history.mjs
+// uses this too). Node 22.18+ and 24.2+, so every version this project supports, set
+// import.meta.main: pass it as isMain. Comparing process.argv[1] with the module's path isn't
+// enough, because under node -e or -p process.argv[1] is the first argument after the code, which
+// can be the module's own path. Without import.meta.main: never under -e or -p, and otherwise
+// compare real paths, since import.meta.url is percent-encoded and symlink-free and
+// process.argv[1] is neither (spaces, /tmp and /var on macOS, Windows).
+export function isEntryPoint({ isMain, execArgv, argv1, self }) {
+  if (typeof isMain === 'boolean') return isMain;
+  if (execArgv.some((a) => /^(-e|-p|-pe|--eval|--print)(=|$)/.test(a))) return false;
+  try { return realpathSync(self) === realpathSync(argv1); } catch { return false; }
+}
+if (isEntryPoint({ isMain: import.meta.main, execArgv: process.execArgv, argv1: process.argv[1], self: fileURLToPath(import.meta.url) })) main();

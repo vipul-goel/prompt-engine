@@ -23,6 +23,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { sanitize, scanText, machinePatterns, publicText } from './sanitize.mjs';
+import { isEntryPoint } from '../build.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -134,10 +135,7 @@ function main() {
   console.log(result.result);
 }
 
-// Run only as the entry point: importing this file must never start a billed recording.
-// Compare real paths, as build.mjs does: import.meta.url is percent-encoded and free of
-// symlinks, and process.argv[1] is neither.
-const isEntry = () => {
-  try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); } catch { return false; }
-};
-if (isEntry()) main();
+// Run only as the entry point: importing this file must never start a billed recording, not even
+// under node -e with this file's path as the first argument after the code (isEntryPoint in
+// build.mjs).
+if (isEntryPoint({ isMain: import.meta.main, execArgv: process.execArgv, argv1: process.argv[1], self: fileURLToPath(import.meta.url) })) main();

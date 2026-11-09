@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { KNOWLEDGE_ORDER, normalize, refreshHistory, renderKnowledge, renderMediaTargets, splitFrontmatter } from '../build.mjs';
+import { KNOWLEDGE_ORDER, isEntryPoint, normalize, refreshHistory, renderKnowledge, renderMediaTargets, splitFrontmatter } from '../build.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Build output and tool state the checks don't read: copying them only slows the tests down.
@@ -56,14 +56,31 @@ test('build.mjs finds and rewrites stale files from a folder with a space, and t
   }
 });
 
-test('importing build.mjs does not run it', () => {
-  // With --check in process.argv, a main() that ran would print its verdict.
-  const url = new URL('../build.mjs', import.meta.url).href;
-  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(url)}); console.log('imported');`, '--', '--check'],
-    { encoding: 'utf8', env: envWithoutRoot() });
-  assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout, 'imported\n');
-  assert.equal(r.stderr, '');
+test('importing build.mjs does not run it, not even under node -e with its own path as the first argument', () => {
+  // With --check in process.argv, a main() that ran would print its verdict. Under -e,
+  // process.argv[1] is the first argument after the code, which can be build.mjs's own path.
+  const url = new URL('../build.mjs', import.meta.url);
+  for (const args of [['--', '--check'], [fileURLToPath(url), '--check']]) {
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(url.href)}); console.log('imported');`, ...args],
+      { encoding: 'utf8', env: envWithoutRoot() });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, 'imported\n', args[0]);
+    assert.equal(r.stderr, '');
+  }
+});
+
+// The fallback for Node without import.meta.main (before 22.18 and 24.2): the real-path comparison,
+// and never under -e or -p. Node 22.19 and later set import.meta.main, so only a direct call reaches it.
+test('isEntryPoint: import.meta.main decides where Node sets it; older Node never runs under -e or -p', () => {
+  const self = fileURLToPath(new URL('../build.mjs', import.meta.url));
+  assert.equal(isEntryPoint({ isMain: true, execArgv: ['-e', 'x'], argv1: undefined, self }), true);
+  assert.equal(isEntryPoint({ isMain: false, execArgv: [], argv1: self, self }), false);
+  assert.equal(isEntryPoint({ isMain: undefined, execArgv: [], argv1: self, self }), true);
+  for (const execArgv of [['-e', 'x'], ['--input-type=module', '--eval', 'x'], ['--eval=x'], ['-p', 'x'], ['-pe', 'x'], ['--print', 'x']]) {
+    assert.equal(isEntryPoint({ isMain: undefined, execArgv, argv1: self, self }), false, execArgv.join(' '));
+  }
+  assert.equal(isEntryPoint({ isMain: undefined, execArgv: [], argv1: join(repo, 'scripts', 'validate.mjs'), self }), false);
+  assert.equal(isEntryPoint({ isMain: undefined, execArgv: [], argv1: undefined, self }), false);
 });
 
 // ---------- line endings and byte-order marks ----------
