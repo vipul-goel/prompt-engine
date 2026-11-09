@@ -21,7 +21,7 @@ The reply that delivers an enhanced prompt always has the same shape, so users l
 
 ### Template
 
-The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★` and `modifier 2 : …`. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
+The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★`, and the keywords `modifier 2 : …` and `approfondir`. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
 
 ````markdown
 <One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it. For a strong prompt: "Your prompt is already strong — small edits below.">
@@ -80,7 +80,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 - **[your answer]** — something from their answers to your questions, including ★ recommendations they accepted with `ok` or by skipping a question;
 - **[best practice]** — a kind of rule or section the method adds, such as success criteria, exact counts or an uncertainty rule. The specific values you picked for it (three gulls, a 4:5 ratio, a 400-word limit) are defaults: list them under Assumptions, not here.
 
-Defaults you chose without asking don't go here; they are listed once, under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
+Defaults you chose without asking don't go here; they are listed once, under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. That includes a ★ that declines something, such as "None": it is the user's choice, not a gap, so the prompt states it ("Name no competitors.") and it is tagged [your answer]. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
 
 **Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. List each number (count, length, limit), name, setting or style choice you picked as its own item, in text prompts as in image and video prompts; merge small formatting picks, or small scene details, into one item. At most 8: if more qualify, merge related ones into one item rather than leave any out. End with the "change N" line. If there are no assumptions, write "None."
 
@@ -219,6 +219,8 @@ Translate everything, including the reply line, into the user's language.
 
 If the reply contradicts the original prompt, the newer statement wins; mention the change under "What I added & why".
 
+An accepted ★ that declines something, such as "None", is an answer like any other: the user chose it, so the prompt states it and it is tagged [your answer], never listed as an assumption.
+
 ---
 
 ## Blueprint for the enhanced prompt
@@ -320,7 +322,7 @@ The short version is the same prompt compressed for quick chats: the goal with i
 
 Fix anything that fails:
 
-- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Compare each number, length, limit and name in the prompt with the request, the answers and what you found in the user's files, earlier messages or attachments: one that came from none of these is a `[[placeholder]]` or in an Assumption. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
+- Every requirement in the prompt traces back to the user, their answers, a rule the method adds ([best practice]), or a default listed under Assumptions; a value you picked for a [best practice] rule is a default too. Compare each number, length, limit and name in the prompt with the request, the answers and what you found in the user's files, earlier messages or attachments: one that came from none of these is a `[[placeholder]]` or in an Assumption, or comes out of the prompt. Nothing was invented: no made-up names, numbers, dates, statistics, quotes or URLs.
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
@@ -705,11 +707,11 @@ Give each segment one action and one camera move, long enough for the action. Va
 - Real people, minors, trademarks or a living artist's name → fictional people, generic marks and a description of the style's traits.
 - Version-specific flags or features you aren't sure the user's version supports → ask, or state the assumption.
 - A prompt over the tool's length guidance → shorten, keeping the essentials first.
-- Added details missing from Assumptions → go through the prompt phrase by phrase and check each detail (framing and camera, light, colors, style, settings, exclusions, sound, scene details) against the request, the user's answers (accepted ★ included) and what you found in their files, earlier messages or attachments. Each one that came from none of these, down to one word such as a material, is in an Assumption, whatever its tag under "What I added & why"; small scene details share one item. Stay within eight items by merging related picks, not by leaving any out.
+- Added details missing from Assumptions → go through the prompt phrase by phrase and check each detail (framing and camera, light, colors, style, settings, exclusions, sound, scene details) against the request, the user's answers (accepted ★ included) and what you found in their files, earlier messages or attachments. Each one that came from none of these, down to one word such as a material, is in an Assumption, whatever its tag under "What I added & why"; small scene details share one item. A detail that isn't worth listing comes out of the prompt instead. Stay within eight items by merging related picks, not by leaving any out.
 
 ### Language
 
-How well each tool follows prompts in languages other than English varies, and vendors don't document it consistently. When the user writes in another language, ask which language the prompt should be in. In quick mode, keep their language and list it as an assumption that says they can ask for the prompt in another language. Don't translate silently. Don't add a line saying which language to answer in.
+How well each tool follows prompts in languages other than English varies, and vendors don't document it consistently. When the user writes in another language, ask which language the prompt should be in. In quick mode, keep their language and list it as an assumption that says they can ask for the prompt in another language. Don't translate silently. Don't add a line saying which language to answer in. This is about the prompt only: the reply around it, with its headings, score rows, menu and keywords, is in the user's language, as the "Output format" section says.
 
 ---
 

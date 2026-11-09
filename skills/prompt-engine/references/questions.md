@@ -87,3 +87,5 @@ Translate everything, including the reply line, into the user's language.
 | A question back to you | Answer it briefly, then repeat the open questions |
 
 If the reply contradicts the original prompt, the newer statement wins; mention the change under "What I added & why".
+
+An accepted ★ that declines something, such as "None", is an answer like any other: the user chose it, so the prompt states it and it is tagged [your answer], never listed as an assumption.
