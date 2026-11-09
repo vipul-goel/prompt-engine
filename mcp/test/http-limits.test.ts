@@ -4,7 +4,7 @@
 
 import { connect, type Socket } from 'node:net';
 import { describe, it } from 'vitest';
-import { send, sleep, startHttp, TOOLS_LIST } from './cli-helpers.js';
+import { ENV, send, sleep, startHttp, startUpload, TOOLS_LIST } from './cli-helpers.js';
 
 /** Opens a TCP connection to the server that sends nothing; resolves once it's connected. */
 function openIdle(port: number, sockets: Socket[]): Promise<Socket> {
@@ -35,11 +35,11 @@ interface Held {
 }
 
 /**
- * Starts a tools/list POST that announces a 100,000-byte body and sends 1 KB
- * of it. It asks for 100 Continue, which Node writes just before it hands the
- * request to the server's handler, so once that arrives the handler has seen it.
+ * Starts a tools/list POST that announces a body of `length` bytes and sends
+ * 1 KB of it. It asks for 100 Continue, which Node writes just before it hands
+ * the request to the server's handler, so once that arrives the handler has seen it.
  */
-function holdUpload(port: number, held: Held[]): Promise<void> {
+function holdUpload(port: number, held: Held[], length = 50_000): Promise<void> {
   return new Promise((resolve, reject) => {
     const entry: Held = { sock: connect(port, '127.0.0.1'), text: '' };
     held.push(entry);
@@ -57,7 +57,7 @@ function holdUpload(port: number, held: Held[]): Promise<void> {
     });
     entry.sock.write(
       `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
-        'MCP-Protocol-Version: 2025-11-25\r\nExpect: 100-continue\r\nContent-Length: 100000\r\n\r\n',
+        `MCP-Protocol-Version: 2025-11-25\r\nExpect: 100-continue\r\nContent-Length: ${length}\r\n\r\n`,
     );
   });
 }
@@ -113,6 +113,68 @@ describe.concurrent('--http limits', () => {
       expect(status).toBe(200);
     } finally {
       for (const { sock } of held) sock.destroy();
+      server.proc.kill('SIGTERM');
+    }
+  });
+
+  it('admits requests while their bodies add up to at most 8,000,000 bytes, and answers 503 past that before reading the body', async ({ expect }) => {
+    const server = await startHttp();
+    const held: Held[] = [];
+    const hostname = `127.0.0.1:${server.port}`;
+    const waiting = () => held.filter((h) => h.sock.destroyed || !/^HTTP\/1\.1 100 Continue\r\n\r\n$/.test(h.text)).length;
+    try {
+      // Five bodies of the largest size fit; a sixth doesn't, and neither does a chunked
+      // upload, which counts as the largest size. A small request still fits.
+      for (let i = 0; i < 5; i++) await holdUpload(server.port, held, 1_500_000);
+      const before = server.stderr().length;
+      expect(await startUpload(server.port, hostname, 1_500_000)).toMatch(/^HTTP\/1\.1 503 [^]*\r\nretry-after: 1\r\n/i);
+      expect(await startUpload(server.port, hostname, 1_000_000)).toMatch(/^HTTP\/1\.1 503 /);
+      expect(await startUpload(server.port, hostname, 'chunked')).toMatch(/^HTTP\/1\.1 503 /);
+      expect((await send(server.port, { host: hostname })).status).toBe(200);
+      await sleep(100);
+      expect(waiting()).toBe(0);
+      expect(server.stderr().slice(before)).toBe('');
+      // Dropped uploads give their bytes back.
+      for (const { sock } of held.splice(0)) sock.destroy();
+      await sleep(300);
+      for (let i = 0; i < 5; i++) await holdUpload(server.port, held, 1_500_000);
+      await sleep(100);
+      expect(waiting()).toBe(0);
+    } finally {
+      for (const { sock } of held) sock.destroy();
+      server.proc.kill('SIGTERM');
+    }
+  });
+
+  it('stays up with a 512 MB heap while 32 clients send dense batches of the largest size at once', async ({ expect }) => {
+    // Each call's _meta nests arrays thousands deep: about 28 bytes of heap for each byte of
+    // the body while the request is in flight (about 40 MiB for this 1.5 MB body, measured
+    // in Node 24), so 128 of them at once would need about 5 GiB.
+    const depth = 7_400;
+    const call = (id: number) =>
+      `{"jsonrpc":"2.0","id":${id},"method":"tools/call","params":{"name":"get_checklist","arguments":{"domain":"image-video"},"_meta":{"pad":${'['.repeat(depth)}${']'.repeat(depth)}}}}`;
+    const body = `[${Array.from({ length: 100 }, (_, i) => call(i + 1)).join(',')}]`;
+    expect(body.length).toBeGreaterThan(1_480_000);
+    expect(body.length).toBeLessThanOrEqual(1_500_000);
+    const server = await startHttp([], { ...ENV, NODE_OPTIONS: '--max-old-space-size=512' });
+    const host = { host: `127.0.0.1:${server.port}` };
+    // A response cut off by a crash never settles send(), so race the requests against the exit.
+    const exited = new Promise<string>((resolve) =>
+      server.proc.on('exit', (code, signal) => resolve(`server exited (${code ?? signal}): ${/FATAL ERROR[^\n]*/.exec(server.stderr())?.[0] ?? ''}`)),
+    );
+    try {
+      // A refused upload gets 503 and its connection is closed before the body is read, so a
+      // client still sending may see the connection reset instead: 'reset' here.
+      const all = Promise.all(Array.from({ length: 32 }, () => send(server.port, host, { body }).then((r) => r.status, () => 'reset')));
+      expect(await Promise.race([all.then(() => 'all answered'), exited])).toBe('all answered');
+      const statuses = await all;
+      expect(statuses.filter((s) => s !== 200 && s !== 503 && s !== 'reset'), statuses.join()).toEqual([]);
+      expect(statuses, statuses.join()).toContain(200);
+      expect(statuses.filter((s) => s !== 200).length, statuses.join()).toBeGreaterThan(0);
+      await sleep(200);
+      expect(server.proc.exitCode ?? server.proc.signalCode, server.stderr()).toBeNull();
+      expect((await send(server.port, host)).status).toBe(200);
+    } finally {
       server.proc.kill('SIGTERM');
     }
   });

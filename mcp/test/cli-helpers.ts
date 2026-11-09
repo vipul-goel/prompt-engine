@@ -78,11 +78,11 @@ export function send(
 }
 
 /**
- * Sends a POST head that announces a body of `contentLength` bytes, then only
- * its first kilobyte; resolves with the response head, or 'no response' if the
- * server is still waiting for the body after 5 s.
+ * Sends a POST head that announces a body of `contentLength` bytes, or a chunked
+ * body, then only its first kilobyte; resolves with the response head, or
+ * 'no response' if the server is still waiting for the body after 5 s.
  */
-export function startUpload(port: number, host: string, contentLength: number, headers: Record<string, string> = {}): Promise<string> {
+export function startUpload(port: number, host: string, contentLength: number | 'chunked', headers: Record<string, string> = {}): Promise<string> {
   return new Promise((resolve) => {
     const sock = connect(port, '127.0.0.1');
     let text = '';
@@ -98,9 +98,11 @@ export function startUpload(port: number, host: string, contentLength: number, h
     });
     sock.on('error', () => done(text || 'socket error'));
     const extra = Object.entries(headers).map(([name, value]) => `${name}: ${value}\r\n`).join('');
+    const kilobyte = 'a'.repeat(1024);
+    const [length, body] = contentLength === 'chunked' ? ['Transfer-Encoding: chunked', `400\r\n${kilobyte}\r\n`] : [`Content-Length: ${contentLength}`, kilobyte];
     sock.write(
       `POST /mcp HTTP/1.1\r\nHost: ${host}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
-        `MCP-Protocol-Version: 2025-11-25\r\n${extra}Content-Length: ${contentLength}\r\n\r\n${'a'.repeat(1024)}`,
+        `MCP-Protocol-Version: 2025-11-25\r\n${extra}${length}\r\n\r\n${body}`,
     );
   });
 }

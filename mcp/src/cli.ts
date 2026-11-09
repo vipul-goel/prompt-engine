@@ -32,14 +32,21 @@ const MCP_PATH = '/mcp';
 // 1.2 MB for 100,000. Bodies are capped at that plus 300 KB, 1.5 MB in all
 // (the SDK's default is 4 MiB).
 const MAX_BODY_BYTES = PROMPT_MAX_CHARS * 12 + 300_000;
-// The SDK reads each request's body, up to MAX_BODY_BYTES, into memory before
-// it answers, so at most this many requests are passed to it at once. Past
-// that, a request gets 503 before its body is read. A connection that hasn't
-// sent a request, or whose request was refused, takes no slot. Stalled uploads
-// still hold their slots until the 30 s request timeout, and answers a client
-// doesn't read until the stall check below closes the connection, so a client
-// that keeps 128 of either going can shut out every other client.
+// At most this many requests are passed to the SDK at once, and only while the
+// bodies they declare add up to BODY_BUDGET_BYTES or less; past either, a
+// request gets 503 before its body is read. A connection that hasn't sent a
+// request, or whose request was refused, takes no slot. Stalled uploads still
+// hold their slots until the 30 s request timeout, and answers a client doesn't
+// read until the stall check below closes the connection, so a client that
+// keeps enough of either going can shut out every other client.
 const MAX_REQUESTS = 128;
+// The SDK can keep a request's parsed body in memory until its answer has been
+// sent (it does for a batch), and parsed JSON is much larger than its text: a
+// 1.5 MB batch of deeply nested arrays held about 40 MiB of heap (28 bytes for
+// each byte, in Node 24), so 128 of them would need about 5 GiB. So the bodies
+// in flight are capped at 8,000,000 bytes, five of the largest, which keeps
+// that to about 210 MiB.
+const BODY_BUDGET_BYTES = 8_000_000;
 // Node's header and request timeouts end once a request has arrived, and a
 // socket has no idle timeout, so an answer a client doesn't read would wait in
 // the socket's buffer, holding its request's slot, for as long as the
@@ -147,6 +154,18 @@ function refusal(req: IncomingMessage, allowedHosts: string[]): { status: number
   return undefined;
 }
 
+/**
+ * The body size a request counts against BODY_BUDGET_BYTES: its Content-Length, up to
+ * MAX_BODY_BYTES, since the SDK refuses a larger body before reading it; 0 without a body;
+ * MAX_BODY_BYTES for a chunked body or a length that isn't a number.
+ */
+function declaredBodyBytes(req: IncomingMessage): number {
+  const { 'content-length': length, 'transfer-encoding': chunked } = req.headers;
+  if (length === undefined) return chunked === undefined ? 0 : MAX_BODY_BYTES;
+  const bytes = Number(length);
+  return Number.isFinite(bytes) && bytes >= 0 ? Math.min(bytes, MAX_BODY_BYTES) : MAX_BODY_BYTES;
+}
+
 function serveOverHttp(host: string, port: number, allowedHosts: string[]): void {
   const onerror = (error: Error) => log(describeError(error));
   // On the 2025-era leg, the SDK reports its transport's errors to the per-request server, not
@@ -167,6 +186,7 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
   };
   const nodeHandler = toNodeHandler(guarded, { onerror, maxRequestBodySize: MAX_BODY_BYTES });
   const inFlight = new Set<ServerResponse>();
+  let inFlightBytes = 0;
 
   // See STALL_LIMIT_MS. A response waiting behind another on the same connection
   // has no socket yet; the one being written does.
@@ -197,7 +217,9 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
     }
     // Answered in the SDK guard's format, without a log line, and the
     // connection is closed rather than the rest of the body read.
-    const refused = refusal(req, allowedHosts) ?? (inFlight.size >= MAX_REQUESTS ? { status: 503, message: 'Server busy. Try again shortly.' } : undefined);
+    const bytes = declaredBodyBytes(req);
+    const busy = inFlight.size >= MAX_REQUESTS || inFlightBytes + bytes > BODY_BUDGET_BYTES;
+    const refused = refusal(req, allowedHosts) ?? (busy ? { status: 503, message: 'Server busy. Try again shortly.' } : undefined);
     if (refused) {
       const extra = refused.status === 405 ? { allow: 'POST' } : refused.status === 503 ? { 'retry-after': '1' } : {};
       res.writeHead(refused.status, { 'content-type': 'application/json', connection: 'close', ...extra });
@@ -206,7 +228,11 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
     }
     // 'close' follows both a finished response and a dropped connection.
     inFlight.add(res);
-    res.once('close', () => inFlight.delete(res));
+    inFlightBytes += bytes;
+    res.once('close', () => {
+      inFlight.delete(res);
+      inFlightBytes -= bytes;
+    });
     void nodeHandler(req, res);
   });
   httpServer.maxConnections = MAX_CONNECTIONS;
