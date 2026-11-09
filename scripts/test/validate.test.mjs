@@ -269,6 +269,8 @@ const ROWS = [
     new RegExp(`error: data/lint-rules\\.json ${SELF_CHECK_RULE}: bad pattern \\([\\s\\S]*\\n\\d+ error\\(s\\)`)],
   ['rejects capitalized pressure words in SKILL.md', (d) => edit(d, SKILL, (t) => `${t}\nYou MUST do this.\n`), /SKILL\.md: "MUST" \(pressure-words\)/],
   ['rejects a request to expose reasoning in the universal prompt', (d) => edit(d, CORE, (t) => `${t}\nThink step by step before answering.\n`), /universal\/prompt-engine\.md: "Think step by step" \(visible-reasoning-request\)/],
+  // D48: the hyphenated form, as Google's Gemini 3 template writes it.
+  ['rejects a hyphenated request to expose reasoning in a reference file', (d) => edit(d, `${REF}/questions.md`, (t) => `${t}\nRemember to think step-by-step before answering.\n`), /questions\.md: "think step-by-step" \(visible-reasoning-request\)/],
   // The references are linted too, with `code spans` skipped: there they name a pattern, often to
   // warn against it (finding 17, D11). Double-quoted text and fenced example prompts still count.
   ['rejects capitalized pressure words in a reference file', (d) => edit(d, `${REF}/questions.md`, (t) => `${t}\nYou MUST ask at least three questions.\n`), /questions\.md: "MUST" \(pressure-words\)/],
