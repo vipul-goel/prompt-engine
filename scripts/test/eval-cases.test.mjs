@@ -1093,3 +1093,33 @@ test('private-detail-redaction-quick 08: Fill placeholders ★ fails while the n
   assert.deepEqual(failingRegex(graders, privateReply({ ...members, menu: '1. Fill placeholders ★\n2. Refine' })), []);
   assert.deepEqual(failingRegex(graders, privateReply({ ...members, menu: '1. Run it now ★\n2. Refine' })), ['08-what-next-menu']);
 });
+
+// The media no-invention rubrics (D51). A small judge model applies them, so the three share
+// their definitions word for word, and the examples in them come from none of the cases' subjects:
+// an example about a cabin would be matched against a reply about a cabin.
+const MEDIA_RUBRICS = [['image-midjourney-quick', '08-no-invention'], ['japanese-midjourney-quick', '06-no-invention'], ['video-veo-quick', '07-no-invention']];
+test('the media no-invention rubrics count new things, not descriptive words, and share their wording (D51)', () => {
+  const bodies = MEDIA_RUBRICS.map(([c, g]) => graderOf(c, g).body.split('\n'));
+  const [head, ...shared] = bodies[0];
+  assert.ok(head.startsWith("The user's whole request was \""), head);
+  for (const [i, lines] of bodies.entries()) {
+    // The first paragraph is the case's own: the request, quoted, and what it names.
+    assert.ok(/^The user's whole request\b[^"]*"[^"]+"/.test(lines[0]), MEDIA_RUBRICS[i][0]);
+    assert.deepEqual(lines.slice(1), shared, `${MEDIA_RUBRICS[i][0]} shares every paragraph after the first`);
+  }
+  const text = shared.join('\n');
+  // D51's six kinds, each on a line of its own.
+  for (const kind of [/^- an object, person, animal or place\b/m, /^- an action or event;$/m, /^- a sound;$/m, /^- a number: a count of two or more\b/m, /^- a setting of the tool\b/m]) assert.ok(kind.test(text), String(kind));
+  // What doesn't count, what to do with a borderline item, D6's merged items, and the tag check.
+  for (const part of [
+    'Descriptive words are not new things, so leave them out.',
+    "When you can't tell whether an item is a new thing or a descriptive word, treat it as a descriptive word.",
+    'PASS if the prompt has no new thing, or if every new thing is mentioned in a numbered item under Assumptions.',
+    'One item may mention several new things',
+    "A general label doesn't mention the separate things it covers",
+    'FAIL if a new thing is mentioned in no Assumption, whatever tag the reply gives it.',
+    "FAIL if a bullet under What I added tagged [best practice] names one of the prompt's new things",
+  ]) assert.ok(text.includes(part), part);
+  // No example names a case's own subject, in English or Japanese.
+  assert.deepEqual(text.match(/cabin|\bhut\b|snow|night|mountain|cozy|barista|latte|caf[eé]|espresso|milk|小屋|雪|夜/gi), null);
+});
