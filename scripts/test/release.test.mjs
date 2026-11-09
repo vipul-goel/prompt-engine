@@ -1,4 +1,5 @@
-// Tests for scripts/release.mjs that need no network and no npm: the skill zip only.
+// Tests for scripts/release.mjs that need no network and no npm: its command line, the tag check
+// and the skill zip.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -58,15 +59,15 @@ test('release.mjs --zip without unzip on PATH stops with one line, not a stack t
   assert.doesNotMatch(r.stderr, /^\s+at |ENOENT/m, 'no stack trace');
 });
 
-// release.mjs --zip on a copy that setup changes first, with the normal PATH. Returns the run and
-// the zip's entries.
+// release.mjs (--zip, unless args says otherwise) on a copy that setup changes first, with the normal
+// PATH. Returns the run and the zip's entries.
 const has = (cmd) => spawnSync(cmd, ['-v']).error?.code !== 'ENOENT';
 const NO_ZIP = !(has('zip') && has('unzip')) && 'needs the zip and unzip commands';
-function zipCopy(setup) {
+function zipCopy(setup, args = ['--zip']) {
   const dir = copyRepo();
   try {
     setup(dir);
-    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'release.mjs'), '--zip'], { env: { ...process.env, PE_ROOT: dir }, encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'release.mjs'), ...args], { env: { ...process.env, PE_ROOT: dir }, encoding: 'utf8' });
     const zip = join(dir, 'dist', 'prompt-engine.zip');
     const entries = existsSync(zip) ? spawnSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean) : [];
     return { code: r.status, out: r.stdout + r.stderr, entries };
@@ -92,4 +93,54 @@ test('release.mjs --zip reads a plugin.json that starts with a byte-order mark',
   });
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /^dist\/prompt-engine\.zip \(\d+ entries\)$/m);
+});
+
+// ---------- the command line and the tag check ----------
+// release.yml passes the pushed tag as --tag. A form of it that release.mjs didn't read, or an
+// argument it didn't know, built everything without the check. None of these runs gets past the
+// command line or the tag check, so none needs zip, unzip or npm, and each passes --zip too, so
+// that a release.mjs that misreads its arguments still stops before npm.
+const VERSION = JSON.parse(readFileSync(join(repo, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+// Runs release.mjs on one copy with each list of arguments: check(code, output, the arguments as
+// JSON) judges the run, and each run must stop before validate.mjs, without a stack trace or dist/.
+function withArgs(argLists, check) {
+  const dir = copyRepo();
+  try {
+    for (const args of argLists) {
+      assert.ok(args.includes('--zip'), JSON.stringify(args));
+      const r = spawnSync(process.execPath, [join(dir, 'scripts', 'release.mjs'), ...args], { env: { ...process.env, PE_ROOT: dir }, encoding: 'utf8' });
+      const out = r.stdout + r.stderr;
+      check(r.status, out, JSON.stringify(args));
+      assert.doesNotMatch(out, /^\s+at |validate: OK/m, `${JSON.stringify(args)}: no stack trace, and stopped before validate.mjs`);
+      assert.ok(!existsSync(join(dir, 'dist')), `${JSON.stringify(args)}: nothing was built`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('release.mjs checks a tag given as --tag <tag> or --tag=<tag>, before it builds anything', () => {
+  assert.notEqual(VERSION, '9.9.9');
+  // A version without its v doesn't match either.
+  withArgs([['--tag', 'v9.9.9', '--zip'], ['--zip', '--tag=v9.9.9'], ['--tag', VERSION, '--zip']], (code, out, args) => {
+    const tag = JSON.parse(args).find((a) => /\d/.test(a)).replace(/^--tag=/, '');
+    assert.equal(code, 1, `${args}: ${out}`);
+    assert.ok(out.startsWith(`tag ${tag} does not match plugin version v${VERSION}; bump .claude-plugin/plugin.json`), `${args}: ${out}`);
+  });
+});
+
+test('release.mjs stops with its usage on an argument it doesn\'t know, or a --tag without one value', () => {
+  withArgs([['--tag', '', '--zip'], ['--tag=', '--zip'], ['--zip', '--tag'], ['--tag', '--zip'], ['--tagg', 'v9.9.9', '--zip'], ['--zip', `v${VERSION}`],
+    ['--tag', `v${VERSION}`, '--tag', 'v9.9.9', '--zip'], ['--zip', '--zip=yes']], (code, out, args) => {
+    assert.equal(code, 2, `${args}: ${out}`);
+    assert.match(out, /^usage: node scripts\/release\.mjs \[--zip\] \[--tag v<version>\]$/m, args);
+  });
+});
+
+test('release.mjs --zip with the matching tag, in either form, builds the zip', { skip: NO_ZIP }, () => {
+  for (const args of [['--zip', '--tag', `v${VERSION}`], [`--tag=v${VERSION}`, '--zip']]) {
+    const r = zipCopy(() => {}, args);
+    assert.equal(r.code, 0, `${JSON.stringify(args)}: ${r.out}`);
+    assert.ok(r.entries.includes('prompt-engine/SKILL.md'), r.entries.join('\n'));
+  }
 });

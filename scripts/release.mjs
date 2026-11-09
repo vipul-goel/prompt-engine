@@ -6,24 +6,38 @@
 //   node scripts/release.mjs                  # zip + universal files + MCPB bundle + checksums
 //   node scripts/release.mjs --tag v0.1.0     # same, and fail unless the tag matches the version
 //
+// --tag=v0.1.0 works too, and --tag combines with --zip. Any other argument, an empty or missing
+// --tag value or a second --tag is a usage error (exit 2) before anything is built.
 // Needs the `zip` and `unzip` commands, plus npm for the MCPB bundle. No other dependencies.
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { parseArgs } from 'node:util';
 import { root, OS_JUNK, normalize } from './build.mjs';
 
-const args = process.argv.slice(2);
-const flag = (name) => args.includes(name);
-const value = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+// The command line, read strictly: a --tag form this script didn't read, an empty value or an
+// argument it didn't know built everything without the check that --tag asks for.
+const USAGE = 'usage: node scripts/release.mjs [--zip] [--tag v<version>]';
+let cli;
+try {
+  cli = parseArgs({ args: process.argv.slice(2), options: { zip: { type: 'boolean' }, tag: { type: 'string', multiple: true } } }).values;
+} catch (e) {
+  console.error(`${e.message}\n${USAGE}`);
+  process.exit(2);
+}
+if (cli.tag && (cli.tag.length > 1 || cli.tag[0] === '')) {
+  console.error(`--tag takes one value, such as v0.1.0\n${USAGE}`);
+  process.exit(2);
+}
+const tag = cli.tag?.[0];
 const run = (cmd, cmdArgs, opts = {}) => execFileSync(cmd, cmdArgs, { cwd: root, stdio: 'inherit', ...opts });
 const dist = join(root, 'dist');
 
 // normalize(), as validate.mjs reads it: a byte-order mark would make JSON.parse throw here.
 const version = JSON.parse(normalize(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8'))).version;
-const tag = value('--tag');
-if (tag && tag !== `v${version}`) {
+if (tag !== undefined && tag !== `v${version}`) {
   console.error(`tag ${tag} does not match plugin version v${version}; bump .claude-plugin/plugin.json (and the versions it is synced with) first`);
   process.exit(1);
 }
@@ -51,7 +65,7 @@ if (!listing.includes('prompt-engine/SKILL.md') || listing.some((f) => !f.starts
   process.exit(1);
 }
 console.log(`dist/prompt-engine.zip (${listing.length} entries)`);
-if (flag('--zip')) process.exit(0);
+if (cli.zip) process.exit(0);
 
 // 2. Universal copy-paste files.
 for (const f of ['prompt-engine.md', 'prompt-engine-knowledge.md']) copyFileSync(join(root, 'universal', f), join(dist, f));
