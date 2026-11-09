@@ -220,8 +220,11 @@ function main(): void {
   }
   // Accept IPv6 written either way (::1 or [::1]); listen() wants it bare.
   const host = args.host?.trim().replace(/^\[(.*)\]$/, '$1') || DEFAULT_HOST;
-  const port = args.port === undefined ? DEFAULT_PORT : Number(args.port);
-  if (!Number.isInteger(port) || port < 0 || port > 65535) fail(`--port must be an integer from 0 to 65535 (got ${args.port})`);
+  // Digits only: Number() would read '' and ' ' (an unset $PORT) as 0, a random port, and
+  // take 0x1F90 or 8e3 too.
+  const portText = args.port?.trim();
+  const port = portText === undefined ? DEFAULT_PORT : /^\d+$/.test(portText) ? Number(portText) : NaN;
+  if (!Number.isInteger(port) || port < 0 || port > 65535) fail(`--port must be an integer from 0 to 65535 (got ${JSON.stringify(args.port)})`);
   const fromFlag = args['allowed-hosts'] !== undefined;
   const setting = fromFlag ? '--allowed-hosts' : 'PROMPT_ENGINE_ALLOWED_HOSTS';
   const { hosts, portsIgnored, unusable } = parseAllowedHosts(fromFlag ? args['allowed-hosts'] : process.env.PROMPT_ENGINE_ALLOWED_HOSTS);

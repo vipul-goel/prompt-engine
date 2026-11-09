@@ -40,6 +40,18 @@ describe('the built CLI', () => {
     expect(bad.stderr).toMatch(/Unknown option/);
     expect(bad.stdout).toBe('');
   });
+
+  it('refuses a --port that is not written in digits, an empty one included', () => {
+    // An empty value is what --port "$PORT" gives when PORT is unset. A value the CLI took
+    // would start a server, which the timeout then stops, so the status would not be 2.
+    const cases = [['', ['--port', '']], ...['', ' ', '0x0', '1e0', '+0', '8080.0', '-1', '65536'].map((v) => [v, [`--port=${v}`]] as const)] as const;
+    for (const [value, args] of cases) {
+      const run = spawnSync(process.execPath, [CLI, '--http', ...args], { encoding: 'utf8', env: ENV, timeout: 5_000 });
+      expect(run.status, args.join(' ')).toBe(2);
+      expect(run.stderr, args.join(' ')).toContain(`--port must be an integer from 0 to 65535 (got ${JSON.stringify(value)})`);
+      expect(run.stderr, args.join(' ')).not.toMatch(/listening on|cannot listen/);
+    }
+  });
 });
 
 describe('stdio', () => {
