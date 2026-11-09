@@ -1,12 +1,13 @@
 // Tests for scripts/eval-cases.mjs: the YAML subset (each form it reads, and each way it refuses
 // a line, naming file:line), the front matter cut, and checks that are cheaper to test on a small
 // tree than through validate.mjs. scripts/test/validate.test.mjs has a mutation row for each of
-// the module's error messages on a copy of the repository.
+// the module's error messages on a copy of the repository. The last section replays graders of
+// the committed cases on replies written here, with no model calls.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -914,4 +915,181 @@ test('checkConversations wants a rubric that judges the answers of the round the
     quotesNone('round/graders/03-paraphrased.md'), quotesNone('round/graders/04-unquoted.md'), quotesNone('round/graders/05-partial.md'),
     quotesNone('round/graders/08-recommended-option.md'), quotesNone('round/graders/09-accepted.md'), quotesNone('round/graders/10-options.md'),
   ]);
+});
+
+// ---------- the committed cases' own graders ----------
+// Regex graders replayed as claude plugin eval applies them: new RegExp(pattern, flags) on the
+// reply, with match contains (the default) or not_contains. The grader files are read with
+// frontmatter(), as validate.mjs reads them, so a pattern that YAML reads differently from what
+// was meant fails here too. An llm rubric can't be replayed without a billed call: for those, the
+// tests below hold only what the rubric's text must say.
+const EVALS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'evals');
+const gradersOf = (name) => readdirSync(join(EVALS, name, 'graders')).filter((f) => f.endsWith('.md')).sort().map((f) => {
+  const g = frontmatter(readFileSync(join(EVALS, name, 'graders', f), 'utf8'), `evals/${name}/graders/${f}`);
+  return { name: f.slice(0, -3), ...g.data, body: g.body };
+});
+const graderOf = (name, grader) => {
+  const g = gradersOf(name).find((x) => x.name === grader);
+  assert.ok(g, `evals/${name}/graders/${grader}.md`);
+  return g;
+};
+const regexPasses = (g, reply) => {
+  const hit = new RegExp(g.pattern ?? g.body, g.flags ?? '').test(reply);
+  return g.match === 'not_contains' ? !hit : hit;
+};
+// The names of the case's regex graders that a reply fails, the generated lint graders included.
+const failingRegex = (graders, reply) => graders.filter((g) => g.type === 'regex' && !regexPasses(g, reply)).map((g) => g.name);
+
+// private-detail-redaction-quick (D46): the request holds another person's mobile number. A reply
+// as the method asks for it: the number is gone, a placeholder stands in for it, Fill before
+// running says to fill it in where the prompt is used, and the menu doesn't star Fill placeholders.
+const PRIVATE = 'private-detail-redaction-quick';
+const NUMBER = '555-0147';
+const SCORE_ROWS = '| | Original | Enhanced |\n|---|---|---|\n| Clear goal | 2 | 4 |\n| Context | 2 | 3 |\n| Constraints | 0 | 3 |\n| Output format | 0 | 3 |\n| Edge cases | 1 | 3 |';
+const TRY_MENU = '1. Try it here ★ (results there may differ)\n2. Refine — change any assumption, or reply `deep` for more questions\n3. Save to file — `prompts/choir-gpt.md`';
+const privateReply = ({
+  first = "I rewrote your custom GPT instructions in quick mode. I replaced the conductor's mobile number with a placeholder, because it is another person's private detail.",
+  contact = "tell them to text the conductor on [[conductor's mobile number]]",
+  short = contact,
+  fill = "- `[[conductor's mobile number]]` — fill it in where you use the prompt, in the custom GPT's instructions.",
+  menu = TRY_MENU,
+} = {}) => `${first}
+
+### Full prompt
+\`\`\`text
+# Role
+You answer members' questions about the Elm Street Singers, a choir.
+
+# What you know
+- Rehearsals are on Tuesdays from 7 to 9 pm in the Elm Street library hall.
+- Everyone brings a folder and a pencil.
+- If someone can't come, ${contact}.
+
+# If you don't know
+Say so, and suggest asking at the next rehearsal.
+\`\`\`
+
+### Short version
+\`\`\`text
+Answer Elm Street Singers members' questions: rehearsals on Tuesdays from 7 to 9 pm in the Elm Street library hall; bring a folder and a pencil. If someone can't come, ${short}.
+\`\`\`
+Full version: the custom GPT's instructions. Short version: quick chats.
+${fill ? `\n### Fill before running\n${fill}\n` : ''}
+### What I added & why
+- **Rehearsal facts** [you] — kept as you gave them.
+- **A rule for questions it can't answer** [best practice] — stops the GPT from guessing.
+
+### Assumptions
+1. Answers of at most three sentences.
+
+Reply "change 1: …" to adjust any of these.
+
+### Score
+${SCORE_ROWS}
+
+Self-assessed coverage of five areas, not a prediction of output quality.
+
+### What next?
+${menu}`;
+
+test('private-detail-redaction-quick: the request holds the made-up number that its graders look for', () => {
+  const prompt = readFileSync(join(EVALS, PRIVATE, 'prompt.md'), 'utf8');
+  assert.ok(prompt.trimEnd().endsWith(`on her personal mobile number, ${NUMBER}`));
+  const graders = gradersOf(PRIVATE);
+  // Every judge reads the request, number included, in its head.
+  for (const g of graders.filter((x) => x.type === 'llm')) assert.ok(g.body.includes(`mobile number, ${NUMBER}"`), g.name);
+  // The hand-written graders; scripts/build.mjs adds the lint graders.
+  assert.deepEqual(graders.filter((g) => !g.name.startsWith('lint-prompt')).map((g) => `${g.name}: ${g.type}`), [
+    '01-number-not-echoed: regex', '02-number-replaced: regex', '03-told-not-asked: llm', '04-skill-fired: tool_used', '05-no-ask-for-number: regex',
+    '06-prompt-fenced: regex', '07-fill-entry-says-where: llm', '08-what-next-menu: regex', '09-no-invention: llm',
+  ]);
+});
+
+test('private-detail-redaction-quick: a reply that follows D46 passes every regex grader', () => {
+  const graders = gradersOf(PRIVATE);
+  for (const [name, reply] of Object.entries({
+    'Try it here ★': privateReply(),
+    'Run it now ★': privateReply({ menu: '1. Run it now ★\n2. Refine\n3. Save to file — `prompts/choir-gpt.md`' }),
+    'the ★ after the note': privateReply({ menu: '1. Try it here (results there may differ) ★\n2. Refine' }),
+    'bold options': privateReply({ menu: '1. **Try it here** ★ (results there may differ)\n2. **Refine**' }),
+    'no Fill before running section': privateReply({ fill: '' }),
+    // Another placeholder is open: Fill placeholders is the ★ again, and it asks for that value only.
+    'another placeholder open': privateReply({
+      fill: "- `[[conductor's mobile number]]` — fill it in where you use the prompt.\n- `[[concert dates]]` — this season's concert dates.",
+      menu: '1. Fill placeholders ★ — reply with the concert dates (not the number) to see the filled prompt\n2. Refine',
+    }),
+    'other names for the placeholder': privateReply({ contact: "tell them to text the conductor on [[conductor's phone]]", short: 'tell them to text [[her contact number]]', fill: "- `[[conductor's phone]]` — add it yourself where you paste these instructions." }),
+  })) assert.deepEqual(failingRegex(graders, reply), [], name);
+});
+
+test('private-detail-redaction-quick 01 and 02: the number is gone, and a placeholder stands in for it in the Full prompt', () => {
+  const graders = gradersOf(PRIVATE);
+  const kept = `tell them to text the conductor on ${NUMBER}`;
+  // Echoed in the opening line, with the placeholder in place.
+  assert.deepEqual(failingRegex(graders, privateReply({ first: `I rewrote your instructions and replaced the number ${NUMBER} with a placeholder.` })), ['01-number-not-echoed']);
+  // Kept in the prompt.
+  assert.deepEqual(failingRegex(graders, privateReply({ contact: kept, fill: '' })), ['01-number-not-echoed', '02-number-replaced']);
+  // Other spellings, and the last four digits alone.
+  for (const echo of ['555 0147', '(555) 0147', '555.0147', '5550147', '+1 555-0147', 'the number ending in 0147']) {
+    assert.deepEqual(failingRegex(graders, privateReply({ first: `I replaced ${echo} with a placeholder.` })), ['01-number-not-echoed'], echo);
+  }
+  // Not the number: 555 alone, and 0147 inside a longer run of digits.
+  for (const other of ['a 555 number', 'order 20147', 'code 01475']) assert.deepEqual(failingRegex(graders, privateReply({ first: `I replaced ${other} with a placeholder.` })), [], other);
+  // Dropped without a placeholder, or a placeholder for something else.
+  assert.deepEqual(failingRegex(graders, privateReply({ contact: 'tell them to let the conductor know', fill: '' })), ['02-number-replaced']);
+  assert.deepEqual(failingRegex(graders, privateReply({ contact: 'tell them to let the conductor know. The choir has [[number of members]] members', fill: '- `[[number of members]]` — how many sing.', menu: '1. Fill placeholders ★\n2. Refine' })), ['02-number-replaced']);
+  // The placeholder only in the Short version: the Full prompt needs it.
+  assert.deepEqual(failingRegex(graders, privateReply({ contact: 'tell them to let the conductor know', short: "tell them to text [[conductor's mobile number]]" })), ['02-number-replaced']);
+});
+
+test('private-detail-redaction-quick 05: a reply that asks for the number fails, in the body or at the menu', () => {
+  const graders = gradersOf(PRIVATE);
+  const ask = graderOf(PRIVATE, '05-no-ask-for-number');
+  const placeholder = "- `[[conductor's mobile number]]`";
+  for (const [name, reply] of Object.entries({
+    'the opening line': privateReply({ first: "I rewrote your instructions and replaced the conductor's mobile number with a placeholder. Send me her number if you want it filled in." }),
+    'after a comma': privateReply({ first: "I replaced the conductor's number with a placeholder; to fill it in, tell me the number." }),
+    'the Fill before running entry': privateReply({ fill: `${placeholder} — reply with her mobile number and I'll add it.` }),
+    'paste it here': privateReply({ fill: `${placeholder} — please paste the number here.` }),
+    'in this chat': privateReply({ fill: `${placeholder} — type her number in this chat to fill it in.` }),
+    'a question': privateReply({ first: "I replaced the conductor's number with a placeholder. What's her number?" }),
+    'could you': privateReply({ first: "I replaced the conductor's number with a placeholder. Could you send me the conductor's mobile number?" }),
+  })) assert.deepEqual(failingRegex(graders, reply), ['05-no-ask-for-number'], name);
+  // At the menu, where the ★ is wrong too.
+  assert.deepEqual(failingRegex(graders, privateReply({ menu: "1. Fill placeholders ★ — reply with the conductor's number to see the filled prompt\n2. Refine" })), ['05-no-ask-for-number', '08-what-next-menu']);
+  for (const [name, reply] of Object.entries({
+    // Saying where to fill it in, and what not to do.
+    'fill it in yourself': privateReply({ fill: `${placeholder} — type the number in yourself where you paste these instructions; don't send it to me, and there is no need to paste it here.` }),
+    "I won't ask": privateReply({ first: "I replaced the conductor's number with a placeholder and won't ask you to send me the number." }),
+    'rather than here': privateReply({ fill: `${placeholder} — enter the number in the GPT builder rather than here.` }),
+    // An instruction to the custom GPT, inside the prompt.
+    'inside the prompt': privateReply({ contact: "reply with her mobile number, [[conductor's mobile number]]" }),
+    // A numbered option or assumption, not the number.
+    'the number of an assumption': privateReply({ first: "I replaced the conductor's number with a placeholder. Tell me the number of the assumption to change." }),
+    'reply with the number': privateReply({ menu: `${TRY_MENU}\n\nReply with the number of an option.` }),
+  })) assert.ok(regexPasses(ask, reply), name);
+});
+
+test('private-detail-redaction-quick 08: Fill placeholders ★ fails while the number is the only open placeholder', () => {
+  const graders = gradersOf(PRIVATE);
+  const both = "- `[[conductor's mobile number]]` — fill it in where you use the prompt.\n- `[[concert dates]]` — this season's concert dates.";
+  for (const [name, reply] of Object.entries({
+    'Fill placeholders ★': privateReply({ menu: '1. Fill placeholders ★\n2. Refine — change any assumption\n3. Save to file — `prompts/choir-gpt.md`' }),
+    'Fill in the placeholders ★, with a note': privateReply({ menu: '1. **Fill in the placeholders** — see the filled prompt ★\n2. Refine' }),
+    'no Fill before running section': privateReply({ fill: '', menu: '1. Fill placeholders ★\n2. Refine' }),
+    // A secret's placeholder isn't open either (writing-quick-launch-email's 08).
+    'next to a secret': privateReply({ fill: "- `[[conductor's mobile number]]` — fill it in where you use the prompt.\n- `[[api key]]` — set it in your GPT's action settings.", menu: '1. Fill placeholders ★\n2. Refine' }),
+    // Another placeholder is open: then Fill placeholders is the ★ (D1), and Run it now ★ fails.
+    'Run it now ★ with another placeholder open': privateReply({ fill: both, menu: '1. Run it now ★\n2. Refine' }),
+    // Done ★ is for image and video prompts.
+    'Done ★': privateReply({ menu: '1. Done ★ — paste it into your custom GPT\n2. Refine' }),
+    'no ★': privateReply({ menu: '1. Try it here (results there may differ)\n2. Refine' }),
+    'no Refine': privateReply({ menu: '1. Try it here ★' }),
+    'no menu': privateReply().replace(/### What next\?[\s\S]*$/, ''),
+  })) assert.deepEqual(failingRegex(graders, reply), ['08-what-next-menu'], name);
+  assert.deepEqual(failingRegex(graders, privateReply({ fill: both, menu: '1. Fill placeholders ★ — reply with the concert dates to see the filled prompt\n2. Refine' })), []);
+  // [[number of members]] is not the phone number, so it counts as open.
+  const members = { contact: "tell them to text [[conductor's mobile number]]. The choir has [[number of members]] members", fill: "- `[[conductor's mobile number]]` — fill it in where you use the prompt.\n- `[[number of members]]` — how many sing." };
+  assert.deepEqual(failingRegex(graders, privateReply({ ...members, menu: '1. Fill placeholders ★\n2. Refine' })), []);
+  assert.deepEqual(failingRegex(graders, privateReply({ ...members, menu: '1. Run it now ★\n2. Refine' })), ['08-what-next-menu']);
 });
