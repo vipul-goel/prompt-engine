@@ -2,7 +2,7 @@
 type: llm
 focus:
   source: file
-  path: prompts/etsy-ceramic-mug-description.md
+  path: prompts/etsy-mug-description.md
 weight: 1
 ---
 

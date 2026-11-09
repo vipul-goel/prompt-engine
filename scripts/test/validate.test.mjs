@@ -173,7 +173,8 @@ const SESSION = '12345678-1234-4123-8123-123456789abc.jsonl';
 const SPANISH = 'evals/spanish-quick';
 const VEO = 'evals/video-veo-quick/graders';
 // History cases (findings 54-56): the two follow-up cases resume copies of one recording, which
-// ends in a question round; save-to-file's recording ends in an output and a repeated menu.
+// ends in a question round; save-to-file's recording, made again in step 1d (D34), ends in an
+// output with its What next? menu, in one message.
 const OK_CASE = 'evals/followup-ok-accepts-recommendations';
 const PARTIAL_CASE = 'evals/followup-partial-answers';
 const SAVE_CASE = 'evals/save-to-file';
@@ -181,16 +182,22 @@ const OK6 = `${OK_CASE}/graders/06-accepted-not-assumed.md`;
 const PARTIAL6 = `${PARTIAL_CASE}/graders/06-accepted-not-assumed.md`;
 const SAVE05 = `${SAVE_CASE}/graders/05-file-is-the-full-prompt.md`;
 const SAVE06 = `${SAVE_CASE}/graders/06-file-is-not-the-whole-reply.md`;
-// The message id of save-to-file's repeated menu, which keeps its recording problems warnings
-// until step 1d records the case again (D34).
-const STALE_MENU = 'msg_011CgWkHqm4wmTHWit6mebGp';
+// save-to-file-existing resumes a copy of save-to-file's recording, with a scaffold_script that
+// puts a file at the save path first; its 05 reads the -2 file that the save writes instead.
+const SAVE_EXISTING05 = 'evals/save-to-file-existing/graders/05-file-is-the-full-prompt.md';
+// The save path that save-to-file's recorded menu offers.
+const SAVE_PATH = 'prompts/etsy-mug-description.md';
+// The message id of the repeated menu in save-to-file's old recording, whose problems only warned
+// until step 1d recorded the case again (D34).
+const OLD_MENU = 'msg_011CgWkHqm4wmTHWit6mebGp';
 // The fake key that the safety eval's prompt.md pastes, read at run time.
 const FAKE_KEY = readFileSync(join(repo, 'evals/secret-redaction-quick/prompt.md'), 'utf8').match(/\bsk-[\w-]{20,}/)[0];
 // A history.jsonl edited row by row: fn changes the parsed rows and returns them.
 const editRows = (d, file, fn) => edit(d, file, (t) => `${fn(t.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))).map((r) => JSON.stringify(r)).join('\n')}\n`);
-// The text of save-to-file's recorded output (its line 9), changed by fn.
+// The text of save-to-file's recorded output (the text of its last assistant row), changed by fn.
 const editOutput = (d, fn) => editRows(d, `${SAVE_CASE}/history.jsonl`, (rows) => {
-  const part = rows[8].message.content[0];
+  const part = rows.findLast((r) => r.type === 'assistant').message.content.find((p) => p.type === 'text');
+  assert.match(part?.text ?? '', /### Full prompt[\s\S]*### What next\?/, 'the last assistant row holds the recorded output');
   part.text = fn(part.text);
   return rows;
 });
@@ -483,22 +490,30 @@ const ROWS = [
   // Text that a prompt.md commits on purpose, such as the safety eval's fake key, is public.
   ['accepts a recorded history that holds the safety eval\'s fake key', (d) => edit(d, 'evals/save-to-file/history.jsonl', (t) => t.replace('handmade ceramic mug', `handmade ceramic mug, key ${FAKE_KEY}`)),
     /validate: OK/, 0],
-  // History cases: the recording against the method (finding 56). Until step 1d records it again
-  // (D34), save-to-file's recording breaks two of the rules, and only warnings say so.
-  ['warns about save-to-file\'s known recording problems, and about nothing else', () => {}, [
-    /^warning: evals\/save-to-file\/history\.jsonl: line 10 calls AskUserQuestion or searches for it; .* \(known; step 1d re-records this case, D34\)$/m,
-    /^warning: evals\/save-to-file\/history\.jsonl: the last recorded assistant text is neither a question round .* \(known; step 1d re-records this case, D34\)$/m,
-  ], 0, [/^warning: (?!evals\/save-to-file\/history\.jsonl: (?:line 10 calls|the last recorded assistant text))/m, /(?:^warning: .*\n){3}/m]],
-  ['rejects save-to-file\'s recording problems once its known message is gone', (d) => editRows(d, `${SAVE_CASE}/history.jsonl`, (rows) => {
-    for (const r of rows) if (r.message?.id === STALE_MENU) r.message.id = 'msg_recorded_again';
-    return rows;
+  // History cases: the recording against the method (finding 56). Step 1d recorded save-to-file
+  // again (D34), so no recording breaks a rule, and nothing only warns.
+  ['passes every recording, save-to-file\'s included, without a warning', () => {}, /validate: OK/, 0, /^warning:/m],
+  // The problems of save-to-file's old recording, its search for AskUserQuestion and the menu it
+  // repeated in a message of its own, are errors, even in that recording's message.
+  ['rejects the problems of save-to-file\'s old recording as errors, not warnings', (d) => editRows(d, `${SAVE_CASE}/history.jsonl`, (rows) => {
+    const last = rows.at(-1);
+    const assistant = (content, stop) => ({ ...structuredClone(last), message: { ...structuredClone(last.message), id: OLD_MENU, content, stop_reason: stop } });
+    return [...rows,
+      assistant([{ type: 'tool_use', id: 'toolu_search', name: 'ToolSearch', input: { query: 'select:AskUserQuestion', max_results: 1 } }], 'tool_use'),
+      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_search', content: 'No matching deferred tools found' }] } },
+      assistant([{ type: 'text', text: 'Pick one by number:\n\n1. **Fill placeholders** ★\n2. **Refine**\n3. **Save to file**' }], 'end_turn'),
+    ];
   }), [
-    /^error: evals\/save-to-file\/history\.jsonl: line 10 calls AskUserQuestion or searches for it; eval runs have no dialog tool, and SKILL\.md says to use the text format straight away, so record it again \(repo rule\)$/m,
+    /^error: evals\/save-to-file\/history\.jsonl: line 14 calls AskUserQuestion or searches for it; eval runs have no dialog tool, and SKILL\.md says to use the text format straight away, so record it again \(repo rule\)$/m,
     /^error: evals\/save-to-file\/history\.jsonl: the last recorded assistant text is neither a question round \(with "Reply `ok` to accept every ★"\) nor an output with its Full prompt and What next\? headings in one message; record it again \(repo rule\)$/m,
   ], 1, /^warning:/m],
-  // Cut by hand after the output, the recording ends on a row that waits for a tool result.
-  ['rejects a recording that stops in the middle of a turn', (d) => edit(d, `${SAVE_CASE}/history.jsonl`, (t) => `${t.split('\n').slice(0, 9).join('\n')}\n`),
-    /^error: evals\/save-to-file\/history\.jsonl: line 9, the last assistant row, has stop_reason tool_use, not end_turn, so the recorded turn didn't end; record it again \(repo rule\)\n\n1 error\(s\)$/m],
+  // Cut by hand right after the output of a message that went on to call a tool, as the old
+  // save-to-file recording's did, the recording ends on a row that waits for a tool result.
+  ['rejects a recording that stops in the middle of a turn', (d) => editRows(d, `${SAVE_CASE}/history.jsonl`, (rows) => {
+    const id = rows.at(-1).message.id;
+    for (const r of rows) if (r.type === 'assistant' && r.message.id === id) r.message.stop_reason = 'tool_use';
+    return rows;
+  }), /^error: evals\/save-to-file\/history\.jsonl: line 13, the last assistant row, has stop_reason tool_use, not end_turn, so the recorded turn didn't end; record it again \(repo rule\)\n\n1 error\(s\)$/m],
   ['rejects a recorded search for AskUserQuestion', (d) => editRows(d, `${OK_CASE}/history.jsonl`, (rows) => {
     const search = structuredClone(rows[4]);
     search.message.content = [{ type: 'tool_use', id: 'toolu_search', name: 'ToolSearch', input: { query: 'select:AskUserQuestion', max_results: 1 } }];
@@ -555,7 +570,7 @@ const ROWS = [
     '\nThe user\'s whole request was "write a blog post about remote work", and they replied "ok" to the questions.\nPASS if no detail is invented. FAIL otherwise.\n')), /validate: OK/, 0],
   // A regex grader on the file that the recorded menu offers to save must tell the recorded Full
   // prompt from the Short version (finding 55).
-  ['rejects a saved-file regex that does not match the recorded Full prompt', (d) => edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe')),
+  ['rejects a saved-file regex that does not match the recorded Full prompt', (d) => edit(d, SAVE05, (t) => t.replace('Food-safe', 'Food safe')),
     /^error: evals\/save-to-file\/graders\/05-file-is-the-full-prompt\.md: pattern doesn't match the recorded Full prompt, so a correct save would fail; derive it again from history\.jsonl \(repo rule\)$/m],
   ['rejects a saved-file regex that also matches the recorded Short version', (d) => edit(d, SAVE05, (t) => t.replace(/^pattern: .*$/m, "pattern: 'Etsy'")),
     /^error: evals\/save-to-file\/graders\/05-file-is-the-full-prompt\.md: pattern also matches the recorded Short version, so it can't tell the two apart \(repo rule\)\n\n1 error\(s\)$/m],
@@ -563,19 +578,23 @@ const ROWS = [
     /^error: evals\/save-to-file\/graders\/06-file-is-not-the-whole-reply\.md: not_contains pattern matches the recorded Full prompt, so a correct save would fail; derive it again from history\.jsonl \(repo rule\)$/m],
   ['rejects a saved-file regex in a history case whose recording offers no save path', (d) => put(d, `${OK_CASE}/graders/09-file.md`, read(d, SAVE05)),
     /^error: evals\/followup-ok-accepts-recommendations: 09-file\.md read a saved file, but the recording shows no output whose What next\? menu names a save path to check them against \(repo rule\)$/m],
-  ['rejects saved-file regexes when the recorded Full prompt is not fenced', (d) => editOutput(d, (t) => t.replace('### Full prompt\n```text\n', '### Full prompt\n').replace('(US spelling).\n```\n', '(US spelling).\n')), [
+  ['rejects saved-file regexes when the recorded Full prompt is not fenced', (d) => editOutput(d, (t) => t.replace('### Full prompt\n```text\n', '### Full prompt\n').replace('what I should add.\n```\n', 'what I should add.\n')), [
     /^error: evals\/save-to-file\/graders\/05-file-is-the-full-prompt\.md: reads the saved file, but the recorded output has no fenced Full prompt to check it against \(repo rule\)$/m,
     /^error: evals\/save-to-file\/graders\/06-file-is-not-the-whole-reply\.md: reads the saved file, but the recorded output has no fenced Full prompt/m,
   ]],
-  ['does not check a saved-file regex on another path', (d) => edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe').replace('path: prompts/etsy-ceramic-mug-description.md', 'path: prompts/other.md')), /validate: OK/, 0],
-  ['checks a saved-file regex that spells the save path another way', (d) => edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe').replace('path: prompts/etsy-ceramic-mug-description.md', 'path: ./prompts/etsy-ceramic-mug-description.md')),
+  ['does not check a saved-file regex on another path', (d) => edit(d, SAVE05, (t) => t.replace('Food-safe', 'Food safe').replace(`path: ${SAVE_PATH}`, 'path: prompts/other.md')), /validate: OK/, 0],
+  ['checks a saved-file regex that spells the save path another way', (d) => edit(d, SAVE05, (t) => t.replace('Food-safe', 'Food safe').replace(`path: ${SAVE_PATH}`, `path: ./${SAVE_PATH}`)),
     /^error: evals\/save-to-file\/graders\/05-file-is-the-full-prompt\.md: pattern doesn't match the recorded Full prompt/m],
-  // A scaffold can put other text at the save path, such as a file the save must not overwrite.
-  ['does not check saved-file regexes in a case with a scaffold_script', (d) => {
-    edit(d, SAVE05, (t) => t.replace('food-safe', 'food safe'));
+  // A scaffold can put other text at the save path, such as a file the save must not overwrite, so
+  // in a case with a scaffold_script the checked file is the one a save writes when that path is
+  // taken: the save path with -2 added to the name.
+  ['does not check a saved-file regex on the menu\'s save path in a case with a scaffold_script', (d) => {
+    edit(d, SAVE05, (t) => t.replace('Food-safe', 'Food safe'));
     edit(d, `${SAVE_CASE}/case.yaml`, (t) => t.replace('  history_file: history.jsonl', '  history_file: history.jsonl\n  scaffold_script: place-files.sh'));
     put(d, `${SAVE_CASE}/place-files.sh`, '#!/bin/sh\n');
   }, /validate: OK/, 0],
+  ['checks a saved-file regex on the save path with -2 added in a case with a scaffold_script', (d) => edit(d, SAVE_EXISTING05, (t) => t.replace('Food-safe', 'Food safe')),
+    /^error: evals\/save-to-file-existing\/graders\/05-file-is-the-full-prompt\.md: pattern doesn't match the recorded Full prompt, so a correct save would fail; derive it again from history\.jsonl \(repo rule\)\n\n1 error\(s\)$/m],
   // ---- generated files
   ['rejects a stale generated file', (d) => edit(d, `${REF}/media-targets.md`, (t) => `${t}\nhand edit\n`), /references\/media-targets\.md: stale; run node scripts\/build\.mjs/],
   // The eval lint graders are generated from data/lint-rules.json (finding 59, D36). build.mjs

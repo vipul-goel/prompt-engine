@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: followup-deep-second-round
+context:
+  history_file: history.jsonl
+expected_outcome: |
+  After a round of seven questions, the user replies deep: the ★ answers stand, and the reply asks a further round of at most 4 new questions in the text format, ending with the reply line, with no draft prompt yet.

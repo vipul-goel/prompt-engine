@@ -550,8 +550,7 @@ function requiresGrant(g, tool) {
 //   the skill text it injects), without tool results;
 // - dialogLines: the lines that call AskUserQuestion, or ToolSearch with an input that names it
 //   in any letter case, also as separate words (ask user question);
-// - last: the last assistant row, as { line, row };
-// - messageIds: the ids of the recorded API messages.
+// - last: the last assistant row, as { line, row }.
 function readRecording(file) {
   const rows = [];
   normalize(readFileSync(file, 'utf8')).split('\n').forEach((text, i) => {
@@ -570,7 +569,6 @@ function readRecording(file) {
       .flatMap(({ row }) => (typeof row.message?.content === 'string' ? [row.message.content] : texts(row))),
     dialogLines: assistant.filter(({ row }) => parts(row).some(dialog)).map(({ line }) => line),
     last: assistant.at(-1),
-    messageIds: new Set(rows.map(({ row }) => row.message?.id).filter((id) => typeof id === 'string')),
   };
 }
 
@@ -652,12 +650,6 @@ const SHORT = 'Short version';
 const NEXT = 'What next?';
 const SAVE = 'Save to file';
 
-// Until step 1d records it again (D34), save-to-file's recording holds the old skill's search for
-// AskUserQuestion and a repeated menu (lines 10-12). The recording checks only warn about it while
-// the repeated menu's message is in it, so a copy cut by hand loses the exemption. Delete the entry
-// in the commit that records the case again.
-const KNOWN_STALE_RECORDINGS = { 'save-to-file': 'msg_011CgWkHqm4wmTHWit6mebGp' };
-
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // A heading as the method writes it: "### Full prompt".
 const headingRe = (h) => new RegExp(`#+[ \\t]*${esc(h)}`);
@@ -717,9 +709,8 @@ const ANSWER_CHECK = /\banswer(?:s|ed)?\b|★|\brecommend|\boptions?\b|\baccept/
 const answerKey = (text) => normalizeQuote(text.replace(/★[\s\S]*$/u, '')).replace(/[\s.,;:·•|]+$/u, '');
 
 // This repo's checks on each case's conversation, as described above. contract is
-// data/contract.json. The recording checks call warn instead of err for a case in
-// KNOWN_STALE_RECORDINGS. A case with a file that didn't read is skipped.
-export function checkConversations(root, cases, { err, warn, contract }) {
+// data/contract.json. A case with a file that didn't read is skipped.
+export function checkConversations(root, cases, { err, contract }) {
   const required = contract?.required ?? {};
   const replyLine = Array.isArray(required.replyLine) ? required.replyLine[0] : undefined;
   const missing = [FULL, SHORT, NEXT].filter((h) => !(required.headings ?? []).includes(h)).map((h) => `the heading "${h}"`);
@@ -764,8 +755,6 @@ export function checkConversations(root, cases, { err, warn, contract }) {
     }
     if (rec === null || missing.length) continue;
     const where = `${c.dir}/history.jsonl`;
-    const stale = Object.hasOwn(KNOWN_STALE_RECORDINGS, c.name) && rec.messageIds.has(KNOWN_STALE_RECORDINGS[c.name]);
-    const report = stale ? (m) => warn(`${m} (known; step 1d re-records this case, D34)`) : err;
 
     // The recording against the method (finding 56). Eval runs have no AskUserQuestion, and
     // SKILL.md says to use the text format straight away then, not to search for the tool. A turn
@@ -773,11 +762,11 @@ export function checkConversations(root, cases, { err, warn, contract }) {
     // row ends its turn: Claude Code's session-resume code compares that row's stop_reason with
     // end_turn to tell a finished turn from an interrupted one (read in its 2.1.318 and 2.1.319
     // code; what an eval run does with an interrupted turn wasn't tried).
-    for (const line of rec.dialogLines) report(`${where}: line ${line} calls AskUserQuestion or searches for it; eval runs have no dialog tool, and SKILL.md says to use the text format straight away, so record it again (repo rule)`);
+    for (const line of rec.dialogLines) err(`${where}: line ${line} calls AskUserQuestion or searches for it; eval runs have no dialog tool, and SKILL.md says to use the text format straight away, so record it again (repo rule)`);
     const last = rec.assistantTexts.at(-1) ?? '';
-    if (!last.includes(replyLine) && !(full.test(last) && next.test(last))) report(`${where}: the last recorded assistant text is neither a question round (with "${replyLine}") nor an output with its ${FULL} and ${NEXT} headings in one message; record it again (repo rule)`);
+    if (!last.includes(replyLine) && !(full.test(last) && next.test(last))) err(`${where}: the last recorded assistant text is neither a question round (with "${replyLine}") nor an output with its ${FULL} and ${NEXT} headings in one message; record it again (repo rule)`);
     const stop = rec.last?.row.message?.stop_reason;
-    if (rec.last && stop !== 'end_turn') report(`${where}: line ${rec.last.line}, the last assistant row, has stop_reason ${stop ?? '(none)'}, not end_turn, so the recorded turn didn't end; record it again (repo rule)`);
+    if (rec.last && stop !== 'end_turn') err(`${where}: line ${rec.last.line}, the last assistant row, has stop_reason ${stop ?? '(none)'}, not end_turn, so the recorded turn didn't end; record it again (repo rule)`);
 
     // What the rubrics quote (finding 54). In a history case, double quotes in an llm grader mark
     // text from the recorded conversation (what the model wrote and what the user typed) or from
@@ -816,18 +805,22 @@ export function checkConversations(root, cases, { err, warn, contract }) {
       }
     }
 
-    // A regex grader on the file that the recorded menu offers to save (finding 55) must tell the
-    // recorded Full prompt from the Short version: a contains pattern matches the Full prompt and
-    // not the Short version, and a not_contains pattern doesn't match the Full prompt (count:N
-    // isn't checked). A case with a scaffold_script is skipped, since the scaffold can put other
-    // text at that path; so are graders on other paths, compared in samePath's form.
-    if (s.scaffold != null) continue;
+    // A regex grader on the file that the save writes (finding 55) must tell the recorded Full
+    // prompt from the Short version: a contains pattern matches the Full prompt and not the Short
+    // version, and a not_contains pattern doesn't match the Full prompt (count:N isn't checked).
+    // The save writes the path that the recorded menu offers. In a case with a scaffold_script,
+    // which can put a file at that path first, the checked path is that one with -2 added to the
+    // name (SKILL.md: never overwrite an existing file; add -2 to the name instead), and graders on
+    // the menu's path are skipped, since the scaffold can put other text there. Graders on other
+    // paths are skipped too, compared in samePath's form.
     const output = rec.assistantTexts.findLast((t) => full.test(t));
     const savePath = savePathOf(output, saveLineRe);
+    const checked = s.scaffold == null ? savePath : savePath?.replace(/(\.[^./\\]*)?$/, '-2$1');
     const fileGraders = c.graders.filter((g) => g.data.type === 'regex' && isMapping(g.data.target) && g.data.target.source === 'file');
-    if (fileGraders.length && savePath === undefined) err(`${c.dir}: ${fileGraders.map((g) => `${g.name}.md`).join(', ')} read a saved file, but the recording shows no output whose ${NEXT} menu names a save path to check them against (repo rule)`);
+    // A scaffold case's file graders can read files that the scaffold wrote, with no save at all.
+    if (s.scaffold == null && fileGraders.length && savePath === undefined) err(`${c.dir}: ${fileGraders.map((g) => `${g.name}.md`).join(', ')} read a saved file, but the recording shows no output whose ${NEXT} menu names a save path to check them against (repo rule)`);
     for (const g of fileGraders) {
-      if (savePath === undefined || !samePath(g.data.target.path, savePath)) continue;
+      if (checked === undefined || !samePath(g.data.target.path, checked)) continue;
       const fullPrompt = fencedAfter(output, FULL);
       if (fullPrompt === null) {
         err(`${g.file}: reads the saved file, but the recorded output has no fenced ${FULL} to check it against (repo rule)`);

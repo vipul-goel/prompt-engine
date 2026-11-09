@@ -3,7 +3,7 @@
 type: regex
 target:
   source: file
-  path: prompts/etsy-ceramic-mug-description.md
+  path: prompts/etsy-mug-description.md
 pattern: 'What next\?|\|\s*Clear goal\s*\|'
 flags: i
 match: not_contains

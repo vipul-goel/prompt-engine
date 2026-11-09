@@ -221,6 +221,8 @@ export function refreshHistory(jsonl, skillBody, readPluginFile) {
 // level in backticks fails them.
 export const LINT_GRADER_CASES = {
   'coding-quick-code-block': {},
+  'followup-change-assumption': {},
+  'followup-fill-placeholders': {},
   'followup-ok-accepts-recommendations': {},
   'followup-partial-answers': {},
   'image-midjourney-quick': { media: true },
