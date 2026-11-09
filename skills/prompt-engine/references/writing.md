@@ -53,7 +53,7 @@ Write a radio ad for [[market name]], a farmers' market, so that as many listene
 # Output
 - A script that takes 25–30 seconds to read aloud, plus two alternative opening lines. Use short sentences, because a listener can't go back and hear a line again.
 - Parts: an opening line about what is in season ([[what is in season]]), where the market is ([[where it is]]), one short proof point if provided, and one call to action: "Come to [[market name]], open [[days and hours]]".
-- Tone: friendly and plain, like a farmer chatting with a regular customer. Avoid claims the market can't prove, such as "the freshest" and "the cheapest".
+- Tone: friendly and plain unless told otherwise, like a farmer chatting with a regular customer. Avoid claims the market can't prove, such as "the freshest" and "the cheapest".
 
 # Facts
 Use only the facts above. If a number or a customer's quote would help but isn't provided, leave a placeholder instead of inventing one.
