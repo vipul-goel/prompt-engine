@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sanitize, scanText, publicText, FIXED_SESSION } from '../eval/sanitize.mjs';
+import { sanitize, scanText, publicText, FIXED_SESSION, PRIVATE_PATTERNS } from '../eval/sanitize.mjs';
 import { refreshHistory } from '../build.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -39,6 +39,56 @@ test('keeps the user and assistant events, re-linked past dropped ones, with the
     assert.equal(e.cwd, '/workspace');
     assert.equal(e.requestId, undefined);
   }
+});
+
+// One row or more for each kind the scan knows: [kind, text it must report as that kind, a near
+// miss it must not report at all]. A pattern dropped or loosened would otherwise pass every test,
+// since the others cover only the kinds that the review's reproductions used.
+const r = (c, n) => c.repeat(n);
+const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const KINDS = [
+  ['Anthropic or OpenAI-style key', `${'sk'}-ant-api03-${r('Q', 40)}`, `${'sk'}-short`],
+  ['Stripe key', `${'sk'}_live_${r('A', 24)}`, `${'pk'}_live_${r('A', 24)}`],
+  ['Stripe key', `${'rk'}_test_${r('B', 24)}`, `${'sk'}_live_${r('A', 10)}`],
+  ['GitHub token', `gh${'p'}_${r('R', 36)}`, `gh${'x'}_${r('R', 36)}`],
+  ['GitHub token', `github${'_pat_'}${r('a', 22)}_${r('b', 59)}`, `github${'_pat_'}${r('a', 10)}`],
+  ['GitLab token', `gl${'pat'}-${r('C', 20)}`, `gl${'pat'}-${r('C', 10)}`],
+  ['Slack token', `xo${'xb'}-${r('1', 12)}-${r('d', 24)}`, `xo${'xz'}-${r('1', 12)}`],
+  ['AWS key ID', `AK${'IA'}${r('Z', 16)}`, `AK${'IA'}${r('Z', 10)}`],
+  ['Google API key', `AI${'za'}${r('D', 35)}`, `AI${'za'}${r('D', 20)}`],
+  ['npm token', `np${'m_'}${r('E', 36)}`, `np${'m_'}${r('E', 20)}`],
+  ['Hugging Face token', `h${'f_'}${r('F', 34)}`, `h${'f_'}${r('F', 10)}`],
+  ['JWT', `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: '42' })}.${r('s', 43)}`, `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: '42' })}`],
+  ['private key', `-----BEGIN ${'RSA PRIVATE'} KEY-----`, '-----BEGIN PUBLIC KEY-----'],
+  ['private key', `-----BEGIN ${'PRIVATE'} KEY-----`, '-----BEGIN CERTIFICATE-----'],
+  ['home folder path', `/${'Users'}/someone/notes.txt`, 'GET /users/42'],
+  ['claude.ai session ID', `ses${'sion_'}${r('G', 24)}`, `ses${'sion_'}id`],
+  ['e-mail address', `someone${'@'}mailhost.invalid`, 'name@example.com'],
+];
+
+test('each kind of private data is reported for its own shape, and a near miss is not reported', () => {
+  assert.deepEqual([...new Set(KINDS.map(([k]) => k))].sort(), PRIVATE_PATTERNS.map(([k]) => k).sort(), 'a row for each kind the scan knows');
+  for (const [kind, hit, miss] of KINDS) {
+    assert.deepEqual(scanText(`text ${hit} text`), [`line 1: ${kind}`], `${kind}: ${hit.slice(0, 12)}`);
+    assert.deepEqual(scanText(`text ${miss} text`), [], `${kind} near miss: ${miss.slice(0, 12)}`);
+  }
+});
+
+test('only the reserved example domains are allowed, as whole domains', () => {
+  for (const ok of ['name@example.com', 'name@sub.example.org', 'NAME@EXAMPLE.NET']) assert.deepEqual(scanText(ok), [], ok);
+  // Look-alikes of those domains, the address built at run time like the keys above.
+  for (const domain of ['example.com.attacker.invalid', 'notexample.com', 'example.community']) {
+    assert.deepEqual(scanText(`name${'@'}${domain}`), ['line 1: e-mail address'], domain);
+  }
+});
+
+test('a sanitized row keeps only the conversation\'s keys', () => {
+  const raw = JSON.stringify({
+    type: 'user', uuid: 'u1', parentUuid: null, sessionId: SID, cwd: MAC.cwd, gitBranch: 'someone/feature', slug: 'gallant-thompson',
+    requestId: 'req_1', version: '2.1.319', userType: 'external', isSidechain: false, timestamp: '2026-11-09T00:00:00.000Z',
+    message: { role: 'user', content: 'hello' },
+  });
+  assert.deepEqual(Object.keys(JSON.parse(run(raw))).sort(), ['cwd', 'isSidechain', 'message', 'parentUuid', 'sessionId', 'timestamp', 'type', 'userType', 'uuid', 'version']);
 });
 
 test('refuses an e-mail address, but not noreply@anthropic.com', () => {
