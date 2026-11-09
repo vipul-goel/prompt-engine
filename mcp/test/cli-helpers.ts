@@ -106,3 +106,44 @@ export function startUpload(port: number, host: string, contentLength: number | 
     );
   });
 }
+
+/**
+ * Like startUpload, but the client goes on sending after the answer arrives, as one still
+ * uploading its body does: once the response head is in, it writes 64 KB twice, 100 ms apart,
+ * then ends its side. Its socket is half-open (allowHalfOpen), so it can still write after the
+ * server has closed its side. Resolves once the connection closes, with the response head and
+ * the first error the socket saw: EPIPE or ECONNRESET means the server reset the connection.
+ */
+export function keepSending(
+  port: number,
+  host: string,
+  contentLength: number,
+  headers: Record<string, string> = {},
+): Promise<{ head: string; error: string | undefined }> {
+  return new Promise((resolve) => {
+    const sock = connect({ port, host: '127.0.0.1', allowHalfOpen: true });
+    let text = '';
+    let error: string | undefined;
+    let answered = false;
+    const timer = setTimeout(() => sock.destroy(), 5_000);
+    sock.on('data', (d) => {
+      text += d;
+      if (answered || !text.includes('\r\n\r\n')) return;
+      answered = true;
+      const piece = 'a'.repeat(64 * 1024);
+      setTimeout(() => sock.write(piece, () => {}), 100);
+      setTimeout(() => sock.write(piece, () => {}), 200);
+      setTimeout(() => sock.end(), 300);
+    });
+    sock.on('error', (e: NodeJS.ErrnoException) => (error ??= e.code ?? e.message));
+    sock.on('close', () => {
+      clearTimeout(timer);
+      resolve({ head: text.slice(0, Math.max(0, text.indexOf('\r\n\r\n'))), error });
+    });
+    const extra = Object.entries(headers).map(([name, value]) => `${name}: ${value}\r\n`).join('');
+    sock.write(
+      `POST /mcp HTTP/1.1\r\nHost: ${host}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
+        `MCP-Protocol-Version: 2025-11-25\r\n${extra}Content-Length: ${contentLength}\r\n\r\n${'a'.repeat(1024)}`,
+    );
+  });
+}

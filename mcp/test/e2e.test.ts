@@ -4,13 +4,14 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { IncomingHttpHeaders } from 'node:http';
+import { connect } from 'node:net';
 import { join } from 'node:path';
 import { Client, StreamableHTTPClientTransport, type ElicitResult } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PROMPT_MAX_CHARS } from '../src/check.js';
 import { VERSION } from '../src/generated/content.js';
-import { CLI, ENV, send, sleep, startHttp, startUpload, waitFor } from './cli-helpers.js';
+import { CLI, ENV, keepSending, send, sleep, startHttp, startUpload, TOOLS_LIST, waitFor } from './cli-helpers.js';
 import { PKG, SAMPLE_QUESTIONS, textOf } from './helpers.js';
 
 const TOOLS = ['ask_user', 'check_prompt', 'enhance_prompt', 'get_checklist'];
@@ -269,12 +270,55 @@ describe('Streamable HTTP (--http)', () => {
     // Without these the server waits for the whole body (up to 4 MiB) first.
     const foreign = await startUpload(server.port, 'evil.example.com', 4_000_000);
     expect(foreign).toMatch(/^HTTP\/1\.1 403 /);
-    // It closes the connection rather than read the rest of the body.
+    // The answer closes the connection, which tells the client to stop sending.
     expect(foreign).toMatch(/^connection: close$/im);
     const foreignOrigin = await startUpload(server.port, `127.0.0.1:${server.port}`, 1_400_000, { Origin: 'https://evil.example' });
     expect(foreignOrigin).toMatch(/^HTTP\/1\.1 403 /);
     expect(foreignOrigin).toMatch(/^connection: close$/im);
     expect(await startUpload(server.port, `127.0.0.1:${server.port}`, 1_600_000)).toMatch(/^HTTP\/1\.1 413 /);
+  });
+
+  it('lets a client still sending its body read the refusal, without resetting the connection', async () => {
+    // Node closes a socket as soon as it has written an answer with Connection: close. What the
+    // client sent next then got a TCP reset, which could reach it before it had read the answer.
+    const local = `127.0.0.1:${server.port}`;
+    for (const [status, host, headers] of [
+      [403, 'evil.example.com', {}],
+      [403, local, { Origin: 'https://evil.example' }],
+      [413, local, {}],
+    ] as const) {
+      const { head, error } = await keepSending(server.port, host, 3_000_000, headers);
+      expect(head, `${status} ${host}`).toMatch(new RegExp(`^HTTP/1\\.1 ${status} `));
+      expect(error, `${status} ${host}`).toBeUndefined();
+    }
+  });
+
+  it('closes the connection at once when the client sends another request after the refusal', async () => {
+    // The server has closed its side, so that request couldn't be answered. Serving it would
+    // keep it in flight, holding a request slot, for as long as the client goes on sending.
+    const sock = connect({ port: server.port, host: '127.0.0.1', allowHalfOpen: true });
+    let text = '';
+    let error: string | undefined;
+    sock.on('data', (d) => (text += d));
+    sock.on('error', (e: NodeJS.ErrnoException) => (error ??= e.code ?? e.message));
+    const post = (host: string) =>
+      `POST /mcp HTTP/1.1\r\nHost: ${host}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
+      `MCP-Protocol-Version: 2025-11-25\r\nContent-Length: ${Buffer.byteLength(TOOLS_LIST)}\r\n\r\n${TOOLS_LIST}`;
+    try {
+      sock.write(post('evil.example.com'));
+      await waitFor(() => text.includes('\r\n\r\n'), () => text, 5_000);
+      sock.write(post(`127.0.0.1:${server.port}`));
+      // Then a third request, a line at a time: a connection still open would read these and wait.
+      for (const line of ['POST /mcp HTTP/1.1\r\n', 'X-A: 1\r\n', 'X-B: 1\r\n', 'X-C: 1\r\n']) {
+        await sleep(300);
+        if (!sock.destroyed) sock.write(line);
+      }
+      await sleep(300);
+      expect(text.match(/^HTTP\/1\.1 \d+/gm)).toEqual(['HTTP/1.1 403']);
+      expect(error).toMatch(/^(EPIPE|ECONNRESET)$/);
+    } finally {
+      sock.destroy();
+    }
   });
 
   it('serves the largest valid request', async () => {

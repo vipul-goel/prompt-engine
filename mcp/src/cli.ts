@@ -5,7 +5,7 @@
 // request (see log.ts).
 
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import type { Socket } from 'node:net';
+import { Socket } from 'node:net';
 import { parseArgs } from 'node:util';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import {
@@ -61,6 +61,17 @@ const STALL_LIMIT_MS = 15_000;
 // other client. A network deployment needs a proxy that limits connections
 // per client.
 const MAX_CONNECTIONS = 1024;
+// Once it has written an answer with Connection: close (the refusals below, the MCP SDK's 413
+// or an answer to a client that asked to close), Node closes the socket at once. Bytes that a
+// client still sending its body sends after that reach a closed socket, which answers with a
+// TCP reset, and a client that gets the reset before it has read the answer sees ECONNRESET or
+// EPIPE instead. So such a connection is closed in stages, as RFC 9112, section 9.6, describes:
+// the server closes its side, keeps reading and discarding what the client sends, and closes
+// the connection once the client closes its side or has sent nothing for LINGER_MS. A body
+// still arriving is cut off by the request timeout, and a request sent after the answer closes
+// the connection at once. After the SDK's 413 for a chunked body, Node has stopped reading the
+// socket, so that connection is closed LINGER_MS after the answer.
+const LINGER_MS = 2_000;
 // The methods the SDK answers itself: POST, and 405 for GET, DELETE and
 // OPTIONS. Any other gets 405 here, since the SDK's fetch Request throws for
 // some of them, such as TRACE.
@@ -166,6 +177,19 @@ function declaredBodyBytes(req: IncomingMessage): number {
   return Number.isFinite(bytes) && bytes >= 0 ? Math.min(bytes, MAX_BODY_BYTES) : MAX_BODY_BYTES;
 }
 
+/**
+ * Stands in for socket.destroySoon(), which Node's HTTP server calls on a connection once it
+ * has written an answer with Connection: close. See LINGER_MS.
+ */
+function closeInStages(this: Socket): void {
+  if (!this.readable) {
+    Socket.prototype.destroySoon.call(this);
+    return;
+  }
+  if (this.writable) this.end();
+  this.setTimeout(LINGER_MS, () => this.destroy());
+}
+
 function serveOverHttp(host: string, port: number, allowedHosts: string[]): void {
   const onerror = (error: Error) => log(describeError(error));
   // On the 2025-era leg, the SDK reports its transport's errors to the per-request server, not
@@ -209,14 +233,20 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
   // checked every 5 s (Node's default is every 30 s).
   const timeouts = { headersTimeout: 10_000, requestTimeout: 30_000, connectionsCheckingInterval: 5_000 };
   const httpServer = createHttpServer(timeouts, (req, res) => {
+    // A request sent after an answer that closed the connection (see LINGER_MS) can't be
+    // answered, so it isn't served: that would keep it in flight, holding a slot.
+    if (!req.socket.writable) {
+      req.socket.destroy();
+      return;
+    }
     const path = (req.url ?? '/').split('?')[0];
     if (path !== MCP_PATH) {
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: `Not found. The MCP endpoint is ${MCP_PATH}.` }));
       return;
     }
-    // Answered in the SDK guard's format, without a log line, and the
-    // connection is closed rather than the rest of the body read.
+    // Answered in the SDK guard's format, without a log line, before the body
+    // is read. The answer closes the connection (see LINGER_MS).
     const bytes = declaredBodyBytes(req);
     const busy = inFlight.size >= MAX_REQUESTS || inFlightBytes + bytes > BODY_BUDGET_BYTES;
     const refused = refusal(req, allowedHosts) ?? (busy ? { status: 503, message: 'Server busy. Try again shortly.' } : undefined);
@@ -236,6 +266,9 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
     void nodeHandler(req, res);
   });
   httpServer.maxConnections = MAX_CONNECTIONS;
+  httpServer.on('connection', (socket: Socket) => {
+    socket.destroySoon = closeInStages;
+  });
   httpServer.on('error', (error) => {
     log(`cannot listen on ${host}:${port}: ${describeError(error)}`);
     process.exit(1);

@@ -4,7 +4,7 @@
 
 import { connect, type Socket } from 'node:net';
 import { describe, it } from 'vitest';
-import { ENV, send, sleep, startHttp, startUpload, TOOLS_LIST } from './cli-helpers.js';
+import { ENV, keepSending, send, sleep, startHttp, startUpload, TOOLS_LIST, waitFor } from './cli-helpers.js';
 
 /** Opens a TCP connection to the server that sends nothing; resolves once it's connected. */
 function openIdle(port: number, sockets: Socket[]): Promise<Socket> {
@@ -130,6 +130,8 @@ describe.concurrent('--http limits', () => {
       expect(await startUpload(server.port, hostname, 1_500_000)).toMatch(/^HTTP\/1\.1 503 [^]*\r\nretry-after: 1\r\n/i);
       expect(await startUpload(server.port, hostname, 1_000_000)).toMatch(/^HTTP\/1\.1 503 /);
       expect(await startUpload(server.port, hostname, 'chunked')).toMatch(/^HTTP\/1\.1 503 /);
+      // A client still sending its body reads the 503, rather than a reset connection.
+      expect(await keepSending(server.port, hostname, 1_000_000)).toEqual({ head: expect.stringMatching(/^HTTP\/1\.1 503 /), error: undefined });
       expect((await send(server.port, { host: hostname })).status).toBe(200);
       await sleep(100);
       expect(waiting()).toBe(0);
@@ -142,6 +144,39 @@ describe.concurrent('--http limits', () => {
       expect(waiting()).toBe(0);
     } finally {
       for (const { sock } of held) sock.destroy();
+      server.proc.kill('SIGTERM');
+    }
+  });
+
+  it('reads and discards a refused body while the client sends it, and closes the connection after 2 s without data', async ({ expect }) => {
+    const server = await startHttp();
+    const sock = connect({ port: server.port, host: '127.0.0.1', allowHalfOpen: true });
+    let text = '';
+    let error: string | undefined;
+    sock.on('data', (d) => (text += d));
+    sock.on('error', (e: NodeJS.ErrnoException) => (error ??= e.code ?? e.message));
+    const kilobyte = 'a'.repeat(1024);
+    try {
+      // A foreign Host, with most of the body it announces still to come.
+      sock.write(`POST /mcp HTTP/1.1\r\nHost: evil.example.com\r\nContent-Type: application/json\r\nContent-Length: 3000000\r\n\r\n${kilobyte}`);
+      await waitFor(() => text.includes('\r\n\r\n'), () => text, 5_000);
+      expect(text).toMatch(/^HTTP\/1\.1 403 /);
+      // A kilobyte a second keeps the connection open.
+      for (let i = 0; i < 4; i++) {
+        await sleep(1_000);
+        sock.write(kilobyte);
+      }
+      await sleep(200);
+      expect(error).toBeUndefined();
+      // After 2 s without data the server closes it, so what the client sends later gets a reset.
+      await sleep(4_000);
+      for (let i = 0; i < 2; i++) {
+        sock.write(kilobyte);
+        await sleep(300);
+      }
+      expect(error).toMatch(/^(EPIPE|ECONNRESET)$/);
+    } finally {
+      sock.destroy();
       server.proc.kill('SIGTERM');
     }
   });
@@ -163,12 +198,12 @@ describe.concurrent('--http limits', () => {
       server.proc.on('exit', (code, signal) => resolve(`server exited (${code ?? signal}): ${/FATAL ERROR[^\n]*/.exec(server.stderr())?.[0] ?? ''}`)),
     );
     try {
-      // A refused upload gets 503 and its connection is closed before the body is read, so a
-      // client still sending may see the connection reset instead: 'reset' here.
+      // A refused upload gets 503 before its body is read, and reads it while still sending the
+      // body: 'reset' here would mean the server reset the connection instead.
       const all = Promise.all(Array.from({ length: 32 }, () => send(server.port, host, { body }).then((r) => r.status, () => 'reset')));
       expect(await Promise.race([all.then(() => 'all answered'), exited])).toBe('all answered');
       const statuses = await all;
-      expect(statuses.filter((s) => s !== 200 && s !== 503 && s !== 'reset'), statuses.join()).toEqual([]);
+      expect(statuses.filter((s) => s !== 200 && s !== 503), statuses.join()).toEqual([]);
       expect(statuses, statuses.join()).toContain(200);
       expect(statuses.filter((s) => s !== 200).length, statuses.join()).toBeGreaterThan(0);
       await sleep(200);
