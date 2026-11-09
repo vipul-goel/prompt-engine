@@ -312,6 +312,11 @@ function readResult(uri: URL, body: string) {
 export interface CreateServerOptions {
   /** JSON Schema validator for elicitation results; defaults to the SDK's runtime pick (Ajv on Node). */
   jsonSchemaValidator?: jsonSchemaValidator;
+  /**
+   * Receives the errors this instance and its transport report. The HTTP entry's 2025-era leg
+   * reports its transport's errors only here, so without it they are dropped.
+   */
+  onerror?: ((error: Error) => void) | undefined;
 }
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
@@ -342,6 +347,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       ...(options.jsonSchemaValidator ? { jsonSchemaValidator: options.jsonSchemaValidator } : {}),
     },
   );
+  if (options.onerror) server.server.onerror = options.onerror;
 
   server.registerTool(
     'enhance_prompt',

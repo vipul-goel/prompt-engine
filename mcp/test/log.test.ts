@@ -47,6 +47,23 @@ describe('describeError', () => {
     ).toBe('ignored a notification (invalid-envelope)');
   });
 
+  it("logs the SDK's messages that quote a header, a request id or a message as a fixed phrase", () => {
+    // The 2025-era HTTP transport's and the protocol layer's messages, with request text in them.
+    const cases: Array<[string, string]> = [
+      ['Bad Request: Unsupported protocol version: LEAK-1 (supported versions: 2025-11-25)', 'rejected a request (unsupported-protocol-version)'],
+      ['Not Acceptable: Client must accept both application/json and text/event-stream', 'rejected a request (not-acceptable)'],
+      ['Invalid Request: Batch must not exceed 100 messages', 'rejected a request (batch-too-large)'],
+      ['Invalid Request: Only one initialization request is allowed', 'rejected a request (invalid-request)'],
+      ['Response for request ID LEAK-2 is undeliverable: per-request stream is disconnected and no eventStore is configured', 'dropped a response (client-disconnected)'],
+      ['No connection established for request ID: LEAK-3', 'dropped a response (client-disconnected)'],
+      ['Received a response for an unknown message ID: {"jsonrpc":"2.0","id":987654321,"result":{"LEAK":987654321}}', 'ignored a response (unknown-request-id)'],
+      ['Received a response for an unknown request id: LEAK-4', 'ignored a response (unknown-request-id)'],
+      ['Received a progress notification for an unknown token: {"method":"notifications/progress","params":{"progressToken":987654321}}', 'ignored a notification (unknown-progress-token)'],
+      ['Unknown message type: {"LEAK":987654321}', 'ignored a message that is not valid JSON-RPC (invalid-message)'],
+    ];
+    for (const [message, line] of cases) expect(describeError(new Error(message)), message).toBe(line);
+  });
+
   it("logs fetch's refusal of a URL built from a bad Host header without the URL", () => {
     expect(describeError(new TypeError('Failed to parse URL from http://LEAK-1 LEAK-2/mcp?api_key=LEAK-3'))).toBe('rejected a request (invalid-host-header)');
     expect(describeError(new TypeError('Request cannot be constructed from a URL that includes credentials: http://LEAK-4:LEAK-5@127.0.0.1/mcp'))).toBe(

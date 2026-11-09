@@ -316,6 +316,37 @@ describe('Streamable HTTP (--http)', () => {
     expect(modern.body).toContain('batches may not contain requests for protocol revision 2026-07-28');
   });
 
+  it("logs the errors the SDK's 2025-era transport reports, as one line each, without the request", async () => {
+    const host = `127.0.0.1:${base.port}`;
+    const logged = async (headers: Record<string, string>, body: string) => {
+      const before = server.stderr().length;
+      const res = await raw('/mcp', { host, ...headers }, body);
+      await sleep(200);
+      return { res, line: server.stderr().slice(before) };
+    };
+    // A URI over the SDK's 1,000,000-character limit fails before the resource handler runs:
+    // the SDK answers 500, without the request's id, and reports the error to the server.
+    const prefix = 'prompt-engine://checklists/';
+    const uri = `${prefix}${'LEAK'.repeat(250_001)}`.slice(0, 1_000_001);
+    const long = await logged({}, JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'resources/read', params: { uri } }));
+    expect(long.res.status).toBe(500);
+    expect(JSON.parse(long.res.body)).toEqual({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null });
+    expect(long.line).toBe('[prompt-engine-mcp] Error: URI exceeds maximum length of 1000000 characters (got 1000001)\n');
+    // The SDK's messages for these quote a header value, a request id or the message as JSON.
+    const ping = JSON.stringify({ jsonrpc: '2.0', id: 'LEAK-1', method: 'ping' });
+    for (const [headers, body, line] of [
+      [{ 'mcp-protocol-version': '1999-01-01' }, ping, 'rejected a request (unsupported-protocol-version)'],
+      [{ accept: 'application/json' }, ping, 'rejected a request (not-acceptable)'],
+      [{}, JSON.stringify(Array.from({ length: 101 }, (_, i) => ({ jsonrpc: '2.0', id: `LEAK-${i}`, method: 'ping' }))), 'rejected a request (batch-too-large)'],
+      [{}, JSON.stringify({ jsonrpc: '2.0', id: 987654321, result: { LEAK: 987654321 } }), 'ignored a response (unknown-request-id)'],
+      [{}, JSON.stringify({ jsonrpc: '2.0', method: 'notifications/progress', params: { progressToken: 'LEAK-2', progress: 987654321 } }), 'ignored a notification (unknown-progress-token)'],
+    ] as const) {
+      const { res, line: got } = await logged(headers, body);
+      expect(res.status, line).toBeGreaterThanOrEqual(200);
+      expect(got, line).toBe(`[prompt-engine-mcp] ${line}\n`);
+    }
+  });
+
   it('answers other methods, such as TRACE, with 405 and logs nothing', async () => {
     const before = server.stderr().length;
     const res = await send(server.port, { host: `127.0.0.1:${server.port}` }, { method: 'TRACE', body: '' });

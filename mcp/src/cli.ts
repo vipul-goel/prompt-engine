@@ -139,7 +139,14 @@ function refusal(req: IncomingMessage, allowedHosts: string[]): { status: number
 
 function serveOverHttp(host: string, port: number, allowedHosts: string[]): void {
   const onerror = (error: Error) => log(describeError(error));
-  const mcp = createMcpHandler(() => createServer(), { onerror, maxRequestBodySize: MAX_BODY_BYTES });
+  // On the 2025-era leg, the SDK reports its transport's errors to the per-request server, not
+  // to the handler's onerror: a resources/read URI over its 1,000,000-character limit, which it
+  // answers 500, or a batch of more than 100 messages. A body that isn't JSON is reported there
+  // too; like a stdio line that isn't JSON, it isn't logged.
+  const serverOnerror = (error: Error) => {
+    if (!(error instanceof SyntaxError)) onerror(error);
+  };
+  const mcp = createMcpHandler(() => createServer({ onerror: serverOnerror }), { onerror, maxRequestBodySize: MAX_BODY_BYTES });
   // createMcpHandler validates neither Host nor Origin. The request listener
   // checks both (DNS rebinding protection), and so does this, in case a
   // request ever reaches the handler another way. A request without an Origin
