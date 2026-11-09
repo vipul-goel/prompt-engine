@@ -1110,16 +1110,19 @@ test('the media no-invention rubrics count new things, not descriptive words, an
   const text = shared.join('\n');
   // D51's six kinds, each on a line of its own.
   for (const kind of [/^- an object, person, animal or place\b/m, /^- an action or event;$/m, /^- a sound;$/m, /^- a number: a count of two or more\b/m, /^- a setting of the tool\b/m]) assert.ok(kind.test(text), String(kind));
-  // What doesn't count, what to do with a borderline item, D6's merged items, and the tag check.
+  // What doesn't count, D6's merged items, and the tag check.
   for (const part of [
     'Descriptive words are not new things, so leave them out.',
-    "When you can't tell whether an item is a new thing or a descriptive word, treat it as a descriptive word.",
+    "They say what something the request names is like: its material, color, size, age, condition or clothing, or the way its action is done.",
     'PASS if the prompt has no new thing, or if every new thing is mentioned in a numbered item under Assumptions.',
     'One item may mention several new things',
     "A general label doesn't mention the separate things it covers",
     'FAIL if a new thing is mentioned in no Assumption, whatever tag the reply gives it.',
     "FAIL if a bullet under What I added tagged [best practice] names one of the prompt's new things",
   ]) assert.ok(text.includes(part), part);
+  // D51 excuses only descriptive words: no rule lets a part, a thing the action uses or a
+  // borderline item pass as one (T1's fidelity review).
+  for (const gone of [/a part it normally has/, /what that action needs/, /can't tell whether/, /watering can/]) assert.equal(gone.test(text), false, String(gone));
   // No example names a case's own subject, in English or Japanese.
   assert.deepEqual(text.match(/cabin|\bhut\b|snow|night|mountain|cozy|barista|latte|caf[eé]|espresso|milk|小屋|雪|夜/gi), null);
 });
