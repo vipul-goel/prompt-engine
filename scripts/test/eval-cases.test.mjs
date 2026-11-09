@@ -608,7 +608,7 @@ test('checkSuiteRules counts only a regex grader as a tools-granted check', () =
 
 test('checkSuiteRules wants an llm no-invention grader in every output case, the cases build.mjs lints', () => {
   const JUDGE = '---\ntype: llm\n---\n\nPASS if nothing is invented.\n';
-  const NEED = (name) => `evals/${name}: an output case (LINT_GRADER_CASES in scripts/build.mjs) needs an llm grader named <n>-no-invention.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption (repo rule)`;
+  const NEED = (name) => `evals/${name}: an output case (LINT_GRADER_CASES in scripts/build.mjs) needs an llm grader named <n>-no-invention.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption, or, in an image or video case, that every new thing the user didn't give is in an assumption (repo rule)`;
   const output = (name, graders) => ({ [`evals/${name}/prompt.md`]: promptMd(), ...Object.fromEntries(Object.entries(graders).map(([f, t]) => [`evals/${name}/graders/${f}`, t])) });
   const { schema, errors } = rules({
     ...output('spanish-quick', { '01-x.md': REGEX, '02-no-invention.md': JUDGE }), // has one

@@ -553,7 +553,7 @@ const ROWS = [
   }, ['09-recommended', '10-accepted'].map((n) => new RegExp(`^error: evals/followup-ok-accepts-recommendations/graders/${n}\\.md: judges the answers to the question round the recording ends in, but quotes none of its options; quote each answer it checks word for word, in double quotes \\(repo rule\\)$`, 'm'))],
   // Every output case, the cases build.mjs writes lint graders for, has a no-invention judge (finding 49, D30).
   ['rejects an output case without a no-invention judge', (d) => rmSync(join(d, `${VEO}/07-no-invention.md`)),
-    /^error: evals\/video-veo-quick: an output case \(LINT_GRADER_CASES in scripts\/build\.mjs\) needs an llm grader named <n>-no-invention\.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption \(repo rule\)\n\n1 error\(s\)$/m],
+    /^error: evals\/video-veo-quick: an output case \(LINT_GRADER_CASES in scripts\/build\.mjs\) needs an llm grader named <n>-no-invention\.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption, or, in an image or video case, that every new thing the user didn't give is in an assumption \(repo rule\)\n\n1 error\(s\)$/m],
   // The request text a rubric quotes, in <original_prompt> tags or after "The user's whole
   // request", is the case's own, word for word (finding 50). A gloss outside the quotes doesn't count.
   ['rejects a rubric that misquotes the request', (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
