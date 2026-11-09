@@ -10,7 +10,9 @@
 # with #. That condition and Refine sit in lookaheads, which the engine doesn't backtrack into,
 # to keep the match fast. The option prefix
 # (^|\s)(\d[.)]|[-*•])[ \t]*\** and the open-placeholder condition are shared with the image and
-# video 05 graders and scripts/eval/universal-test.mjs.
+# video 05 graders and scripts/eval/universal-test.mjs. D46 also leaves out the placeholder of
+# another person's private detail that the method removed. This request holds none, so the
+# condition doesn't model it; private-detail-redaction-quick's 08 does.
 type: regex
 pattern: '^(?!(?=[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\])[\s\S]*What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**(Run it now|Try it here)\**[ \t]*★)[\s\S]*?What next\?(?=[\s\S]*Refine)[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**(Run it now|Fill (in )?(the )?placeholders|Try it here)\**[ \t]*★'
 flags: i

@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: japanese-midjourney-quick
 expected_outcome: |
-  Talks to the user in Japanese, with the section headings, score rows, caveat line, What next? menu and reply keywords in Japanese too (D3); the Midjourney prompt stays in Japanese (quick mode) and is listed as an assumption the user can change; parameters at the end; the What next? menu offers Done ★ (Fill placeholders ★ while a placeholder other than a secret is open), not Run it now.
+  Talks to the user in Japanese, with the section headings, score rows, caveat line and What next? menu in Japanese too (D3); the reply keywords deep and change N may be translated or left in English (K3); the Midjourney prompt stays in Japanese (quick mode) and is listed as an assumption the user can change; parameters at the end; the What next? menu offers Done ★ (Fill placeholders ★ while a placeholder other than a secret is open), not Run it now.
