@@ -56,7 +56,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 **Short version.** At most about 120 words: the goal with its purpose, the 3–5 requirements that matter most, hard constraints and the output format. It carries the same assumptions as the full version. If the full prompt embeds long inputs, the short version may point to them ("the notes below") rather than repeating them, and the note under it says to paste them after it.
 
-**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable); for another person's private detail you removed, tell the user to fill it in where they use the prompt. Never ask for or repeat the value of either.
+**Fill before running.** Include it only when the prompt still contains `[[placeholders]]`. List each placeholder once with a few words on what goes there. For a secret, say where to set it (such as an environment variable); for another person's private detail you removed, tell the user to fill it in where they use the prompt, or in the result if the prompt runs here. Never ask for or repeat the value of either.
 
 **What I added & why.** At most 6 bullets, one line each (about 20 words), most important first. If more qualify, merge related ones, such as two answers, into one bullet; an answer never moves to Assumptions to make room. Tag every bullet:
 - **[you]** — something the user said, restated or made precise;
