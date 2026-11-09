@@ -441,13 +441,13 @@ Coding agents take instructions literally and act on them, so these five items p
 
 ### Example
 
-Rough prompt: "add login to my app"
+Rough prompt: "add search to my recipe site"
 
-What changes after questions (React + Express repo detected from `package.json`; answers: email + password, keep the existing user table):
-- **Goal:** add email-and-password login to the existing React and Express app, so users can access their saved projects.
-- **Where:** `server/routes/` and `client/src/pages/`; reuse the existing `users` table, because migrating user data is out of scope.
-- **Done when:** a user can register, log in and log out; protected routes return 401 without a session; existing tests and the new auth tests pass (`npm test`).
-- **Risky actions:** ask before adding dependencies other than a password-hashing library; never log passwords or tokens.
+What changes after questions (Rails app detected from the `Gemfile`; answers: search titles and ingredients, no separate search service):
+- **Goal:** add a search box to the existing Rails recipe site, so visitors can find recipes by title or ingredient.
+- **Where:** `app/controllers/recipes_controller.rb` and `app/views/recipes/`; query the existing database, because a separate search service is out of scope.
+- **Done when:** a search lists the recipes whose title or ingredients match; a search with no match says so; existing tests and the new search tests pass (`bin/rails test`).
+- **Risky actions:** ask before adding a gem or changing the database schema; never put the search text straight into SQL.
 - **Report:** files changed, commands run with their output, and anything not verified.
 
 ---
