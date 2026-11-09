@@ -209,6 +209,22 @@ test('no run: script holds a ${{ }} expression; values reach scripts through env
   }
 });
 
+// A tag such as actions/checkout@v7 is moved by the action's publisher with each release, so what
+// runs with the release's OIDC token or write permission could change with no commit here.
+test('every action is pinned to a full commit SHA, with its version in a comment, the same in every workflow', () => {
+  const pins = new Map();
+  for (const f of FILES) {
+    for (const line of read(`.github/workflows/${f}`).split('\n').filter((l) => /^ *(?:- )?uses:/.test(l))) {
+      const m = /^ *(?:- )?uses: ([\w.-]+\/[\w.-]+)@([0-9a-f]{40}) # (v\d+\.\d+\.\d+)$/.exec(line);
+      assert.ok(m, `${f}: "${line.trim()}" isn't written as owner/repo@<full commit SHA> # vX.Y.Z`);
+      const pin = `${m[2]} # ${m[3]}`;
+      assert.equal(pins.get(m[1]) ?? pin, pin, `${m[1]} is pinned to one commit in every workflow`);
+      pins.set(m[1], pin);
+    }
+  }
+  assert.deepEqual([...pins.keys()].sort(), ['actions/checkout', 'actions/download-artifact', 'actions/setup-node', 'actions/upload-artifact']);
+});
+
 test('release.yml runs only for a pushed v* tag, and with no secrets (D15)', () => {
   assert.deepEqual(release.on, { push: { tags: ['v*'] } });
   assert.doesNotMatch(releaseText, /secrets\.|NODE_AUTH_TOKEN|NPM_TOKEN/, 'npm and the MCP Registry log in with GitHub OIDC');

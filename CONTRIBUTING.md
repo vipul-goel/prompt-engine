@@ -26,8 +26,6 @@ One method ships in four formats, so most changes start in one place and flow ou
 
 Run these before opening a pull request. CI runs them too, with the script checks on both Linux and Windows. It also builds the skill zip, runs `claude plugin validate` with `--profile directory` added, and lints the workflow files with [actionlint](https://github.com/rhysd/actionlint) and shellcheck.
 
-If you change a file in `.github/workflows/`, also run `actionlint` on it. One of the script tests, `scripts/test/workflows.test.mjs`, checks the safeguards the workflows keep, such as each release job's permissions, the checksum check of each downloaded tool and the eval workflow's input checks; update it with the workflow when a change is deliberate.
-
 ```bash
 node scripts/build.mjs --check && node scripts/validate.mjs && node --test scripts/test/*.test.mjs
 ```
@@ -48,6 +46,10 @@ The validator explains each failure. The most common ones:
 - **Generated file is stale.** Run `node scripts/build.mjs`.
 - **Contract item missing.** Every heading, score dimension and marker in `data/contract.json` must appear in `SKILL.md`, `references/output-format.md` and the universal core. A heading counts only as a `##` to `####` heading followed by a colon or the end of its line, or as a **bold** label that starts a list item, so `### Score anchors` doesn't count as the `Score` heading. If you rename one, rename it everywhere.
 - **Budget exceeded.** `SKILL.md` has a size budget, and its key sections must start within the first 8,000 characters. That's because Claude Code keeps only the first 5,000 tokens of an invoked skill after it compacts a long conversation; 8,000 characters is a deliberately conservative proxy for that. Move detail into a reference file instead.
+
+If you change a file in `.github/workflows/`, also run `actionlint` on it. One of the script tests, `scripts/test/workflows.test.mjs`, checks the safeguards the workflows keep, such as each release job's permissions, the checksum check of each downloaded tool and the eval workflow's input checks; update it with the workflow when a change is deliberate.
+
+The workflows name each action by the full commit SHA of a release, with the version in a comment (`actions/checkout@<sha> # v7.0.1`), because the publisher moves a tag such as `v7` to each new release. To update an action, look up the commit of its new release tag (for example `git ls-remote --tags https://github.com/actions/checkout.git`) and change the SHA and the comment together, in every workflow that uses it. The tools the workflows download, actionlint in `ci.yml` and `mcp-publisher` in `release.yml`, are pinned the same way, by a version and the SHA-256 next to it: update both together.
 
 ## Writing guidelines for the method
 
