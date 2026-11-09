@@ -72,4 +72,15 @@ describe('worker entry', () => {
     const tooLarge = await worker.fetch(post('localhost', checkPrompt(JSON.stringify('a'.repeat(1_600_000)))), env);
     expect(tooLarge.status).toBe(413);
   });
+
+  it('takes JSON-RPC batches of up to 100 messages, as the CLI does', async () => {
+    const env = { ALLOWED_HOSTS: 'localhost' };
+    const pings = (n: number) => JSON.stringify(Array.from({ length: n }, (_, i) => ({ jsonrpc: '2.0', id: i + 1, method: 'ping' })));
+    const full = await worker.fetch(post('localhost', pings(100)), env);
+    expect(full.status).toBe(200);
+    expect((await full.text()).split('data: ').length - 1).toBe(100);
+    const over = await worker.fetch(post('localhost', pings(101)), env);
+    expect(over.status).toBe(400);
+    expect(await over.text()).toContain('Batch must not exceed 100 messages');
+  });
 });

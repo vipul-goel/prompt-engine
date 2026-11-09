@@ -4,13 +4,14 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { IncomingHttpHeaders } from 'node:http';
+import { join } from 'node:path';
 import { Client, StreamableHTTPClientTransport, type ElicitResult } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PROMPT_MAX_CHARS } from '../src/check.js';
 import { VERSION } from '../src/generated/content.js';
 import { CLI, ENV, send, sleep, startHttp, startUpload, waitFor } from './cli-helpers.js';
-import { SAMPLE_QUESTIONS, textOf } from './helpers.js';
+import { PKG, SAMPLE_QUESTIONS, textOf } from './helpers.js';
 
 const TOOLS = ['ask_user', 'check_prompt', 'enhance_prompt', 'get_checklist'];
 
@@ -287,6 +288,32 @@ describe('Streamable HTTP (--http)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toContain('"result"');
     expect(res.body).not.toContain('"isError":true');
+  });
+
+  it("takes JSON-RPC batches as the README's limits say: up to 100 messages, from 2025-era clients", async () => {
+    // These rules are the MCP SDK's, so an SDK update that changes them fails here.
+    const readme = readFileSync(join(PKG, 'README.md'), 'utf8');
+    const limits = readme.slice(readme.indexOf("The HTTP server's own limits:"), readme.indexOf('### Cloudflare Workers'));
+    const stated = Number(/batches of up to ([\d,]+) messages/.exec(limits)?.[1]?.replace(/,/g, ''));
+    expect(stated).toBeGreaterThan(1);
+    const host = `127.0.0.1:${base.port}`;
+    const ping = (id: number, meta?: object) => ({ jsonrpc: '2.0', id, method: 'ping', ...(meta ? { params: { _meta: meta } } : {}) });
+    const batch = (n: number) => JSON.stringify(Array.from({ length: n }, (_, i) => ping(i + 1)));
+    const full = await raw('/mcp', { host }, batch(stated));
+    expect(full.status).toBe(200);
+    expect(full.body.split('data: ').length - 1).toBe(stated);
+    const over = await raw('/mcp', { host }, batch(stated + 1));
+    expect(over.status).toBe(400);
+    expect(over.body).toContain(`Batch must not exceed ${stated} messages`);
+    expect(limits).toMatch(/a batch that holds a 2026-07-28 request, gets `400`/);
+    const envelope = {
+      'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+      'io.modelcontextprotocol/clientInfo': { name: 'e2e', version: '0' },
+      'io.modelcontextprotocol/clientCapabilities': {},
+    };
+    const modern = await raw('/mcp', { host, 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'ping' }, JSON.stringify([ping(1, envelope), ping(2, envelope)]));
+    expect(modern.status).toBe(400);
+    expect(modern.body).toContain('batches may not contain requests for protocol revision 2026-07-28');
   });
 
   it('answers other methods, such as TRACE, with 405 and logs nothing', async () => {

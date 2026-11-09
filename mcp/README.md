@@ -143,7 +143,8 @@ npx -y prompt-engine-mcp --http --host 0.0.0.0 --port 8080 --allowed-hosts mcp.e
 Connect a client with, for example, `claude mcp add --transport http prompt-engine http://127.0.0.1:8787/mcp`. The server has no authentication of its own, so put it behind your own proxy or access control before exposing it. Each request gets a fresh, stateless server. Clients on the 2026-07-28 protocol get question forms; 2025-era clients over HTTP get the questions as text.
 
 The HTTP server's own limits:
-- A body over 1,500,000 bytes gets `413`. The largest valid single call, a `check_prompt` draft of 100,000 characters each written as an escaped surrogate pair, is about 1.2 MB. The server also accepts JSON-RPC batches, and a batch is one body, so a batch over 1,500,000 bytes gets `413` even when each call in it is valid.
+- A body over 1,500,000 bytes gets `413`. The largest valid single call, a `check_prompt` draft of 100,000 characters each written as an escaped surrogate pair, is about 1.2 MB.
+- The MCP SDK takes JSON-RPC batches of up to 100 messages, from 2025-era clients: a longer batch, or a batch that holds a 2026-07-28 request, gets `400`. A batch is one body, so a batch over 1,500,000 bytes gets `413` even when each call in it is valid.
 - The headers must arrive within 10 seconds and the whole request within 30, or the server answers `408` and closes the connection. It checks every 5 seconds, so a stalled request can run up to 5 seconds past its limit.
 - At most 128 requests are handled at once. Past that, a request gets `503` with `Retry-After: 1` before its body is read.
 - At most 1,024 connections are open at once; more are closed straight away.
@@ -155,7 +156,7 @@ One client can still hold all 128 request slots with slow uploads, or all 1,024 
 
 `src/worker.ts` serves the same server statelessly on Cloudflare Workers, with the SDK's Workers JSON Schema validator. From this folder:
 
-1. Set `ALLOWED_HOSTS` in `wrangler.jsonc` (or in the dashboard) to the hostname clients will use, such as `prompt-engine-mcp.<your-subdomain>.workers.dev`. It is read like `--allowed-hosts` above. Requests for any other host get `403`. If the variable is unset, empty or blank, every request to `/mcp` gets `500` with a message that says it isn't set; if it names no usable hostname, the `500` message says that instead. Other paths get `404`. Request bodies are capped at 1,500,000 bytes, as in the CLI.
+1. Set `ALLOWED_HOSTS` in `wrangler.jsonc` (or in the dashboard) to the hostname clients will use, such as `prompt-engine-mcp.<your-subdomain>.workers.dev`. It is read like `--allowed-hosts` above. Requests for any other host get `403`. If the variable is unset, empty or blank, every request to `/mcp` gets `500` with a message that says it isn't set; if it names no usable hostname, the `500` message says that instead. Other paths get `404`. Request bodies are capped at 1,500,000 bytes, and JSON-RPC batches follow the same rules, as in the CLI.
 
    The Worker prints its warnings about entries when an isolate handles its first `/mcp` request. `wrangler dev` shows them in its terminal (checked with Wrangler 4.155.0). `wrangler.jsonc` turns stored Workers Logs off (`"observability": { "enabled": false }`), so on a deployed Worker, look for them in a live `npx wrangler tail` or the dashboard's real-time logs, open when the isolate starts. Where else a deployed Worker's warnings can be seen hasn't been checked.
 2. Deploy with `npx wrangler@4.155.0 deploy` (Wrangler needs Node.js 22 or later).
