@@ -241,6 +241,15 @@ test('release.yml grants nothing to the whole workflow, and to each job only wha
   });
 });
 
+test('release.yml: the jobs that can request an OIDC token run in the release environment, which only v* tags may use', () => {
+  // npm's trusted publisher matches the owner, repository, workflow file and environment, and the
+  // MCP Registry only the owner: neither looks at the branch or tag. The environment's tag rule
+  // (set in the repository's settings, docs/publishing.md) is what ties publishing to v* tags.
+  const oidc = jobs(release).filter(([, j]) => j.permissions?.['id-token'] === 'write').map(([name]) => name);
+  assert.deepEqual(oidc, ['npm', 'registry']);
+  for (const name of oidc) assert.equal(release.jobs[name].environment, 'release', `job ${name}`);
+});
+
 test('release.yml: every checkout drops the token it was given (finding 27)', () => {
   const checkouts = steps(release).filter((s) => uses(s, 'actions/checkout'));
   assert.ok(checkouts.length > 0);
