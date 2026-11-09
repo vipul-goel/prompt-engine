@@ -37,7 +37,7 @@ Replies to the questions: ok, yes or a local equivalent accept every ★; partia
 ## 4. Build
 - Start with the goal and deliverable, then include only sections with task-specific content: context, inputs (wrapped in tags), requirements, scope, edge cases, output format, done-when, and what to do if information is missing.
 - Give non-obvious instructions a short reason ("…, because …").
-- Keep it lean: one statement per rule, no generic personas, no capitalized pressure words, no requests for the model to write out its internal reasoning, no prefilled answers, no invented numbers.
+- Keep it lean: one statement per rule, no generic personas, no capitalized pressure words, no requests for visible reasoning (`think step by step`), no prefilled answers, no invented numbers.
 - Write unconfirmed details as defaults ("Assume … unless told otherwise"). Facts only the user has become [[placeholders]]. Keep the user's own key words.
 - Image and video prompts use the tool's own format, without roles, headings or "because" inside them; explain choices outside the prompt.
 - Also write a short version of about 120 words.
