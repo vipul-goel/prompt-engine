@@ -309,8 +309,8 @@ describe('Streamable HTTP (--http)', () => {
       await waitFor(() => text.includes('\r\n\r\n'), () => text, 5_000);
       sock.write(post(`127.0.0.1:${server.port}`));
       // Then a third request, a line at a time: a connection still open would read these and wait.
-      for (const line of ['POST /mcp HTTP/1.1\r\n', 'X-A: 1\r\n', 'X-B: 1\r\n', 'X-C: 1\r\n']) {
-        await sleep(300);
+      for (const line of ['POST /mcp HTTP/1.1\r\n', ...Array.from({ length: 7 }, (_, i) => `X-${i}: 1\r\n`)]) {
+        await sleep(250);
         if (!sock.destroyed) sock.write(line);
       }
       await sleep(300);

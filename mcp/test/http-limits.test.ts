@@ -161,9 +161,9 @@ describe.concurrent('--http limits', () => {
       sock.write(`POST /mcp HTTP/1.1\r\nHost: evil.example.com\r\nContent-Type: application/json\r\nContent-Length: 3000000\r\n\r\n${kilobyte}`);
       await waitFor(() => text.includes('\r\n\r\n'), () => text, 5_000);
       expect(text).toMatch(/^HTTP\/1\.1 403 /);
-      // A kilobyte a second keeps the connection open.
-      for (let i = 0; i < 4; i++) {
-        await sleep(1_000);
+      // A kilobyte every half second keeps it open, past the 2 s.
+      for (let i = 0; i < 6; i++) {
+        await sleep(500);
         sock.write(kilobyte);
       }
       await sleep(200);
