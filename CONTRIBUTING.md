@@ -9,7 +9,7 @@ One method ships in four formats, so most changes start in one place and flow ou
 | Kind of file | Files | How to change it |
 |---|---|---|
 | The method (single source) | `skills/prompt-engine/SKILL.md`, `skills/prompt-engine/references/*.md` | Edit by hand |
-| Hand-written mirror | `universal/prompt-engine.md` | When you change the workflow or the output format in `SKILL.md`, make the same change here. It must stay under 7,500 characters |
+| Hand-written mirror | `universal/prompt-engine.md` | When you change the workflow or the output format in `SKILL.md`, make the same change here. Where it has no room for a rule, as for other people's private details (D46), list the gap under Known limits in `docs/compatibility.md`. It must stay under 7,500 characters |
 | Data | `data/contract.json` (output contract and size budgets), `data/lint-rules.json`, `data/media-targets.json` | Edit by hand |
 | Generated | `universal/prompt-engine-knowledge.md`, `skills/prompt-engine/references/media-targets.md`, `mcp/src/generated/content.ts`, the skill text inside `evals/*/history.jsonl`, and the lint graders `evals/*/graders/lint-prompt*.md` | Never edit; run `node scripts/build.mjs` |
 
