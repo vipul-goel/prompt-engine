@@ -12,7 +12,7 @@ One method ships in four forms:
 The repo `vipul-goel/prompt-engine` is empty apart from a README. All work goes on `claude/gallant-thompson-eblqe0`. The plan was shaped by verified research (14 agents) and an adversarial three-lens plan review.
 
 ## Decisions
-The repo review's owner decisions were accepted as recommended: D1-D26 on 2026-11-04, D27-D45 on 2026-11-07, and D46-D52 with K3 on 2026-11-09 (`owner_decisions` in `.claude/handoff/repo-review-verified.json`). The last batch answers the seven questions that step 1d raised; the owner accepted them by approving the release run's plan (`owner_answers_1d` in that file says how). Lines they changed carry their D or K number. K1 and K2 are step 1d's own decisions (`step_1d.decisions` in the same file).
+The repo review's owner decisions were accepted as recommended: D1-D26 on 2026-11-04, D27-D45 on 2026-11-07, and D46-D52 with K3 on 2026-11-09 (`owner_decisions` in `.claude/handoff/repo-review-verified.json`). The last batch answers the seven questions that step 1d raised; the owner accepted them by approving the release run's plan, and a review after the approval added D46's eval case and D48's wider lint rule to the recommendations (`owner_answers_1d` in that file says how). Lines they changed carry their D or K number. K1 and K2 are step 1d's own decisions (`step_1d.decisions` in the same file).
 
 | Topic | Decision |
 |---|---|
