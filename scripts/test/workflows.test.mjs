@@ -338,6 +338,26 @@ esac`;
   }
 });
 
+test('release.yml: the GitHub release is made only for a tag that still exists, and skipped when it is published already (finding 25)', { skip: NO_BASH }, () => {
+  // Without --verify-tag, gh release create makes a missing tag from the default branch's head,
+  // so a release whose tag was deleted during the run would come back on another commit.
+  const s = step(release, 'github-release', runs(/gh release create/), 'that creates the release');
+  const gh = `case "$1 $2" in
+  "api repos/"*) [ -n "$PUBLISHED" ] && exit 0; echo "HTTP 404: Not Found" >&2; exit 1;;
+  "release create") exit 0;;
+  *) exit 64;;
+esac`;
+  const go = (env) => runStep(s.run, { stubs: { gh }, env: { GITHUB_REPOSITORY: 'example/repo', ...env } });
+  let r = go({ GITHUB_REF_NAME: 'v0.1.0' });
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.calls.at(-1), 'gh [release] [create] [v0.1.0] [--verify-tag] [--generate-notes] [--prerelease] [dist/prompt-engine.zip] [dist/prompt-engine.mcpb] [dist/prompt-engine.md] [dist/prompt-engine-knowledge.md] [dist/SHA256SUMS]');
+  r = go({ GITHUB_REF_NAME: 'v1.2.0' });
+  assert.match(r.calls.at(-1), /^gh \[release\] \[create\] \[v1\.2\.0\] \[--verify-tag\] \[--generate-notes\] \[dist\//, 'no --prerelease from 1.0 on');
+  r = go({ GITHUB_REF_NAME: 'v0.1.0', PUBLISHED: '1' });
+  assert.equal(r.code, 0, r.out);
+  assert.ok(!r.calls.some((c) => c.startsWith('gh [release] [create]')), 'a published release is left alone');
+});
+
 test('release.yml: mcp-publisher is checked against its pinned SHA-256 before it is unpacked or run (finding 28, D17)', () => {
   const { env } = release.jobs.registry;
   assert.match(env?.MCP_PUBLISHER_VERSION ?? '', /^v\d+\.\d+\.\d+$/);

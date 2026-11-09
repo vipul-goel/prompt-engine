@@ -105,7 +105,9 @@ jobs:
             echo "Release ${GITHUB_REF_NAME} is already published; skipping"
             exit 0
           fi
-          flags=(--generate-notes)
+          # --verify-tag: without it, gh creates a missing tag from the default branch's head,
+          # so a tag deleted during the run would come back on another commit.
+          flags=(--verify-tag --generate-notes)
           case "${GITHUB_REF_NAME}" in v0.*) flags+=(--prerelease);; esac
           gh release create "${GITHUB_REF_NAME}" "${flags[@]}" \
             dist/prompt-engine.zip dist/prompt-engine.mcpb \
