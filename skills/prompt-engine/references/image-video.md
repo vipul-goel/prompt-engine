@@ -80,8 +80,11 @@ weathered lighthouse keeper repainting red-and-white stripes on a stone lighthou
 
 **D. Weighted tags plus a negative field** (Stable Diffusion):
 ```text
-Positive: (weathered lighthouse keeper:1.2), red and white striped lighthouse, dawn, golden backlight, salt spray, low angle, gouache illustration
-Negative: watermark, text, logo, blurry
+(weathered lighthouse keeper:1.2), red and white striped lighthouse, dawn, golden backlight, salt spray, low angle, gouache illustration
+```
+Negative prompt:
+```text
+watermark, text, logo, blurry
 ```
 
 **E. Video paragraph with audio lines** (Veo and other video models with sound):
