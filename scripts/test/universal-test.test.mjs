@@ -189,7 +189,8 @@ test('menu patterns: private-detail-redaction-quick 08 holds the same open-place
   // FILL_OPEN leaves out a secret's placeholder; the case's condition adds the words that name a phone number.
   const secret = '(?:\\b|_)api[ _-]?key(?:\\b|_)))';
   assert.equal(U.FILL_OPEN.split(secret).length, 2);
-  const open = U.FILL_OPEN.replace(secret, () => '(?:\\b|_)api[ _-]?key(?:\\b|_)|phone|mobile|\\bcell(?:phone)?\\b|contact|number(?!\\s+of\\b)))');
+  const num = String.raw`phone|mobile|\bcell(?:phone)?\b|(?:conductor|\bher\b|personal|private|contact)[^\[\]\n]{0,40}?number|(?:conductor|\bher\b|personal|private)[^\[\]\n]{0,40}?contact`;
+  const open = U.FILL_OPEN.replace(secret, () => `(?:\\b|_)api[ _-]?key(?:\\b|_)|${num}))`);
   // With such a placeholder open, Fill placeholders ★; without one, Run it now ★ or Try it here ★.
   assert.ok(pattern.startsWith(`^(?:(?=[\\s\\S]*?${open})`));
   assert.ok(pattern.includes(`★|(?![\\s\\S]*?${open})`));
