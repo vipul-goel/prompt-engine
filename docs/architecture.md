@@ -28,7 +28,7 @@ Prompt Engine is one method shipped in four formats. To keep them from drifting 
 - **The universal prompt** (`universal/`). The core is written by hand to fit common instruction limits (7,500 characters or fewer). It mirrors the skill's workflow and output contract, except where it has no room for a rule, such as the one for other people's private details (D46); `docs/compatibility.md` lists such gaps under Known limits. The contract check and the conversation test catch divergence in what they cover. The knowledge file is generated from the references.
 - **The MCP server** (`mcp/`). It never calls a model. It serves the method, the checklists and a deterministic lint, and it asks questions through the client's form UI when the client supports elicitation. The host model does all the writing, so no API key is needed and the main tool never sees the user's prompt.
 - **The data** (`data/`):
-  - `contract.json` lists the headings, score dimensions, tags, markers and menu items every format must contain, plus size budgets.
+  - `contract.json` lists the headings, score dimensions, tags, markers, menu items and reply lines every format must contain, plus size budgets.
   - `lint-rules.json` holds the prompt anti-patterns.
   - `media-targets.json` holds image and video tool syntax, each entry with a verification status, sources and a last-checked date.
 

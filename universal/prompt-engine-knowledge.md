@@ -48,7 +48,7 @@ Full version: agents, long or important tasks. Short version: quick chats.
 1. Length about 1,200 words — typical for an in-depth blog post.
 2. Friendly, practical tone — suits a professional but informal audience.
 
-Reply "change 2: formal tone" to adjust any of these.
+Reply "change 2: …" to adjust any of these.
 
 ### Score
 | | Original | Enhanced |

@@ -36,6 +36,9 @@
     ],
     "replyLine": [
       "Reply `ok` to accept every ★"
+    ],
+    "changeLine": [
+      "\"change 2: …\""
     ]
   },
   "artifacts": {
@@ -45,7 +48,8 @@
       "scoreCaveat",
       "provenanceTags",
       "markers",
-      "menu"
+      "menu",
+      "changeLine"
     ],
     "skills/prompt-engine/references/questions.md": [
       "replyLine"
@@ -57,7 +61,8 @@
       "provenanceTags",
       "markers",
       "replyLine",
-      "menu"
+      "menu",
+      "changeLine"
     ],
     "universal/prompt-engine.md": [
       "headings",
@@ -66,7 +71,8 @@
       "provenanceTags",
       "markers",
       "replyLine",
-      "menu"
+      "menu",
+      "changeLine"
     ]
   },
   "budgets": {
