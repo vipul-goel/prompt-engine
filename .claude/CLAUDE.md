@@ -93,6 +93,7 @@ On 2026-11-09 the owner approved an automated run of everything below, and answe
        - Does a name alone count as another person's private detail? `output-format.md` now gives a home address and a health condition as examples, and SKILL.md keeps the user's names intact.
        - The output template, Format B in `questions.md` and the universal core's sample question use the remote-work blog post that three history cases, two universal-test conversations and three manual checks ask for. Move them to a request no check uses? The core has 5 characters left, and the universal test would need a billed re-run.
        - D51 as applied treats clothing as a descriptive word of the person who wears it, and counts no light, color, style, framing or camera picks, though the method still asks for them under Assumptions. Confirm, or say which should count.
+       - Google's page also suggests a line such as `Think very hard before answering` for problems that need heavy reasoning. The `magic-phrase` lint rule flags `think really hard` but not `think very hard`. Extend the ban to it, as D48 did for `step-by-step`, or leave it?
      - Not verified in 1d:
        - the MCP server's new text with a live host (critique and what's-missing requests, a round's opening line as ask_user's intro);
        - the cases not re-run after the method changes (their last run is 0f65705's full suite);
