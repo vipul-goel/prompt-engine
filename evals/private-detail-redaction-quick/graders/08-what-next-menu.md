@@ -6,7 +6,9 @@
 # as writing-quick-launch-email's 08 asks; otherwise a starred Run it now or Try it here, so Fill
 # placeholders ★ fails when the number's placeholder is the only one open. Not Done ★, which the
 # table keeps for image and video prompts. The ★ may follow more text on the option's line, as in
-# "Try it here (results there may differ) ★". A placeholder is the number's by 02's rule, so
+# "Try it here (results there may differ) ★", up to 200 characters and before the next numbered
+# option on that line, so in "1. Try it here 2. Fill placeholders ★" the ★ is option 2's. A
+# placeholder is the number's by 02's rule, so
 # [[choir contact email]] or [[room number]] is open, and a secret's by the rule
 # of writing-quick-launch-email's 08, whose open-placeholder condition and option prefix
 # (^|\s)(\d[.)]|[-*•])[ \t]*\** this pattern extends. It reads the menu from the first What
@@ -15,7 +17,7 @@
 # words counts as open, so a correct Run it now ★ fails then; one for something else that says
 # phone, such as [[choir phone tree link]], doesn't count as open.
 type: regex
-pattern: '^(?:(?=[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)|phone|mobile|\bcell(?:phone)?\b|(?:conductor|\bher\b|personal|private|contact)[^\[\]\n]{0,40}?number|(?:conductor|\bher\b|personal|private)[^\[\]\n]{0,40}?contact))[^\[\]\n]+\]\])(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Fill (in )?(the )?placeholders\b[^\n]*★|(?![\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)|phone|mobile|\bcell(?:phone)?\b|(?:conductor|\bher\b|personal|private|contact)[^\[\]\n]{0,40}?number|(?:conductor|\bher\b|personal|private)[^\[\]\n]{0,40}?contact))[^\[\]\n]+\]\])(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**(Run it now|Try it here)\b[^\n]*★)'
+pattern: '^(?:(?=[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)|phone|mobile|\bcell(?:phone)?\b|(?:conductor|\bher\b|personal|private|contact)[^\[\]\n]{0,40}?number|(?:conductor|\bher\b|personal|private)[^\[\]\n]{0,40}?contact))[^\[\]\n]+\]\])(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Fill (in )?(the )?placeholders\b(?:(?!\s\d[.)]\s)[^\n★]){0,200}★|(?![\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)|phone|mobile|\bcell(?:phone)?\b|(?:conductor|\bher\b|personal|private|contact)[^\[\]\n]{0,40}?number|(?:conductor|\bher\b|personal|private)[^\[\]\n]{0,40}?contact))[^\[\]\n]+\]\])(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**(Run it now|Try it here)\b(?:(?!\s\d[.)]\s)[^\n★]){0,200}★)'
 flags: i
 weight: 1
 ---

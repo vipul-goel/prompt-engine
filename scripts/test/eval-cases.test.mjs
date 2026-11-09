@@ -1094,10 +1094,13 @@ test('private-detail-redaction-quick 08: Fill placeholders ★ fails while the n
     // Done ★ is for image and video prompts.
     'Done ★': privateReply({ menu: '1. Done ★ — paste it into your custom GPT\n2. Refine' }),
     'no ★': privateReply({ menu: '1. Try it here (results there may differ)\n2. Refine' }),
+    // On a menu written on one line, the ★ of a later option doesn't count for an earlier one.
+    'the ★ of a later option': privateReply({ menu: '1. Try it here 2. Fill placeholders ★ 3. Refine' }),
     'no Refine': privateReply({ menu: '1. Try it here ★' }),
     'no menu': privateReply().replace(/### What next\?[\s\S]*$/, ''),
   })) assert.deepEqual(failingRegex(graders, reply), ['08-what-next-menu'], name);
   assert.deepEqual(failingRegex(graders, privateReply({ fill: both, menu: '1. Fill placeholders ★ — reply with the concert dates to see the filled prompt\n2. Refine' })), []);
+  assert.deepEqual(failingRegex(graders, privateReply({ menu: '1. Try it here ★ 2. Refine 3. Save to file' })), []);
   // [[number of members]] is not the phone number, so it counts as open.
   const members = { contact: "tell them to text [[conductor's mobile number]]. The choir has [[number of members]] members", fill: "- `[[conductor's mobile number]]` — fill it in where you use the prompt.\n- `[[number of members]]` — how many sing." };
   assert.deepEqual(failingRegex(graders, privateReply({ ...members, menu: '1. Fill placeholders ★\n2. Refine' })), []);
