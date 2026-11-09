@@ -353,6 +353,19 @@ const ROWS = [
     /^error: skills\/\.claude: don't keep it in a folder the skill reads from[^\n]*\n\n1 error\(s\)$/m],
   ['rejects a memory file in the references folder', (d) => put(d, `${REF}/CLAUDE.md`, '# Notes\n'),
     /(^|\n)error: skills\/prompt-engine\/references\/CLAUDE\.md: don't keep it in a folder the skill reads from/],
+  // In any letter case: on macOS and Windows, Claude Code's read of CLAUDE.md opens claude.md, and
+  // its look for a commands/ folder finds Commands/. The messages name the file as it is spelled.
+  ['rejects memory files in the skill\'s folders in any letter case', (d) => {
+    put(d, 'skills/prompt-engine/claude.md', '# Notes\n');
+    put(d, 'skills/.Claude/settings.json', '{}\n');
+    put(d, `${REF}/Agents.md`, '# Notes\n');
+    put(d, 'skills/Claude.Local.md', '# Notes\n');
+  }, ['skills/prompt-engine/claude.md', 'skills/.Claude', `${REF}/Agents.md`, 'skills/Claude.Local.md'].map((f) => new RegExp(`(^|\\n)error: ${reEsc(f)}: don't keep it in a folder the skill reads from`))],
+  ['rejects names that are not allowed at the plugin root in any letter case, on every platform', (d) => {
+    writeFileSync(join(d, 'claude.md'), '');
+    mkdirSync(join(d, 'Commands'));
+    writeFileSync(join(d, 'Package.json'), '{}\n');
+  }, ['claude.md', 'Commands', 'Package.json'].map((f) => new RegExp(`(^|\\n)error: ${reEsc(f)}: not allowed at the repo root`))],
   // ---- manifests
   ['requires the plugin name prompt-engine', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.name = 'prompt-engine-x'; }), /plugin\.json: name must be prompt-engine/],
   ['requires a semver plugin version', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.version = '1.0'; }), /plugin\.json: version must be semver/],
@@ -691,6 +704,8 @@ const GIT_ROWS = [
       new RegExp(`(^|\\n)error: ${reEsc(f)}: don't commit it at the plugin root: Claude Code can load it as project memory`), 1],
     [`ignores an untracked ${f} at the plugin root`, (d) => put(d, f, '# Notes\n'), /validate: OK/, 0],
   ]),
+  ...[['agents.md', 'AGENTS.md'], ['Claude.local.md', 'CLAUDE.local.md']].map(([f, name]) => [`rejects a tracked ${f} at the plugin root, which macOS and Windows open for ${name}`,
+    (d, git) => { put(d, f, '# Notes\n'); git(['add', '-f', f]); }, new RegExp(`(^|\\n)error: ${reEsc(f)}: don't commit it at the plugin root: Claude Code can load it as project memory`), 1]),
   // A fixture a case names but git ignores works here and is missing from a clean checkout
   // (finding 67). A tracked one is in every checkout, so it passes.
   ['rejects a fixture that a case names but git ignores', (d) => {

@@ -252,10 +252,16 @@ for (const [file, groups] of Object.entries(isMapping(contract.artifacts) ? cont
 // as plugin components, make Claude Code run npm ci on install, or make claude.ai refuse the
 // plugin. A root CLAUDE.md also draws a `claude plugin validate` warning, and Claude Code can
 // load it as project memory in a user's session (see MEMORY_FILES below).
+// Names here and below are compared without letter case: Claude Code opens these files and
+// folders by path, and on macOS and Windows, where most users run it, a look for CLAUDE.md or
+// commands/ finds claude.md or Commands/. existsSync followed each platform's own rule, so Linux,
+// where CI runs, let them through.
 const FORBIDDEN_ROOT = ['package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'bun.lock', 'node_modules', 'bin',
   'CLAUDE.md', '.mcp.json', '.lsp.json', 'commands', 'agents', 'hooks', 'settings.json', 'SKILL.md',
   'output-styles', 'monitors', 'workflows', 'themes'];
-for (const f of FORBIDDEN_ROOT) if (exists(f)) err(`${f}: not allowed at the repo root, which is also the plugin root`);
+const anyCase = (names) => new Set(names.map((n) => n.toLowerCase()));
+const FORBIDDEN_ROOT_ANY_CASE = anyCase(FORBIDDEN_ROOT);
+for (const f of readdirSync(root)) if (FORBIDDEN_ROOT_ANY_CASE.has(f.toLowerCase())) err(`${f}: not allowed at the repo root, which is also the plugin root`);
 
 // Every committed file reaches each Claude Code install twice: in the marketplace clone
 // and in the plugin cache. The rules below read the tracked files from git, because
@@ -281,17 +287,17 @@ const tracked = trackedFiles();
 // CLAUDE.local.md it rests on the documentation and code, not on a run. A root CLAUDE.md
 // is refused above. Tracked files only: a maintainer's untracked CLAUDE.local.md passes
 // here (`claude plugin validate . --strict` still flags one on disk).
-const MEMORY_FILES = new Set(['AGENTS.md', 'CLAUDE.local.md']);
+const MEMORY_FILES = anyCase(['AGENTS.md', 'CLAUDE.local.md']);
 for (const f of tracked ?? []) {
-  if (MEMORY_FILES.has(f)) err(`${f}: don't commit it at the plugin root: Claude Code can load it as project memory in a user's session`);
+  if (MEMORY_FILES.has(f.toLowerCase())) err(`${f}: don't commit it at the plugin root: Claude Code can load it as project memory in a user's session`);
 }
 // The same walk passes through skills/, the skill folder and its references/ folder on the way to a
 // reference. The skill zip is built from the folder on disk, so there a file is refused whether or
 // not git tracks it.
-const MEMORY_NAMES = new Set(['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', '.claude']);
+const MEMORY_NAMES = anyCase(['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', '.claude']);
 for (const dir of ['skills', SKILL_DIR, `${SKILL_DIR}/references`]) {
   for (const f of exists(dir) ? readdirSync(join(root, dir)) : []) {
-    if (MEMORY_NAMES.has(f)) err(`${dir}/${f}: don't keep it in a folder the skill reads from: Claude Code can load it as project memory in a user's session`);
+    if (MEMORY_NAMES.has(f.toLowerCase())) err(`${dir}/${f}: don't keep it in a folder the skill reads from: Claude Code can load it as project memory in a user's session`);
   }
 }
 
