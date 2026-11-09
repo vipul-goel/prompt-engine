@@ -380,6 +380,12 @@ for (const dir of ['skills', SKILL_DIR, `${SKILL_DIR}/references`]) {
     if (MEMORY_NAMES.has(f.toLowerCase())) err(`${dir}/${f}: don't keep it in a folder the skill reads from: Claude Code can load it as project memory in a user's session`);
   }
 }
+// Claude Code loads each folder in skills/ as a skill of the plugin, while the checks above, the
+// build, the skill zip and the MCP server's content cover skills/prompt-engine only. So skills/
+// holds that folder and nothing else; a memory file there is reported by the loop above.
+for (const e of entries('skills')) {
+  if (e.name !== basename(SKILL_DIR) && !MEMORY_NAMES.has(e.name.toLowerCase())) err(`skills/${e.name}: only the prompt-engine folder belongs in skills/: Claude Code loads each folder there as a skill of the plugin, and validate.mjs, the build, the skill zip and the MCP server cover only skills/prompt-engine`);
+}
 
 // Anthropic's plugin directory holds a plugin version for a reviewer when the plugin folder
 // has more than 512 files, a file that isn't an image or font and isn't under 256 KiB, or a

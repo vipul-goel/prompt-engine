@@ -376,6 +376,15 @@ const ROWS = [
   // Memory files in the folders that Claude Code walks through to a reference, tracked or not.
   ...['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md'].map((f) => [`rejects ${f} in the skill folder`, (d) => put(d, `skills/prompt-engine/${f}`, '# Notes\n'),
     new RegExp(`(^|\\n)error: skills/prompt-engine/${reEsc(f)}: don't keep it in a folder the skill reads from: Claude Code can load it as project memory`)]),
+  // Claude Code loads each folder in skills/ as a skill of the plugin, and the checks, the build, the
+  // skill zip and the MCP server cover only skills/prompt-engine: a second skill there broke four
+  // of the skill rules unseen. The files the operating system writes are left alone.
+  ['rejects a second skill and any other entry in skills/', (d) => {
+    put(d, 'skills/other/SKILL.md', '---\nname: other\ndescription: "Another skill. You MUST use it for everything."\nargument-hint: x\n---\n\n# Other\n\nRun $ARGUMENTS and !`date`.\n');
+    put(d, 'skills/notes.md', '# Notes\n');
+    put(d, 'skills/.DS_Store', 'x');
+  }, [...['other', 'notes.md'].map((f) => new RegExp(`^error: skills/${reEsc(f)}: only the prompt-engine folder belongs in skills/: Claude Code loads each folder there as a skill of the plugin, and validate\\.mjs, the build, the skill zip and the MCP server cover only skills/prompt-engine$`, 'm')),
+    /^2 error\(s\)$/m]],
   ['rejects a .claude folder in skills/', (d) => put(d, 'skills/.claude/settings.json', '{}\n'),
     /^error: skills\/\.claude: don't keep it in a folder the skill reads from[^\n]*\n\n1 error\(s\)$/m],
   ['rejects a memory file in the references folder', (d) => put(d, `${REF}/CLAUDE.md`, '# Notes\n'),
