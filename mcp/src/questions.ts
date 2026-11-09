@@ -6,6 +6,8 @@ export const MAX_QUESTIONS = 8;
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 4;
 export const HEADER_MAX_CHARS = 12;
+/** The longest intro (the form's message). The brief tells the model this number, since a longer intro fails the call. */
+export const INTRO_MAX_CHARS = 200;
 /** The one free-text field of the form; question ids can't use it. */
 export const NOTES_FIELD = 'notes';
 /** The notes field's longest answer; longer notes are cut to this many characters. */

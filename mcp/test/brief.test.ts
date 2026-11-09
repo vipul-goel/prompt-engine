@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -18,7 +18,7 @@ import {
 } from '../src/brief.js';
 import { CONTRACT, LINT_RULES, REFERENCES, UNIVERSAL_METHOD, VERSION } from '../src/generated/content.js';
 import { INSTRUCTIONS, TOOL_DESCRIPTIONS } from '../src/server.js';
-import { REPO } from './helpers.js';
+import { PKG, REPO, connectStdioInProcess } from './helpers.js';
 
 const RESULT_MAX_CHARS = 32_000;
 
@@ -100,10 +100,29 @@ describe('the method brief', () => {
     expect(REFERENCES['output-format']!.text).toMatch(/\*\*Questions round\.\*\*[^\n]*one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it\./);
     const questions = buildReference('questions');
     for (const [name, text] of [['brief', brief], ['questions', questions]]) {
-      expect(text, name).toMatch(/If the round opens with a line of its own \(the biggest gaps for a request to critique a prompt or find what's missing, that the prompt is already strong, or that you removed a pasted secret, suggesting rotating it\), pass that line as intro, in 200 characters or fewer\./);
+      expect(text, name).toMatch(/If the round opens with a line of its own \(the biggest gaps for a request to critique a prompt or find what's missing, that the prompt is already strong, or that you removed a pasted secret, suggesting rotating it\), pass that line as intro, in \d+ characters or fewer\./);
     }
     expect(brief).toMatch(/returns the questions as text: show them to the user in their language, after that line if there is one, then stop and wait/);
     expect(questions).toMatch(/returns the questions in Format B: send them as your whole reply, opened by that line if there is one, and wait\./);
+  });
+
+  it("states the intro limit that ask_user's schema enforces, here and in the README", async () => {
+    // A longer intro fails the call, so the number the model is told has to be the schema's.
+    const conn = await connectStdioInProcess('legacy');
+    let enforced: unknown;
+    try {
+      const askUser = (await conn.client.listTools()).tools.find((t) => t.name === 'ask_user');
+      enforced = (askUser?.inputSchema.properties?.intro as { maxLength?: unknown } | undefined)?.maxLength;
+    } finally {
+      await conn.close();
+    }
+    expect(typeof enforced).toBe('number');
+    const readme = readFileSync(join(PKG, 'README.md'), 'utf8');
+    for (const [name, text] of [['brief', brief], ['questions resource', buildReference('questions')], ['README', readme]] as const) {
+      const stated = [...text.matchAll(/as `?intro`?, in (\d+) characters or fewer/g)].map((m) => Number(m[1]));
+      expect(stated.length, name).toBeGreaterThan(0);
+      expect([...new Set(stated)], name).toEqual([enforced]);
+    }
   });
 
   it('asks at most two questions about an already-strong prompt, as the skill does', () => {

@@ -36,6 +36,7 @@ import { PROMPT_MAX_CHARS, checkPrompt, formatReport, type CheckReport } from '.
 import { VERSION } from './generated/content.js';
 import {
   HEADER_MAX_CHARS,
+  INTRO_MAX_CHARS,
   MAX_OPTIONS,
   MAX_QUESTIONS,
   MIN_OPTIONS,
@@ -102,7 +103,7 @@ export const ASK_USER_MAX_CHARS = {
   label: 80,
   description: 160,
   why: 120,
-  intro: 200,
+  intro: INTRO_MAX_CHARS,
   notes_label: 80,
   notes_hint: 200,
 } as const;
