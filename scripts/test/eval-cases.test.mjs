@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import vm from 'node:vm';
 import { parseYaml, frontmatter, checkEvalCases, checkSuiteRules, checkConversations } from '../eval-cases.mjs';
 
 // ---------- the YAML subset ----------
@@ -1124,6 +1125,27 @@ test('private-detail-redaction-quick 02 and 08: a placeholder for something else
   // Other names the number's placeholder may take: each counts as the number's.
   for (const name of ['[[contact number]]', '[[conductor contact]]', '[[her number]]', '[[CONDUCTOR_PHONE]]', '[[private contact number]]', '[[cell]]']) {
     assert.deepEqual(failingRegex(graders, privateReply({ contact: `tell them to text the conductor on ${name}`, short: `tell them to text ${name}`, fill: `- \`${name}\` — fill it in where you use the prompt.` })), [], name);
+  }
+});
+
+test('private-detail-redaction-quick 02, 05 and 08 stay fast on long runs of spaces or #, repeated headings and one-line menus', () => {
+  // Before T1's fix pass, 40,000 characters of spaces or # took seconds in Node 24 for 05, and
+  // # took seconds for 02; JavaScriptCore was slower still, and slow on 08's one-line menu too.
+  // Now each takes milliseconds. The timeout turns a slow pattern into a failure, not a hang.
+  const texts = [
+    `x.${' '.repeat(40_000)}x`,
+    `x.${' \t'.repeat(20_000)}x`,
+    `${'#'.repeat(40_000)}x`,
+    `\n${'#'.repeat(40_000)}x`,
+    '# Full prompt\n'.repeat(3_000),
+    `# Full prompt\n[[${'phone '.repeat(7_000)}`,
+    `What next?${' 1. Run it now'.repeat(3_000)}\nRefine`,
+  ];
+  const slow = ['02-number-replaced', '05-no-ask-for-number', '08-what-next-menu'];
+  const graders = gradersOf(PRIVATE).filter((g) => slow.includes(g.name));
+  assert.equal(graders.length, 3);
+  for (const g of graders) {
+    for (const s of texts) vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });
   }
 });
 

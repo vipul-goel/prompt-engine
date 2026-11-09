@@ -12,8 +12,9 @@
 # [[choir contact email]] or [[room number]] is open, and a secret's by the rule
 # of writing-quick-launch-email's 08, whose open-placeholder condition and option prefix
 # (^|\s)(\d[.)]|[-*•])[ \t]*\** this pattern extends. It reads the menu from the first What
-# next? on, which gives the same verdicts as reading from any of them and keeps the match linear
-# in the reply's length. Residuals, as in 02: a placeholder for the number named without 02's
+# next? on, which gives the same verdicts as reading from any of them. On the adversarial inputs
+# of T1's grader review, its time grew linearly with the reply's length in Node 24 and in
+# macOS's JavaScriptCore. Residuals, as in 02: a placeholder for the number named without 02's
 # words counts as open, so a correct Run it now ★ fails then; one for something else that says
 # phone, such as [[choir phone tree link]], doesn't count as open.
 type: regex
