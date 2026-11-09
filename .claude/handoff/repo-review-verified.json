@@ -2131,7 +2131,8 @@
         "For prompts meant for code or agents, should the method name an environment variable (such as OPENAI_API_KEY) instead of a [[api key]] placeholder? The grader already accepts that, and the model did it in both runs today. Should every reply that removes a pasted key suggest rotating it, and say so in the first line? And when the only open placeholder is a secret, should the menu still star Fill placeholders?"
       ],
       "decisions": [
-        "D5"
+        "D5",
+        "D46"
       ],
       "step_1c": {
         "items": [],
@@ -2480,7 +2481,8 @@
       ],
       "resolution": "D1, 2026-11-04: only an explicit pick runs anything; ok, 👍 or thanks gets \"the prompt is ready\". Fill placeholders collects the values, shows the filled prompt and shows the menu again. Apply the explicit-picks branch of proposed_fix, with the audit's fix_corrections.",
       "decisions": [
-        "D1"
+        "D1",
+        "D46"
       ],
       "step_1c": {
         "items": [],
@@ -2948,7 +2950,8 @@
         "In image and video prompts, which details the model adds should be listed? Every small scene detail (footprints, chimney smoke, a palette), merged into one Assumption? Or only numbers, settings and style choices?"
       ],
       "decisions": [
-        "D6"
+        "D6",
+        "D51"
       ],
       "step_1c": {
         "items": [],
@@ -4111,7 +4114,8 @@
         "In non-English replies, should the section headings, score rows, caveat line, 'What next?' labels and reply keywords (`change N`, `deep`) be translated, or stay in English as fixed labels? The method already says translate (output-format.md:3; questions.md:73 for the question round), and U4 did. Today's skill runs and U6 kept English, and the reviewer proposed English. Nothing in the tooling depends on either choice."
       ],
       "decisions": [
-        "D3"
+        "D3",
+        "K3"
       ],
       "step_1c": {
         "items": [],
@@ -4771,6 +4775,9 @@
       "fix_assessment": "The reviewer's line-56 wording is accurate. 'Overtrigger' is Anthropic's word for tools and skills, so keeping 'over-apply' with 'can', and dropping 'everywhere', sits closer to all the sources. The line-68 wording is honest by the repo's records, but it now undersells what can be checked: the OpenAI and Google pages are directly reachable and support most cells. Re-verifying and citing them is better, and the reviewer's wording is the fallback. The lint message edit is safe. No test asserts the message text, and check_prompt caps findings at 5 per rule and 20 in all (mcp/src/check.ts:40-41), so results grow by at most about 45 characters per finding. The MCP tests still need a run in step 1d. blueprint.md isn't lint-checked (validate.mjs:121 covers only SKILL.md and the universal core), so '(MUST, NEVER, CRITICAL)' can stay. In my copy the reviewer's edits built, passed build --check and validated.",
       "proposed_fix": "1. skills/prompt-engine/references/blueprint.md:56: 'Capitalized pressure words (MUST, NEVER, CRITICAL) can make current models over-apply the rule, even where it doesn't fit.' 2. data/lint-rules.json:10: 'Capitalized pressure words can make current models over-apply the rule. Write it plainly and give the reason; keep 'always' and 'never' for true invariants.' 3. blueprint.md:68: re-check the GPT and Gemini columns against OpenAI's GPT-4.1 and GPT-5 prompting guides and Google's prompting-strategies page (all reachable on 2026-11-03). Add those URLs to docs/sources.md:32 in place of 'seen only through search results'. Reword the Gemini 'Clarifying behavior' cell, or mark it as the method's own inference. Date the line with the real check date. If that re-check isn't done, use the reviewer's wording, which labels the GPT and Gemini columns secondary. While there, compare the Claude 'Verification' cell with Anthropic's current Opus 5 over-verification note. 4. Run node scripts/build.mjs, which regenerates universal/prompt-engine-knowledge.md, mcp/src/generated/content.ts and 3 evals/*/history.jsonl, then all root and MCP checks.",
       "owner_questions": [],
+      "decisions": [
+        "D48"
+      ],
       "step_1c": {
         "items": [
           {
@@ -5605,7 +5612,8 @@
         "How should blueprint.md:56 and :99 name the patterns?\n(a) In backticks, with a lint that skips code spans. This keeps today's strictness on SKILL.md and the universal core.\n(b) Reworded without the literal words, as SKILL.md:74 and universal/prompt-engine.md:38 already do. This matches plan.md:152 ('which the skill describes abstractly') and needs no lint exemption, but the model loses concrete examples of what to remove.\nSkipping double-quoted text, as the reviewer proposed, is not recommended.\nAlso: is the step-3 full eval enough after this edit, or should the affected cases be re-run in 1d?"
       ],
       "decisions": [
-        "D11"
+        "D11",
+        "D48"
       ],
       "step_1c": {
         "items": [],
@@ -10294,7 +10302,8 @@
         "Which agent should the evals pin? Sonnet 5.5 is what compatibility.md names and what recorded the fixtures and ran the trigger tests. Opus 5.5 is the documented default for most Claude Code users. And were the 2026-10-29 rounds run with --model claude-sonnet-5-5? If you don't know, compatibility.md should say the model wasn't recorded for them."
       ],
       "decisions": [
-        "D28"
+        "D28",
+        "D52"
       ],
       "step_1c": {
         "items": [
@@ -10897,7 +10906,9 @@
         "plan.md:176 and output-format.md:66 say every default that shaped the prompt is listed, with minor ones merged. Should text prompts follow that literally, as D6 does for media? Then small picks such as \"1-3 lines per paragraph\", \"a 3–5 sentence overview\" or an output file name like support-summary.md must each be covered by some Assumption. Or should only the values that shape the deliverable count (length, item counts, limits, names)? The strict reading would fail today's writing, Spanish and secret-redaction replies until the method changes."
       ],
       "decisions": [
-        "D30"
+        "D30",
+        "D47",
+        "D51"
       ],
       "step_1c": {
         "items": [],
@@ -13667,7 +13678,8 @@
       "owner_questions_note": "The verifier asked whether a pacing phrase that repeats the clip length counts as writing settings into the prose. The arbitration settled it from the method text: it does. Whether to fix the skill miss is D45.",
       "resolution": "D45, 2026-11-07: no grader fix. Fix the skill miss in 1d with the audit's wording, then re-run video-veo-quick with a cost cap.",
       "decisions": [
-        "D45"
+        "D45",
+        "D49"
       ],
       "step_1c": {
         "items": [],
