@@ -52,36 +52,56 @@ if (!process.env.FAKE_NO_TRANSCRIPT) {
 console.log(JSON.stringify({ session_id: sid, result: 'done', total_cost_usd: 0 }));
 `;
 
-function setup() {
+function setup(from = repo) {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'pe-record-')));
-  // The copy's root, which record-history.mjs takes for the repository. It also holds the text
-  // that publicText() reads: each eval case's prompt.md and the skill's Markdown files.
-  const dir = join(parent, 'has space');
-  cpSync(join(repo, 'scripts', 'eval'), join(dir, 'scripts', 'eval'), { recursive: true });
-  // The recorder imports its entry-point check from build.mjs.
-  cpSync(join(repo, 'scripts', 'build.mjs'), join(dir, 'scripts', 'build.mjs'));
-  cpSync(join(repo, 'skills', 'prompt-engine'), join(dir, 'skills', 'prompt-engine'), { recursive: true });
-  for (const c of readdirSync(join(repo, 'evals'))) {
-    if (existsSync(join(repo, 'evals', c, 'prompt.md'))) cpSync(join(repo, 'evals', c, 'prompt.md'), join(dir, 'evals', c, 'prompt.md'));
+  // A setup that fails (an unreadable file in the checkout, a full disk) removes its folder before
+  // it throws, instead of leaving one in the temp directory for each test.
+  try {
+    // The copy's root, which record-history.mjs takes for the repository. It also holds the text
+    // that publicText() reads: each eval case's prompt.md and the skill's Markdown files.
+    const dir = join(parent, 'has space');
+    cpSync(join(from, 'scripts', 'eval'), join(dir, 'scripts', 'eval'), { recursive: true });
+    // The recorder imports its entry-point check from build.mjs.
+    cpSync(join(from, 'scripts', 'build.mjs'), join(dir, 'scripts', 'build.mjs'));
+    cpSync(join(from, 'skills', 'prompt-engine'), join(dir, 'skills', 'prompt-engine'), { recursive: true });
+    for (const c of readdirSync(join(from, 'evals'))) {
+      if (existsSync(join(from, 'evals', c, 'prompt.md'))) cpSync(join(from, 'evals', c, 'prompt.md'), join(dir, 'evals', c, 'prompt.md'));
+    }
+    const [bin, home, tmp] = ['bin', 'home', 'tmp'].map((d) => join(parent, d));
+    for (const d of [bin, home, tmp]) mkdirSync(d);
+    writeFileSync(join(parent, 'fake.mjs'), FAKE);
+    // exec and "$@" are shell built-ins: nothing else on PATH is needed to start the stand-in.
+    writeFileSync(join(bin, 'claude'), `#!/bin/sh\nexec '${process.execPath}' '${join(parent, 'fake.mjs')}' "$@"\n`);
+    chmodSync(join(bin, 'claude'), 0o755);
+    const started = join(parent, 'args.json');
+    const out = join(parent, 'out.jsonl');
+    // The parent's environment (Windows needs some of it), without its PATH, in any spelling, and
+    // its Claude Code config folder. HOME and USERPROFILE point at an empty folder.
+    const base = { ...process.env };
+    for (const k of Object.keys(base)) if (k.toUpperCase() === 'PATH' || k === 'CLAUDE_CONFIG_DIR') delete base[k];
+    const env = { ...base, PATH: bin, HOME: home, USERPROFILE: home, TMPDIR: tmp, TMP: tmp, TEMP: tmp, FAKE_ARGS: started };
+    // From the parent folder, so that a file the recorder writes by mistake can't land in the checkout.
+    const record = (args, extra = {}) => spawnSync(process.execPath, [join(dir, 'scripts', 'eval', 'record-history.mjs'), ...args], { cwd: parent, encoding: 'utf8', env: { ...env, ...extra } });
+    const cleanup = () => rmSync(parent, { recursive: true, force: true });
+    return { parent, dir, home, env, started, out, record, cleanup };
+  } catch (e) {
+    rmSync(parent, { recursive: true, force: true });
+    throw e;
   }
-  const [bin, home, tmp] = ['bin', 'home', 'tmp'].map((d) => join(parent, d));
-  for (const d of [bin, home, tmp]) mkdirSync(d);
-  writeFileSync(join(parent, 'fake.mjs'), FAKE);
-  // exec and "$@" are shell built-ins: nothing else on PATH is needed to start the stand-in.
-  writeFileSync(join(bin, 'claude'), `#!/bin/sh\nexec '${process.execPath}' '${join(parent, 'fake.mjs')}' "$@"\n`);
-  chmodSync(join(bin, 'claude'), 0o755);
-  const started = join(parent, 'args.json');
-  const out = join(parent, 'out.jsonl');
-  // The parent's environment (Windows needs some of it), without its PATH, in any spelling, and
-  // its Claude Code config folder. HOME and USERPROFILE point at an empty folder.
-  const base = { ...process.env };
-  for (const k of Object.keys(base)) if (k.toUpperCase() === 'PATH' || k === 'CLAUDE_CONFIG_DIR') delete base[k];
-  const env = { ...base, PATH: bin, HOME: home, USERPROFILE: home, TMPDIR: tmp, TMP: tmp, TEMP: tmp, FAKE_ARGS: started };
-  // From the parent folder, so that a file the recorder writes by mistake can't land in the checkout.
-  const record = (args, extra = {}) => spawnSync(process.execPath, [join(dir, 'scripts', 'eval', 'record-history.mjs'), ...args], { cwd: parent, encoding: 'utf8', env: { ...env, ...extra } });
-  const cleanup = () => rmSync(parent, { recursive: true, force: true });
-  return { parent, dir, home, env, started, out, record, cleanup };
 }
+
+test('setup() removes its folder when the copy fails', () => {
+  const t = mkdtempSync(join(tmpdir(), 'pe-leak-'));
+  const saved = Object.fromEntries(['TMPDIR', 'TEMP', 'TMP'].map((k) => [k, process.env[k]]));
+  try {
+    Object.assign(process.env, { TMPDIR: t, TEMP: t, TMP: t });
+    assert.throws(() => setup(join(t, 'missing')), { code: 'ENOENT' });
+    assert.deepEqual(readdirSync(t), []);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    rmSync(t, { recursive: true, force: true });
+  }
+});
 
 test('record-history.mjs prints its usage, and importing it runs nothing', () => {
   const { parent, dir, env, started, out, record, cleanup } = setup();

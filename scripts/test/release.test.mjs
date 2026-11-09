@@ -5,7 +5,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
@@ -17,9 +17,15 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Build output and tool state the checks don't read: copying them only slows the tests down.
 const SKIP = new Set(['.git', 'node_modules', 'results', 'dist', 'dist-mcpb', 'mcpb', '.wrangler']);
 
-function copyRepo() {
+function copyRepo(from = repo) {
   const dir = mkdtempSync(join(tmpdir(), 'pe-release-'));
-  cpSync(repo, dir, { recursive: true, filter: (src) => src === repo || !SKIP.has(basename(src)) });
+  try {
+    cpSync(from, dir, { recursive: true, filter: (src) => src === from || !SKIP.has(basename(src)) });
+  } catch (e) {
+    // A copy that fails (an unreadable file in the checkout, a full disk) leaves no folder behind.
+    rmSync(dir, { recursive: true, force: true });
+    throw e;
+  }
   return dir;
 }
 
@@ -27,8 +33,9 @@ function copyRepo() {
 // variable Path, so every spelling is removed first.
 function zipWithPath(setup) {
   const dir = copyRepo();
-  const bin = mkdtempSync(join(tmpdir(), 'pe-bin-'));
+  let bin;
   try {
+    bin = mkdtempSync(join(tmpdir(), 'pe-bin-'));
     setup(bin);
     const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k.toUpperCase() !== 'PATH'));
     const r = spawnSync(process.execPath, [join(dir, 'scripts', 'release.mjs'), '--zip'], {
@@ -37,9 +44,23 @@ function zipWithPath(setup) {
     return { code: r.status, stdout: r.stdout, stderr: r.stderr };
   } finally {
     rmSync(dir, { recursive: true, force: true });
-    rmSync(bin, { recursive: true, force: true });
+    if (bin) rmSync(bin, { recursive: true, force: true });
   }
 }
+
+// A copy that fails removes its folder before it throws, instead of leaving one in the temp directory.
+test('copyRepo removes its folder when the copy fails', () => {
+  const t = mkdtempSync(join(tmpdir(), 'pe-leak-'));
+  const saved = Object.fromEntries(['TMPDIR', 'TEMP', 'TMP'].map((k) => [k, process.env[k]]));
+  try {
+    Object.assign(process.env, { TMPDIR: t, TEMP: t, TMP: t });
+    assert.throws(() => copyRepo(join(t, 'missing')), { code: 'ENOENT' });
+    assert.deepEqual(readdirSync(t), []);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    rmSync(t, { recursive: true, force: true });
+  }
+});
 
 const oneLine = (cmd) => new RegExp(`^release\\.mjs needs the ${cmd} command, which isn't installed\\. [^\\n]*Compressed \\(zipped\\) folder[^\\n]*$`, 'm');
 
@@ -157,8 +178,9 @@ test('release.mjs stops when validate.mjs fails, before it builds anything', { s
 
 test('release.mjs refuses a zip whose entries are not all under prompt-engine/', { skip: (process.platform === 'win32' && 'the stand-in for unzip is a shell script') || NO_ZIP }, () => {
   const dir = copyRepo();
-  const bin = mkdtempSync(join(tmpdir(), 'pe-unzip-'));
+  let bin;
   try {
+    bin = mkdtempSync(join(tmpdir(), 'pe-unzip-'));
     // An unzip that lists the skill's files at the archive's root; zip stays the real one.
     writeFileSync(join(bin, 'unzip'), '#!/bin/sh\nprintf "SKILL.md\\nreferences/questions.md\\n"\n');
     chmodSync(join(bin, 'unzip'), 0o755);
@@ -168,7 +190,7 @@ test('release.mjs refuses a zip whose entries are not all under prompt-engine/',
     assert.doesNotMatch(r.stdout, /dist\/prompt-engine\.zip \(/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
-    rmSync(bin, { recursive: true, force: true });
+    if (bin) rmSync(bin, { recursive: true, force: true });
   }
 });
 

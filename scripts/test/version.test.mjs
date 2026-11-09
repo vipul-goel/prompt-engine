@@ -15,8 +15,14 @@ const SKIP = new Set(['.git', 'node_modules', 'results', 'dist', 'dist-mcpb', 'm
 
 function copyRepo(from = repo) {
   const dir = mkdtempSync(join(tmpdir(), 'pe-version-'));
-  // The checkout itself is copied whatever its folder is called; SKIP applies to what's inside it.
-  cpSync(from, dir, { recursive: true, filter: (src) => src === from || !SKIP.has(basename(src)) });
+  try {
+    // The checkout itself is copied whatever its folder is called; SKIP applies to what's inside it.
+    cpSync(from, dir, { recursive: true, filter: (src) => src === from || !SKIP.has(basename(src)) });
+  } catch (e) {
+    // A copy that fails (an unreadable file in the checkout, a full disk) leaves no folder behind.
+    rmSync(dir, { recursive: true, force: true });
+    throw e;
+  }
   return dir;
 }
 
@@ -30,16 +36,31 @@ const read = (dir, file) => readFileSync(join(dir, file), 'utf8');
 
 test('copies a checkout in a folder named like a skipped entry, still without its build output', () => {
   const parent = mkdtempSync(join(tmpdir(), 'pe-rootname-'));
-  const from = join(parent, 'mcpb');
-  mkdirSync(join(from, 'mcp', 'dist'), { recursive: true });
-  writeFileSync(join(from, 'LICENSE'), '');
-  writeFileSync(join(from, 'mcp', 'dist', 'cli.js'), '');
-  const dir = copyRepo(from);
+  let dir;
   try {
+    const from = join(parent, 'mcpb');
+    mkdirSync(join(from, 'mcp', 'dist'), { recursive: true });
+    writeFileSync(join(from, 'LICENSE'), '');
+    writeFileSync(join(from, 'mcp', 'dist', 'cli.js'), '');
+    dir = copyRepo(from);
     assert.deepEqual(readdirSync(dir, { recursive: true }).sort(), ['LICENSE', 'mcp']);
   } finally {
     rmSync(parent, { recursive: true, force: true });
-    rmSync(dir, { recursive: true, force: true });
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A copy that fails removes its folder before it throws, instead of leaving one in the temp directory.
+test('copyRepo removes its folder when the copy fails', () => {
+  const t = mkdtempSync(join(tmpdir(), 'pe-leak-'));
+  const saved = Object.fromEntries(['TMPDIR', 'TEMP', 'TMP'].map((k) => [k, process.env[k]]));
+  try {
+    Object.assign(process.env, { TMPDIR: t, TEMP: t, TMP: t });
+    assert.throws(() => copyRepo(join(t, 'missing')), { code: 'ENOENT' });
+    assert.deepEqual(readdirSync(t), []);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    rmSync(t, { recursive: true, force: true });
   }
 });
 

@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -144,9 +144,15 @@ const REGEX = "---\ntype: regex\npattern: 'x'\n---\n";
 
 function tree(files) {
   const dir = mkdtempSync(join(tmpdir(), 'pe-evalcases-'));
-  for (const [p, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(dir, p)), { recursive: true });
-    writeFileSync(join(dir, p), text);
+  try {
+    for (const [p, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, p)), { recursive: true });
+      writeFileSync(join(dir, p), text);
+    }
+  } catch (e) {
+    // A tree that can't be written leaves no folder behind.
+    rmSync(dir, { recursive: true, force: true });
+    throw e;
   }
   return dir;
 }
@@ -161,6 +167,19 @@ function check(files, prepare = () => {}) {
     rmSync(dir, { recursive: true, force: true });
   }
 }
+test('tree() removes its folder when a file can\'t be written', () => {
+  const t = mkdtempSync(join(tmpdir(), 'pe-leak-'));
+  const saved = Object.fromEntries(['TMPDIR', 'TEMP', 'TMP'].map((k) => [k, process.env[k]]));
+  try {
+    Object.assign(process.env, { TMPDIR: t, TEMP: t, TMP: t });
+    // "a" is a file, so the folder that a/b needs can't be made.
+    assert.throws(() => tree({ a: 'x', 'a/b': 'y' }));
+    assert.deepEqual(readdirSync(t), []);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    rmSync(t, { recursive: true, force: true });
+  }
+});
 const hasGit = spawnSync('git', ['--version']).status === 0;
 const git = (dir, ...args) => assert.equal(spawnSync('git', args, { cwd: dir }).status, 0, `git ${args.join(' ')}`);
 

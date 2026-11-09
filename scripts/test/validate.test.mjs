@@ -21,8 +21,14 @@ const SKIP = new Set(['.git', 'node_modules', 'results', 'dist', 'dist-mcpb', 'm
 
 function copyRepo(from = repo) {
   const dir = mkdtempSync(join(tmpdir(), 'pe-validate-'));
-  // The checkout itself is copied whatever its folder is called; SKIP applies to what's inside it.
-  cpSync(from, dir, { recursive: true, filter: (src) => src === from || !SKIP.has(basename(src)) });
+  try {
+    // The checkout itself is copied whatever its folder is called; SKIP applies to what's inside it.
+    cpSync(from, dir, { recursive: true, filter: (src) => src === from || !SKIP.has(basename(src)) });
+  } catch (e) {
+    // A copy that fails (an unreadable file in the checkout, a full disk) leaves no folder behind.
+    rmSync(dir, { recursive: true, force: true });
+    throw e;
+  }
   return dir;
 }
 
@@ -71,10 +77,15 @@ function gitCopy() {
     if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
     return r.stdout;
   };
-  git(['init', '-q']);
-  const listed = existsSync(join(repo, '.git')) ? spawnSync('git', ['ls-files', '-z'], { cwd: repo, encoding: 'utf8', env: gitEnv() }) : null;
-  if (listed?.status === 0) git(['--literal-pathspecs', 'add', '-f', '--pathspec-from-file=-', '--pathspec-file-nul'], listed.stdout.split('\0').filter((f) => f && existsSync(join(dir, f))).join('\0'));
-  else git(['add', '-A']);
+  try {
+    git(['init', '-q']);
+    const listed = existsSync(join(repo, '.git')) ? spawnSync('git', ['ls-files', '-z'], { cwd: repo, encoding: 'utf8', env: gitEnv() }) : null;
+    if (listed?.status === 0) git(['--literal-pathspecs', 'add', '-f', '--pathspec-from-file=-', '--pathspec-file-nul'], listed.stdout.split('\0').filter((f) => f && existsSync(join(dir, f))).join('\0'));
+    else git(['add', '-A']);
+  } catch (e) {
+    rmSync(dir, { recursive: true, force: true });
+    throw e;
+  }
   return { dir, git };
 }
 
@@ -807,16 +818,17 @@ test('the repository passes as-is', () => {
 
 test('copies a checkout in a folder named like a skipped entry, still without its build output', () => {
   const parent = mkdtempSync(join(tmpdir(), 'pe-rootname-'));
-  const from = join(parent, 'mcpb');
-  mkdirSync(join(from, 'mcp', 'dist'), { recursive: true });
-  writeFileSync(join(from, 'LICENSE'), '');
-  writeFileSync(join(from, 'mcp', 'dist', 'cli.js'), '');
-  const dir = copyRepo(from);
+  let dir;
   try {
+    const from = join(parent, 'mcpb');
+    mkdirSync(join(from, 'mcp', 'dist'), { recursive: true });
+    writeFileSync(join(from, 'LICENSE'), '');
+    writeFileSync(join(from, 'mcp', 'dist', 'cli.js'), '');
+    dir = copyRepo(from);
     assert.deepEqual(readdirSync(dir, { recursive: true }).sort(), ['LICENSE', 'mcp']);
   } finally {
     rmSync(parent, { recursive: true, force: true });
-    rmSync(dir, { recursive: true, force: true });
+    if (dir) rmSync(dir, { recursive: true, force: true });
   }
 });
 
@@ -834,6 +846,25 @@ test('names a link in the skill folder, such as an editor\'s lock file, and keep
   /^error: \.claude-plugin\/marketplace\.json: set version only in plugin\.json/m,
   /^4 error\(s\)$/m,
 ], 1, NO_STACK));
+
+// A copy that fails, here of a checkout that isn't there or at a git command, removes its folder
+// before it throws. With an unreadable file in the checkout, each test left one in the temp
+// directory.
+test('copyRepo and gitCopy remove their folder when they fail', () => {
+  const t = mkdtempSync(join(tmpdir(), 'pe-leak-'));
+  try {
+    withEnv({ TMPDIR: t, TEMP: t, TMP: t }, () => {
+      assert.throws(() => copyRepo(join(t, 'missing')), { code: 'ENOENT' });
+      if (!hasGit) return;
+      // A global git config that doesn't parse stops the copy's first git command.
+      writeFileSync(join(t, 'bad-config'), '[core\n');
+      withEnv({ GIT_CONFIG_GLOBAL: join(t, 'bad-config') }, () => assert.throws(() => gitCopy(), { message: /^git init -q: / }));
+    });
+    assert.deepEqual(readdirSync(t).filter((f) => f !== 'bad-config'), []);
+  } finally {
+    rmSync(t, { recursive: true, force: true });
+  }
+});
 
 // The git copies under conditions that broke them: a gitignore that covers every path, and the
 // repository variables that git exports to a hook. Each runs a GIT_ROWS row through the helpers.
@@ -903,15 +934,13 @@ test('git copies leave alone the repository that GIT_DIR and GIT_INDEX_FILE name
 // With .git there but no git command, the rules on tracked files are skipped with a warning too.
 test('warns that the rules on tracked files were skipped when git isn\'t on PATH', { skip: !hasGit && 'needs git' }, () => {
   const { dir } = gitCopy();
-  const empty = mkdtempSync(join(tmpdir(), 'pe-nogit-'));
   try {
-    // PATH in any spelling (Windows has Path), replaced by an empty folder.
+    // PATH in any spelling (Windows has Path), replaced by a folder that doesn't exist.
     const env = Object.fromEntries(Object.entries(gitEnv()).filter(([k]) => k.toUpperCase() !== 'PATH'));
-    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'validate.mjs')], { env: { ...env, PATH: empty, PE_ROOT: dir }, encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'validate.mjs')], { env: { ...env, PATH: join(dir, 'no-such-folder'), PE_ROOT: dir }, encoding: 'utf8' });
     expectRun({ code: r.status, out: r.stdout + r.stderr }, /^warning: the rules on tracked files \([^)]*\) were skipped: git isn't on PATH$/m, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
-    rmSync(empty, { recursive: true, force: true });
   }
 });
 
