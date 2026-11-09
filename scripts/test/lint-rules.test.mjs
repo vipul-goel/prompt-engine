@@ -8,8 +8,8 @@
 // mcp/src/check.ts, which check_prompt applies to every rule.
 // Each scan runs under a vm timeout, so a catastrophic pattern fails the test
 // instead of hanging it. Zero dependencies.
-// The last two tests are about one rule's words, not its speed: what
-// visible-reasoning-request matches around "step by step".
+// The last three tests are about one rule's words, not its speed: what
+// visible-reasoning-request matches around "step by step", and its message.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -414,4 +414,15 @@ test('visible-reasoning-request leaves step by step alone where it asks for a fo
   ]) {
     assert.ok(!asksForReasoning(text), text);
   }
+});
+
+// The message reaches MCP hosts with every match (check_prompt) and is printed by validate.mjs,
+// so it gives a reason that holds for each match. Since D48 the rule matches Google's own line
+// for Gemini, `think step-by-step`, so the message names that request and gives the method's own
+// rule as the reason. It doesn't say that reasoning models don't need such lines, which Google's
+// page contradicts, or that Claude may refuse, which is about showing reasoning, not thinking.
+test("visible-reasoning-request's message gives a reason that holds for every match", () => {
+  assert.match(reasoningRule.message, /think step by step/);
+  assert.match(reasoningRule.message, /its own/);
+  assert.doesNotMatch(reasoningRule.message, /don't need|may refuse/);
 });

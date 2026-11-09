@@ -15,7 +15,7 @@
       "flags": "i",
       "severity": "warning",
       "selfCheck": true,
-      "message": "Asks the model to expose its internal reasoning. Current Claude models may refuse this, and reasoning models don't need it. Ask for the result plus a brief explanation or evidence instead."
+      "message": "Asks the model to think step by step or to show its reasoning. Prompt Engine leaves such requests out for every target, as a rule of its own. Ask for the result plus a brief explanation or evidence instead."
     },
     {
       "id": "magic-phrase",
