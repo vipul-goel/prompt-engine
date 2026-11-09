@@ -20,6 +20,8 @@ permissions: {}
 
 jobs:
   build:
+    # A fork with Actions turned on skips the release: every other job waits for this one.
+    if: github.repository == 'vipul-goel/prompt-engine'
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -230,6 +230,25 @@ test('release.yml runs only for a pushed v* tag, and with no secrets (D15)', () 
   assert.doesNotMatch(releaseText, /secrets\.|NODE_AUTH_TOKEN|NPM_TOKEN/, 'npm and the MCP Registry log in with GitHub OIDC');
 });
 
+// GitHub runs a fork's workflows once its owner turns Actions on. A fork can't publish this package
+// or these registry names, so the release would only fail there, and the data check would fail on
+// the fork's issues, which start turned off. So the first job of each names this repository, the one
+// mcp/package.json names (npm's trusted publishing checks that too); the release's other jobs wait
+// for its build job, so they skip with it.
+test('release.yml and verify-data.yml run only in the repository mcp/package.json names, so a fork skips them', () => {
+  const url = JSON.parse(read('mcp/package.json')).repository?.url ?? '';
+  const home = /^git\+https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\.git$/.exec(url)?.[1];
+  assert.ok(home, `mcp/package.json's repository.url names a GitHub repository: ${url}`);
+  const guard = `github.repository == '${home}'`;
+  assert.equal(release.jobs.build.if, guard, "release.yml's build job");
+  for (const [name, j] of jobs(release)) {
+    if (name === 'build') continue;
+    assert.ok(after(release, name).has('build'), `${name} waits for build`);
+    assert.equal(j.if, undefined, `release.yml's ${name} job has no if: of its own, which could start it when build is skipped`);
+  }
+  for (const [name, j] of jobs(verify)) assert.equal(j.if, guard, `verify-data.yml's ${name} job`);
+});
+
 test('release.yml grants nothing to the whole workflow, and to each job only what it needs (finding 27, D16)', () => {
   assert.deepEqual(release.permissions, {});
   assert.deepEqual(Object.fromEntries(jobs(release).map(([name, j]) => [name, j.permissions])), {
