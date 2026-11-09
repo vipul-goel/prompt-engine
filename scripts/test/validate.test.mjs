@@ -409,6 +409,27 @@ const ROWS = [
   ['requires a marketplace entry for prompt-engine', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins[0].name = 'other'; }), /marketplace\.json: no entry for prompt-engine/],
   ['requires the marketplace source ./', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins[0].source = './plugin'; }), /prompt-engine source should be "\.\/"/],
   ['rejects a version in the marketplace entry', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins[0].version = '0.1.0'; }), /marketplace\.json: set version only in plugin\.json/],
+  // plugin.json and the marketplace entry can load commands, agents, skills, hooks and servers from
+  // anywhere in the repository, change how the plugin loads, or point claude plugin eval at other
+  // cases (experimental.evals): only metadata keys are allowed in them.
+  ['rejects plugin.json keys that load components or change how the plugin loads', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => {
+    Object.assign(j, {
+      commands: ['./docs/install.md'], agents: ['./docs/install.md'], skills: ['./docs'], hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo hi' }] }] },
+      mcpServers: { x: { command: 'node', args: ['mcp/dist/cli.js'] } }, lspServers: './x.json', outputStyles: './docs', settings: { agent: 'x' },
+      userConfig: {}, dependencies: ['x'], defaultEnabled: false, experimental: { evals: './docs' }, monitors: './x.json',
+    });
+  }), [...['commands', 'agents', 'skills', 'hooks', 'mcpServers', 'lspServers', 'outputStyles', 'settings', 'userConfig', 'dependencies', 'defaultEnabled', 'experimental', 'monitors']
+    .map((k) => new RegExp(`^error: \\.claude-plugin/plugin\\.json: key "${k}" isn't allowed: the plugin ships skills/prompt-engine alone, and a key other than its metadata can add commands, agents, skills, hooks or servers, or change how it loads \\(PLUGIN_KEYS in scripts/validate\\.mjs lists the metadata keys\\)$`, 'm')),
+  /^13 error\(s\)$/m]],
+  ['rejects marketplace entry keys that add components or change how the plugin loads', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => {
+    Object.assign(j.plugins[0], { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo hi' }] }] }, commands: ['./docs'], strict: false, icon: './x.png' });
+  }), [...['hooks', 'commands', 'strict', 'icon'].map((k) => new RegExp(`^error: \\.claude-plugin/marketplace\\.json: key "${k}" of the prompt-engine entry isn't allowed: the plugin ships skills/prompt-engine alone, and a key other than its metadata can add commands, agents, skills, hooks or servers, or change how it loads \\(ENTRY_KEYS in scripts/validate\\.mjs lists the metadata keys\\)$`, 'm')),
+    /^4 error\(s\)$/m]],
+  // The metadata keys Claude Code documents, which load nothing, are allowed.
+  ['accepts plugin.json and marketplace entry metadata', (d) => {
+    editJson(d, '.claude-plugin/plugin.json', (j) => Object.assign(j, { $schema: 'https://example.com/s.json', metadata: { a: 1 }, icon: './.claude-plugin/icon.png', supportUrl: 'https://example.com' }));
+    editJson(d, '.claude-plugin/marketplace.json', (j) => Object.assign(j.plugins[0], { tags: ['prompts'], displayName: 'Prompt Engine', keywords: ['x'], metadata: { a: 1 } }));
+  }, /validate: OK/, 0],
   ['rejects a version mismatch between SKILL.md and plugin.json', (d) => edit(d, SKILL, (t) => t.replace(/^ {2}version: "[^"]*"$/m, '  version: "9.9.9"')), /SKILL\.md: metadata\.version 9\.9\.9 != plugin\.json/],
   ['rejects an mcp/package.json version mismatch', (d) => editJson(d, 'mcp/package.json', (j) => { j.version = '9.9.9'; }), /mcp\/package\.json: version 9\.9\.9 != plugin\.json/],
   ['rejects an mcpName that differs from server.json', (d) => editJson(d, 'mcp/package.json', (j) => { j.mcpName = 'io.github.someone/other'; }), /mcpName "io\.github\.someone\/other" != server\.json name/],

@@ -419,11 +419,26 @@ if (tracked) {
 }
 
 // ---------- manifests ----------
+// Besides metadata, plugin.json and the marketplace entry can declare commands, agents, skills,
+// hooks, MCP and LSP servers and other components, from any path in the repository, and settings,
+// dependencies or user config that change how the plugin loads (plugins-reference and
+// marketplace-reference, fetched 2026-11-10). The plugin ships skills/prompt-engine alone, which
+// the rules above keep true for the default folders, so both files hold only the metadata keys
+// Claude Code documents, which load nothing. Any other key is named, those Claude Code adds later
+// included. The entry's version has a message of its own below.
+const PLUGIN_KEYS = ['$schema', 'name', 'displayName', 'version', 'description', 'author', 'homepage', 'repository', 'license', 'keywords',
+  'metadata', 'icon', 'documentationUrl', 'supportUrl', 'privacyPolicyUrl', 'termsOfServiceUrl'];
+const ENTRY_KEYS = ['name', 'source', 'version', 'description', 'category', 'tags', 'displayName', 'author', 'homepage', 'repository',
+  'license', 'keywords', 'metadata'];
+const metadataOnly = (where, obj, keys, list) => {
+  for (const k of Object.keys(obj)) if (!keys.includes(k)) err(`${where(k)} isn't allowed: the plugin ships skills/prompt-engine alone, and a key other than its metadata can add commands, agents, skills, hooks or servers, or change how it loads (${list} in scripts/validate.mjs lists the metadata keys)`);
+};
 const plugin = readObject('.claude-plugin/plugin.json');
 const market = readObject('.claude-plugin/marketplace.json');
 if (plugin) {
   if (plugin.name !== 'prompt-engine') err('.claude-plugin/plugin.json: name must be prompt-engine');
   if (!SEMVER.test(plugin.version ?? '')) err('.claude-plugin/plugin.json: version must be semver');
+  metadataOnly((k) => `.claude-plugin/plugin.json: key ${JSON.stringify(k)}`, plugin, PLUGIN_KEYS, 'PLUGIN_KEYS');
 }
 const plugins = market?.plugins ?? [];
 if (!Array.isArray(plugins) || !plugins.every(isMapping)) err('.claude-plugin/marketplace.json: plugins must be a list of plugin entries');
@@ -431,6 +446,7 @@ else if (market) {
   const entry = plugins.find((p) => p.name === (plugin?.name ?? 'prompt-engine'));
   if (!entry) err('.claude-plugin/marketplace.json: no entry for prompt-engine');
   else {
+    metadataOnly((k) => `.claude-plugin/marketplace.json: key ${JSON.stringify(k)} of the prompt-engine entry`, entry, ENTRY_KEYS, 'ENTRY_KEYS');
     if (entry.source !== './') err('.claude-plugin/marketplace.json: prompt-engine source should be "./"');
     if (entry.version) err('.claude-plugin/marketplace.json: set version only in plugin.json (it silently wins)');
   }
