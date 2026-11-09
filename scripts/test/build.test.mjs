@@ -109,6 +109,41 @@ test('a CRLF checkout builds as up to date, and a rebuild writes LF text without
   }
 });
 
+// A file converted to CRLF twice ends its lines in CR CR LF. One pass of CR LF to LF left a CR LF
+// there, which the build wrote and every later read dropped, so the build never settled.
+test('normalize() reads a run of CRs before a LF as one line break, so a second pass changes nothing', () => {
+  assert.equal(normalize('a\r\r\nb\r\nc\r\r\r\n\r\nd\re\r'), 'a\nb\nc\n\nd\re\r');
+  for (const s of ['a\r\r\nb', 'a\r\r\r\n', '\u{FEFF}a\r\r\nb', 'a\rb\r\n\r', '\r\r\n\r\n']) {
+    assert.equal(normalize(normalize(s)), normalize(s), JSON.stringify(s));
+  }
+});
+
+test('one build settles a reference line that ends in CR CR LF, and a data value that holds a written-out CR LF', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-crcrlf-'));
+  try {
+    copyTo(dir);
+    const ref = join(dir, 'skills/prompt-engine/references/writing.md');
+    const lines = readFileSync(ref, 'utf8').split('\n');
+    lines[2] += '\r\r';
+    writeFileSync(ref, lines.join('\n'));
+    // A value with \r\n in its JSON string, which the build copies into references/media-targets.md.
+    const file = join(dir, 'data/media-targets.json');
+    const data = JSON.parse(readFileSync(file, 'utf8'));
+    data.targets[0].notes = 'First line.\r\nSecond line.';
+    writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    const build = node(join(dir, 'scripts', 'build.mjs'));
+    assert.equal(build.code, 0, build.out);
+    for (const p of [MEDIA, 'universal/prompt-engine-knowledge.md']) assert.doesNotMatch(readFileSync(join(dir, p), 'utf8'), /\r/, p);
+    const check = node(join(dir, 'scripts', 'build.mjs'), ['--check']);
+    assert.equal(check.code, 0, check.out);
+    const twice = node(join(dir, 'scripts', 'build.mjs'));
+    assert.equal(twice.code, 0, twice.out);
+    assert.doesNotMatch(twice.stdout, /wrote/, 'a second build changes nothing');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a byte-order mark at the start of a source file changes nothing, though validate.mjs refuses one in SKILL.md', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pe-bom-'));
   try {

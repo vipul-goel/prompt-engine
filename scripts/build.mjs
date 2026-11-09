@@ -16,8 +16,11 @@ import { fileURLToPath } from 'node:url';
 // PE_ROOT lets tests point the scripts at a temporary copy of the repository.
 export const root = process.env.PE_ROOT || join(dirname(fileURLToPath(import.meta.url)), '..');
 // Text as the scripts compare it: without a leading byte-order mark and with LF line endings,
-// so a CRLF checkout (Git for Windows' default) or a BOM an editor added changes nothing.
-export const normalize = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s).replace(/\r\n/g, '\n');
+// so a CRLF checkout (Git for Windows' default) or a BOM an editor added changes nothing. A run
+// of CRs before a LF is one line break (a file converted to CRLF twice ends its lines in CR CR
+// LF), so a second pass changes nothing: the build compares what it generates with a read of
+// what it wrote, and one pass of CR LF to LF left a CR LF that the next read dropped.
+export const normalize = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s).replace(/\r+\n/g, '\n');
 const read = (p) => normalize(readFileSync(join(root, p), 'utf8'));
 // SKILL.md's frontmatter and body, from normalized text, or null when the text has none. Claude
 // Code (2.1.319, read in its code) ends the frontmatter at the first "---" after the opening line,
@@ -307,7 +310,10 @@ export function renderLintGraders(rules, { media = false, skip = [] } = {}) {
 export function buildAll() {
   const outputs = {};
   const media = JSON.parse(read('data/media-targets.json'));
-  outputs['skills/prompt-engine/references/media-targets.md'] = renderMediaTargets(media);
+  // As a read of the file will see it, here already because the knowledge file and recorded Reads
+  // copy this text: a value with a written-out \r\n left a CR LF in them, which each later read
+  // dropped, so the build never settled.
+  outputs['skills/prompt-engine/references/media-targets.md'] = normalize(renderMediaTargets(media));
   const refs = {};
   for (const k of KNOWLEDGE_ORDER) {
     const p = `skills/prompt-engine/references/${k}.md`;
@@ -351,6 +357,9 @@ export function buildAll() {
       lint: strip(JSON.parse(read('data/lint-rules.json'))),
     });
   }
+  // Every output as a later read of it will see it, so that what the build writes compares equal
+  // the next time (main() and validate.mjs normalize the file on disk).
+  for (const [p, text] of Object.entries(outputs)) outputs[p] = normalize(text);
   return outputs;
 }
 
