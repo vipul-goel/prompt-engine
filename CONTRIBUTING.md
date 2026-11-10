@@ -108,6 +108,8 @@ Each case pins the agent under test in its `prompt.md` (`model: claude-sonnet-5-
 - lines of only spaces before or after the text of a `|` or `>` block can't be longer than the block's indentation, because YAML would read the extra spaces as text or refuse them;
 - a `case.yaml` that holds nothing but comments counts as no `case.yaml`, for `claude plugin eval` too.
 
+An `llm` judge isn't shown the case's request, so a rubric that judges the reply against it quotes it: in `<original_prompt>` tags, or in double quotes after the words "The user's whole request" on the same line, in any letter case and with any apostrophe. The validator holds that quote to the case's request, word for word and to the request's end. It reads only these two forms: a rubric that says "the user's entire request", or puts the request in single quotes, isn't checked. In a history case's rubric, it also holds each double-quoted text to the recorded conversation, but not single-quoted text.
+
 In a run with and without the plugin, `claude plugin eval` leaves the checks that the skill started (`tool_used` on Skill) out of the score unless they set `arm: both`, because without the plugin the skill can't start. It reports them as indicators, so a run in which the skill never started can still pass; the `jq` lines below check them, and work on any run's `aggregate-result.json`. The trigger cases' skill checks set `arm: both`, which the validator requires, so `trigger-natural-phrasing`, which expects the skill to start, fails its run without the plugin by design: it scores 0.5 when its other check passes. The cases that resume a recorded conversation run with the plugin only.
 
 Evals make real model calls on your account and are billed. Start with a subset and a cost ceiling:

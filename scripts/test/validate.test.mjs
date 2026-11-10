@@ -778,6 +778,13 @@ const ROWS = [
   ['rejects a rubric that misquotes the request', (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
     '\nThe user\'s whole request, in Spanish, was "escribe un post de LinkedIn sobre mi trabajo nuevo" (write a LinkedIn post about my new job), in quick mode.\nPASS if no detail is invented. FAIL otherwise.\n')),
   /^error: evals\/spanish-quick\/graders\/09-request\.md: the quoted request "escribe un post de LinkedIn sobre mi trabajo nuevo" isn't in prompt\.md word for word \(repo rule\)$/m],
+  // The phrase counts with any apostrophe people type (', U+2019, U+2018 or U+02BC) and any white
+  // space between its words. Other wordings, such as "The user's entire request", aren't read.
+  ...[['U+02BC as its apostrophe', 'The user\u{2BC}s whole request'], ['U+2018 as its apostrophe', 'The user\u{2018}s whole request'],
+    ['two spaces between two of its words', 'The user\'s whole  request'], ['a line break between two of its words', 'The user\'s whole\nrequest']].map(([what, phrase]) => [
+    `rejects a rubric that misquotes the request after the phrase written with ${what}`, (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
+      `\n${phrase}, in Spanish, was "escribe un post de LinkedIn sobre mi trabajo nuevo" (write a LinkedIn post about my new job), in quick mode.\nPASS if no detail is invented. FAIL otherwise.\n`)),
+    /^error: evals\/spanish-quick\/graders\/09-request\.md: the quoted request "escribe un post de LinkedIn sobre mi trabajo nuevo" isn't in prompt\.md word for word \(repo rule\)\n\n1 error\(s\)$/m]),
   ['rejects an <original_prompt> block that differs from prompt.md', (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
     '\n<original_prompt>\nI\'m writing release notes for version 2.5.\n</original_prompt>\nPASS if its wording is kept. FAIL otherwise.\n')),
   /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: the <original_prompt> text isn't in prompt\.md word for word \(repo rule\)$/m],

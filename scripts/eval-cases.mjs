@@ -766,14 +766,16 @@ const promptOf = (c) => c.prompt?.body || (isMapping(c.caseYaml?.execution) && t
 const criteriaOf = (g) => (g.data.type === 'llm' ? g.data.criteria ?? (g.body !== '' ? g.body : undefined) : undefined);
 // The two ways a rubric quotes the user's request: in <original_prompt> tags, and as the first
 // quoted string after "The user's whole request" (so "The user's whole request, in Spanish, was
-// "..."" counts too). Straight or curly quotes and apostrophe. The tags and the phrase count in any
-// letter case, so that no form of them is skipped without a word. Another quotation mark (« », ‹ ›,
-// „, 「 or 『) between the phrase and the double quotes makes the phrase unreadable: the request
-// quoted in that mark was passed over for a later double-quoted word.
+// "..."" counts too). Straight or curly quotes. The tags and the phrase count in any letter case,
+// and the phrase with any apostrophe people type (', U+2019, U+2018 or U+02BC) and any white space
+// between its words, so that no form of them is skipped without a word. Other wordings, such as
+// "The user's entire request", and quotes in single quotes aren't read (CONTRIBUTING.md says so).
+// Another quotation mark (« », ‹ ›, „, 「 or 『) between the phrase and the double quotes makes the
+// phrase unreadable: the request quoted in that mark was passed over for a later double-quoted word.
 const ORIGINAL_PROMPT = /<original_prompt>([\s\S]*?)<\/original_prompt>/gi;
 const ORIGINAL_PROMPT_OPEN = /<original_prompt>/gi;
-const WHOLE_REQUEST = /The user['\u{2019}]s whole request\b[^"\u{201C}\u{AB}\u{BB}\u{2039}\u{203A}\u{201E}\u{300C}\u{300E}\n]*["\u{201C}]([^"\u{201D}\n]+)["\u{201D}]/giu;
-const WHOLE_REQUEST_MARK = /The user['\u{2019}]s whole request\b/giu;
+const WHOLE_REQUEST = /The\s+user['\u{2018}\u{2019}\u{2BC}]s\s+whole\s+request\b[^"\u{201C}\u{AB}\u{BB}\u{2039}\u{203A}\u{201E}\u{300C}\u{300E}\n]*["\u{201C}]([^"\u{201D}\n]+)["\u{201D}]/giu;
+const WHOLE_REQUEST_MARK = /The\s+user['\u{2018}\u{2019}\u{2BC}]s\s+whole\s+request\b/giu;
 // Text in straight or curly double quotes, on one line. Curly quoted text holds no opening curly
 // quote: from each of a long run of unclosed ones, the match ran to the end of the line, which took
 // quadratic time. So in "\u{201C}a \u{201C}b\u{201D}" the quote is "b".
