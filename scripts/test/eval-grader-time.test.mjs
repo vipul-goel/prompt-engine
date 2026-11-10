@@ -86,6 +86,11 @@ const SHAPES = [
   // before What next? keeps V8 from returning at once, as it did on a reply with no ★ at all.
   ['one line of bulleted Run it now options, after a ★', '★ What next? Refine', ' - Run it now', 8_000],
   ['one line of bulleted Done options, after a ★', '★ What next? Refine', ' - Done', 10_000],
+  // A run of spaces or tabs on a line under a Full prompt heading: in JavaScriptCore, the menu
+  // graders' lookbehinds before an open placeholder's [[ read the run back from every place in it,
+  // until they first looked for the [[ (step 1e, B2.1.1). V8 was fast.
+  ['a run of spaces on a line under a Full prompt heading', '### Full prompt\nx', ' ', 3_000],
+  ['a run of tabs on a line under a Full prompt heading', '### Full prompt\nx', '\t', 3_000],
 ];
 // The reply of a shape, and its first half.
 const replies = ([, prefix, piece, n]) => [prefix + piece.repeat(n), prefix + piece.repeat(Math.ceil(n / 2))];

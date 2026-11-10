@@ -89,7 +89,9 @@ export const MENU = new RegExp(String.raw`^${ONE_STAR}(?:(?!What next\?)[\s\S])*
 // digit, ] or ), as in code such as df[["a", "b"]]. Residuals: a real placeholder right after one
 // of those words isn't counted, and a [[...]] that the prompt uses for something else is: a marker
 // after other words ("mark it [[TBD]]"), a field of an output template that the model fills, or
-// code such as f([[1]]). The (?<!#) keeps a long run of # linear.
+// code such as f([[1]]). The (?<!#) keeps a long run of # linear. The lookahead for [[ in front of
+// the lookbehinds keeps a long run of spaces or tabs linear: without it, JavaScriptCore read such a
+// run back from every place in it (step 1e, B2.1.1).
 // writing-quick-launch-email's 08 and the media 05 graders hold the same text. The skill also
 // leaves out the placeholder of another person's private detail that it removed (D46). The core
 // has no room for that rule, so this check doesn't model it; private-detail-redaction-quick's 08
@@ -98,7 +100,7 @@ const SECRET_PLACEHOLDER = String.raw`(?:\b|_)(?:key|token|secret|password)\]\]|
 const OUTPUT_HEADING = String.raw`[ \t]*#+[ \t]*(?:Short version|What I added|Assumptions|Score|What next)`;
 export const FILL_OPEN = String.raw`[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]` +
   String.raw`|(?:(?!(?<!#)#+[ \t]*Full prompt)[\s\S])*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?!${OUTPUT_HEADING})[^\n]*)*?\n(?!${OUTPUT_HEADING})[^\n]*?` +
-  String.raw`(?<!(?:such as|e\.g\.,?|for example,?|like|write|leave(?: an?)?|insert|put)[ \t]+\x60?)(?<!\]\]\x60?(?:,|[ \t]+or)[ \t]+\x60?)(?<![\w\])])\[\[(?!placeholders?\]\])(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]`;
+  String.raw`(?=\[\[)(?<!(?:such as|e\.g\.,?|for example,?|like|write|leave(?: an?)?|insert|put)[ \t]+\x60?)(?<!\]\]\x60?(?:,|[ \t]+or)[ \t]+\x60?)(?<![\w\])])\[\[(?!placeholders?\]\])(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]`;
 const fillOpen = new RegExp(`^(?:${FILL_OPEN})`, 'i');
 const STARRED_NOT_FILL = new RegExp(String.raw`^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)${OPTION_STAR}`, 'i');
 // The score table, from its first row to its last; the row labels may be bold, as the eval
