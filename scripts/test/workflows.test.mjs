@@ -6,7 +6,8 @@
 // the on-main, CHANGELOG and tag checks, the release build's MCP tests, the npm, MCP Registry and
 // GitHub release steps, the two steps that download a tool, and the data check's filter and issue.
 // Those runs can't stand in for a release, so each workflow is also pinned, job by job, by the SHA-256
-// of what it holds: any change to one fails here until its pin changes too.
+// of what it holds: any change to it but a comment or an action's version fails here until its pin
+// changes too.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
