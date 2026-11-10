@@ -139,9 +139,15 @@ describe.concurrent('--http limits', () => {
     const hostname = `127.0.0.1:${server.port}`;
     const waiting = () => held.filter((h) => h.sock.destroyed || !/^HTTP\/1\.1 100 Continue\r\n\r\n$/.test(h.text)).length;
     try {
+      // A body declared past the 1,500,000-byte cap counts as 1,500,000 bytes, since the SDK
+      // refuses it with 413 before reading it: 413, never 503, whatever length it declares.
+      expect(await startUpload(server.port, hostname, 9_000_000)).toMatch(/^HTTP\/1\.1 413 /);
+      for (let i = 0; i < 4; i++) await holdUpload(server.port, held, 1_500_000);
+      expect(await startUpload(server.port, hostname, 3_000_000)).toMatch(/^HTTP\/1\.1 413 /);
+      await sleep(100);
       // Five bodies of the largest size fit; a sixth doesn't, and neither does a chunked
       // upload, which counts as the largest size. A small request still fits.
-      for (let i = 0; i < 5; i++) await holdUpload(server.port, held, 1_500_000);
+      await holdUpload(server.port, held, 1_500_000);
       const before = server.stderr().length;
       expect(await startUpload(server.port, hostname, 1_500_000)).toMatch(/^HTTP\/1\.1 503 [^]*\r\nretry-after: 1\r\n/i);
       expect(await startUpload(server.port, hostname, 1_000_000)).toMatch(/^HTTP\/1\.1 503 /);
