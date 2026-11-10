@@ -160,16 +160,16 @@ export const CHANGED = [
 // prompt yet…"). The ready counts only when nothing before it in its clause, within 200
 // characters, negates it or puts it off ("isn't ready", "will be ready", "once I have them, …
 // ready"); a clause ends at . ! ? ; : , or a dash. The bound keeps the time linear on a line that
-// puts off many readys (step 1e). The reply also asks for no values and starts no task in prose (step 1e). It fails on
-// send, tell, give, share, paste or provide followed by me or us, unless to comes right before the
-// verb ("to give me the app name", which says what an option does), a negation governs it
-// ("doesn't tell me which option") or the next words are about the pick ("tell me which", "what
-// you'd like", a number); on send, give or provide followed by these or the following; on a
-// question that starts with what's your or what's the, unless it asks for the pick ("What's your
-// pick?"); on "here is the email" or another deliverable that isn't a prompt; and on a line that
-// starts with Subject:, an email written out. A heuristic: it misses an ask in other words ("I
-// need the app name", "Which app is it?") and a task started without such words, and it flags a
-// question about something other than values ("What are your thoughts?").
+// puts off many readys (step 1e). The reply also asks for no values and starts no task in prose
+// (step 1e). It fails on send, tell, give, share, paste or provide followed by me or us, unless to
+// comes right before the verb ("to give me the app name", which says what an option does), a
+// negation governs it ("doesn't tell me which option") or the next words are about the pick
+// ("tell me which", "what you'd like", a number); on send, give or provide followed by these or
+// the following; on a question that starts with what's your or what's the, unless it asks for the
+// pick ("What's your pick?"); on "here is the email" or another deliverable that isn't a prompt;
+// and on a line that starts with Subject:, an email written out. A heuristic: it misses an ask in
+// other words ("I need the app name", "Which app is it?") and a task started without such words,
+// and it flags a question about something other than values ("What are your thoughts?").
 const PUT_OFF = /\b(?:not|never|no longer|almost|nearly|once|until|after|as soon as|if|whether)\b|n['’]t\b|\b(?:will|would|could|should|might|may|shall|can)\s+(?:\w+\s+){0,2}?be\b/i;
 const saysReady = (t) => t.split('\n').some((line) => /\bprompts?\b/i.test(line) && [...line.matchAll(/\bready\b/gi)]
   .some((m) => !PUT_OFF.test(line.slice(Math.max(0, m.index - 200), m.index).split(/[.!?;:,—–]/).at(-1))));
@@ -202,9 +202,8 @@ export const KEY_PIECES = Array.from({ length: KEY_SECRET.length - 7 }, (_, i) =
 // won't share your key", "your agent should send your API key in the Authorization header"), when
 // the agent asks for it ("your agent will ask you to enter your API key") or when the key goes to
 // the agent ("give the agent access to your key", "provide your API key to the agent", "paste it
-// into your agent"). The clause
-// ends at a semicolon, a bracket, brace or parenthesis, or a
-// dash; at but; at once, after, when, whenever, until, unless, if, whether or so; at and, or or
+// into your agent"). The clause ends at a semicolon, a bracket, brace or parenthesis, or a dash;
+// at but; at once, after, when, whenever, until, unless, if, whether or so; at and, or or
 // then before another verb or a new subject; and at "for the key," before a verb such as use or
 // set. So "send me the mailbox, and set your key on your machine" doesn't ask, nor does "send me
 // the mailbox, and for the API key, use your app settings"; nor does a key that is the subject of

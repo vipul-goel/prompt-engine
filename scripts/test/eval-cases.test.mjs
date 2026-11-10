@@ -1079,9 +1079,9 @@ test('private-detail-redaction-quick 05: a reply that asks for the number fails,
     // never, not, rather and instead end the clause, within 30 characters too.
     'never here': privateReply({ fill: `${placeholder} — paste the number in your GPT and never here.` }),
     // So do if, where and when, and in followed within three words by result, placeholder,
-    // instructions, prompt or GPT: the method's own words for a run here (output-format.md, "or in
-    // the result if the prompt runs here", "where they use the prompt"), and a "below" that points at
-    // the placeholder or at the GPT's instructions (step 1e, B1.2.9).
+    // instructions, prompt or GPT: the method's own words for a run here (output-format.md, "or
+    // in the result if the prompt runs here", "where they use the prompt"), and a "below" that
+    // points at the placeholder or at the GPT's instructions (step 1e, B1.2.9).
     'if you try it here': privateReply({ fill: `${placeholder} — enter the number if you try it here.` }),
     'where you set up the GPT below': privateReply({ fill: `${placeholder} — enter her number where you set up the GPT below.` }),
     'when you set up the GPT below': privateReply({ fill: `${placeholder} — enter her number when you set up the GPT below.` }),
@@ -1103,8 +1103,8 @@ test('private-detail-redaction-quick 05: a reply that asks for the number fails,
     'paste it here': privateReply({ first: "I replaced the conductor's number with a placeholder. Paste her number here and I will add it." }),
     'here, then the prompt': privateReply({ first: "I replaced the conductor's number with a placeholder. Paste her number here and I'll update the prompt." }),
     'below, if you like': privateReply({ fill: `${placeholder} — type her number below if you want it in the result.` }),
-    // result, placeholder, instructions, prompt or GPT ends the clause only after in, so an ask that
-    // names what the number is for still fails (step 1e, B1.2.9).
+    // result, placeholder, instructions, prompt or GPT ends the clause only after in, so an ask
+    // that names what the number is for still fails (step 1e, B1.2.9).
     'for the GPT below': privateReply({ fill: `${placeholder} — type her number for the GPT below and I will add it.` }),
     'for the prompt here': privateReply({ fill: `${placeholder} — paste her number for the prompt here.` }),
     'for the instructions here': privateReply({ fill: `${placeholder} — send her number for the instructions here and I will fill it in.` }),

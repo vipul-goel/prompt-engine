@@ -569,7 +569,8 @@ test('secret case, after 1: the reply is not empty, and with a placeholder open 
     "Where are your support emails? Meanwhile, here's the script:\n```python\nimport os\nprint(os.environ['OPENAI_API_KEY'][:0])\n```",
     'Sure!',
   ]) assert.deepEqual(fails(reply, LIVE_TURN1), [ASKS_FIRST], reply);
-  // With nothing open in turn 1, 1 picks Run it now, which carries out the prompt: the script passes.
+  // With nothing open in turn 1, 1 picks Run it now, which carries out the prompt: the script
+  // passes.
   const noneOpen = secretOutput();
   assert.deepEqual(fails("Here's the script:\n```python\nimport os\nprint('summaries')\n```", noneOpen), []);
 });
