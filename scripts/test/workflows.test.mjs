@@ -538,6 +538,33 @@ function afterCheck(run, check) {
   return lines.slice(lines.indexOf(check) + 1);
 }
 
+// A re-run publishes the run's own commit, with its own release.yml, whatever the tag names by then,
+// and gh release create --verify-tag only checks that the tag exists. So each job that can publish (it
+// can write to the repository or request an OIDC token) first checks that the tag still names the
+// run's commit. The commits endpoint gives an annotated tag's commit, and fails for a deleted tag.
+test("release.yml: each publishing job first stops unless the tag still names the run's commit (finding 25)", { skip: NO_BASH }, () => {
+  const publishing = jobs(release).filter(([, j]) => j.permissions?.contents === 'write' || j.permissions?.['id-token'] === 'write').map(([n]) => n);
+  assert.deepEqual(publishing, ['github-release', 'npm', 'registry']);
+  const firsts = publishing.map((job) => ({ ...release.jobs[job].steps[0], job, i: 0 }));
+  for (const s of firsts) {
+    assert.equal(s.name, "The tag still names this run's commit", label(s));
+    assert.deepEqual(s.env, { GH_TOKEN: '${{ github.token }}' }, label(s));
+    assert.equal(s.run, firsts[0].run, `${label(s)}: the same check in each job`);
+  }
+  // The stand-in gh answers the lookup with TAGGED, or fails as GitHub's API does for a deleted tag.
+  const gh = `[ "$1 $2" = "api repos/example/repo/commits/refs/tags/v0.1.0" ] || exit 64
+[ -z "$TAG_GONE" ] || { echo '{"message":"No commit found for SHA: refs/tags/v0.1.0","status":"422"}'; echo "gh: No commit found for SHA: refs/tags/v0.1.0 (HTTP 422)" >&2; exit 1; }
+printf '%s\\n' "$TAGGED"`;
+  const go = (env) => runStep(firsts[0].run, { stubs: { gh }, env: { GITHUB_REPOSITORY: 'example/repo', GITHUB_REF: 'refs/tags/v0.1.0', GITHUB_REF_NAME: 'v0.1.0', GITHUB_SHA: '0123abc', ...env } });
+  let r = go({ TAGGED: '0123abc' });
+  assert.equal(r.code, 0, `the tag still names the run's commit: ${r.out}`);
+  r = go({ TAGGED: '4567def' });
+  assert.equal(r.code, 1, `a moved tag stops the job: ${r.out}`);
+  assert.match(r.out, /^::error::v0\.1\.0 now names 4567def, not this run's commit 0123abc$/m);
+  r = go({ TAG_GONE: '1' });
+  assert.notEqual(r.code, 0, `a deleted tag stops the job: ${r.out}`);
+});
+
 test('release.yml: mcp-publisher is checked against its pinned SHA-256 before it is unpacked or run (finding 28, D17)', () => {
   const { env } = release.jobs.registry;
   assert.match(env?.MCP_PUBLISHER_VERSION ?? '', /^v\d+\.\d+\.\d+$/);

@@ -13,7 +13,7 @@ name: Release
 # mcp/package-lock.json pins; test:pack, which installs the packed package as npx
 # does, runs in its own job after the upload, and the other jobs take the files by
 # the upload's ID. A failed run can be re-run: each publishing job skips what is
-# already published.
+# already published, and first stops unless the tag still names the run's commit.
 on:
   push:
     tags: ['v*']
@@ -110,6 +110,17 @@ jobs:
     permissions:
       contents: write   # create the GitHub release
     steps:
+      - name: The tag still names this run's commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A re-run publishes this run's commit whatever the tag names by then, so stop if the
+          # tag was deleted or moved since. The API gives an annotated tag's commit.
+          tagged="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF}" --jq .sha)"
+          if [ "${tagged}" != "${GITHUB_SHA}" ]; then
+            echo "::error::${GITHUB_REF_NAME} now names ${tagged}, not this run's commit ${GITHUB_SHA}"
+            exit 1
+          fi
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build.outputs.artifact-id }}
@@ -141,6 +152,17 @@ jobs:
       contents: read
       id-token: write   # npm trusted publishing; npm adds provenance itself
     steps:
+      - name: The tag still names this run's commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A re-run publishes this run's commit whatever the tag names by then, so stop if the
+          # tag was deleted or moved since. The API gives an annotated tag's commit.
+          tagged="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF}" --jq .sha)"
+          if [ "${tagged}" != "${GITHUB_SHA}" ]; then
+            echo "::error::${GITHUB_REF_NAME} now names ${tagged}, not this run's commit ${GITHUB_SHA}"
+            exit 1
+          fi
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24   # trusted publishing needs npm 11.5.1 or later; Node 22 bundles npm 10.9
@@ -192,6 +214,17 @@ jobs:
       # registry_1.8.6_checksums.txt). Update both together.
       MCP_PUBLISHER_SHA256: 1fbe93fc0783c2394d8012c8d6e50a59e98cb2cc2d216264cc69f405d0e21340
     steps:
+      - name: The tag still names this run's commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A re-run publishes this run's commit whatever the tag names by then, so stop if the
+          # tag was deleted or moved since. The API gives an annotated tag's commit.
+          tagged="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF}" --jq .sha)"
+          if [ "${tagged}" != "${GITHUB_SHA}" ]; then
+            echo "::error::${GITHUB_REF_NAME} now names ${tagged}, not this run's commit ${GITHUB_SHA}"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
