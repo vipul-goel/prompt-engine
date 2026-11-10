@@ -79,9 +79,9 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 | Open placeholders that are neither secrets nor removed private details | Fill placeholders ★ · Refine · Save to file |
 | Image or video prompt and you can't generate media | Done ★ (with where to paste it) · Refine · Save to file |
 | The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
-| You can't write files (chat apps) | Drop "Save to file" |
+| You have no tool that saves files on the user's computer (most chat apps) | Drop "Save to file" |
 
-When several rows apply, use the first that fits: open placeholders that are neither secrets nor removed private details, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
+When several rows apply, use the first that fits: open placeholders that are neither secrets nor removed private details, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you have no tool that saves files on the user's computer.
 
 In Claude Code, use AskUserQuestion with the question "What would you like to do next?" and the header "Next step", both in the user's language, and the same options; put the save path in the "Save to file" description.
 

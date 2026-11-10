@@ -1,5 +1,5 @@
 {
-  "$comment": "The output contract shared by every format (skill, universal prompt, MCP server), and the wording of the lookup rule, which no eval checks: no shell command or subagent until the user picks an option that runs the prompt (D32), in the three method files that state it. scripts/validate.mjs checks that each artifact listed under 'artifacts' contains every string of its groups in 'required'. A heading must appear as a ## to #### heading followed by a colon or the end of the line, or as a **bold** label that starts a list item. Change the contract here first, then update the artifacts.",
+  "$comment": "The output contract shared by every format (skill, universal prompt, MCP server), including the condition for offering Save to file (a tool that saves files on the user's computer, which no eval checks in the skill, because the full suite grants Write), and the wording of the lookup rule, which no eval checks: no shell command or subagent until the user picks an option that runs the prompt (D32), in the three method files that state it. scripts/validate.mjs checks that each artifact listed under 'artifacts' contains every string of its groups in 'required'. A heading must appear as a ## to #### heading followed by a colon or the end of the line, or as a **bold** label that starts a list item. Change the contract here first, then update the artifacts.",
   "required": {
     "headings": [
       "Full prompt",
@@ -34,6 +34,9 @@
       "Refine",
       "Save to file"
     ],
+    "saveOffer": [
+      "tool that saves files on the user's computer"
+    ],
     "replyLine": [
       "Reply `ok` to accept every ★"
     ],
@@ -61,6 +64,7 @@
       "provenanceTags",
       "markers",
       "menu",
+      "saveOffer",
       "changeLine"
     ],
     "skills/prompt-engine/references/questions.md": [
@@ -78,6 +82,7 @@
       "markers",
       "replyLine",
       "menu",
+      "saveOffer",
       "changeLine",
       "lookupRuleSkill"
     ],
@@ -89,6 +94,7 @@
       "markers",
       "replyLine",
       "menu",
+      "saveOffer",
       "changeLine"
     ]
   },
