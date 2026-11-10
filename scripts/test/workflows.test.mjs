@@ -22,13 +22,22 @@ const read = (file) => readFileSync(join(repo, file), 'utf8').replace(/\r\n/g, '
 // such as [main] and the empty map {}; | blocks; comments on their own line or after a value.
 // Every plain value stays a string, so `node-version: 22` reads as '22' and `false` as 'false'.
 // On the four workflow files it gives what Ruby's YAML parser gives, with values as strings.
+// It also throws on a tab, a control character, and a line break other than LF (a CRLF reads as
+// LF). YAML 1.1 readers, among them Ruby's, actionlint's and the YamlDotNet in GitHub's runner
+// code, end a line at CR, NEL (U+0085), LS (U+2028) and PS (U+2029) too, even inside a comment,
+// so the rest of such a line would be YAML or shell code to them and a comment here.
 function readYaml(text, file) {
   const raw = text.replace(/\r\n/g, '\n').split('\n');
   const fail = (n, why) => { throw new Error(`${file}:${n + 1}: ${why}`); };
   const spaces = (l) => l.match(/^ */)[0].length;
   const ITEM = /^-(?: |$)/;
   const KEY = /^([A-Za-z_][\w.-]*):(?: +(.*))?$/;
-  raw.forEach((l, n) => { if (l.includes('\t')) fail(n, 'a tab'); });
+  const CONTROL = /[\x00-\x08\x0B-\x1F\x7F-\x9F\u{2028}\u{2029}\u{FEFF}\u{FFFE}\u{FFFF}]/u;
+  raw.forEach((l, n) => {
+    if (l.includes('\t')) fail(n, 'a tab');
+    const c = CONTROL.exec(l)?.[0];
+    if (c) fail(n, `a control character or a line break other than LF (U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')})`);
+  });
   let pos = 0;
   let pending = null; // the rest of a "- key: value" line: the first key of the entry's map
   const peek = () => {
@@ -201,6 +210,14 @@ test('the reader reads all four workflows, and every step runs an action or a sc
   assert.throws(() => readYaml('a:\n  b: >\n    folded\n', 'x.yml'), /x\.yml:2: only plain \| blocks are read/);
   assert.throws(() => readYaml('a: {b: c}\n', 'x.yml'), /x\.yml:1: only the empty map/);
   assert.throws(() => readYaml('a:\n  b: c\n    d: e\n', 'x.yml'), /x\.yml:3: indented more than/);
+  // A line break other than LF in a comment, inside a run: block (line 6) and between steps (line 4):
+  // YAML 1.1 readers start a new line there, so `exit 0` and the hidden step would be code to them.
+  for (const c of ['\r', '\u{85}', '\u{2028}', '\u{2029}', '\u{B}']) {
+    const code = `U\\+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
+    assert.throws(() => readYaml(`jobs:\n  a:\n    steps:\n      - run: |\n          echo a\n          # note${c}          exit 0\n`, 'x.yml'), new RegExp(`x\\.yml:6: .*${code}`));
+    assert.throws(() => readYaml(`jobs:\n  a:\n    steps:\n      # note${c}      - run: echo hidden\n      - run: echo shown\n`, 'x.yml'), new RegExp(`x\\.yml:4: .*${code}`));
+  }
+  assert.deepEqual(readYaml('a:\r\n  b: c\r\n', 'x.yml'), { a: { b: 'c' } }, 'CRLF line ends read as LF');
 });
 
 test('no run: script holds a ${{ }} expression; values reach scripts through env: (finding 30)', () => {
