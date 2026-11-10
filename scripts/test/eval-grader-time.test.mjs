@@ -2,7 +2,8 @@
 // plugin eval runs a grader: s.match(new RegExp(pattern, flags + 'g')) and then
 // new RegExp(pattern, flags).test(s), synchronously and with no time limit (read in Claude Code
 // 2.1.321's code). A pattern that backtracks too much on such a reply holds up the whole eval run,
-// so each piece below is one that made some grader take seconds at 56799e0 (step 1e). Real
+// so each piece below is one that made some grader take seconds at 56799e0 or in a later version
+// of step 1e (the spaces, tabs and single-dash words of B2.1.1 and B2.1.2 only there). Real
 // replies take milliseconds either way.
 // Two legs: Node's engine (V8), and JavaScriptCore, the engine of the Bun runtime that Claude Code
 // runs in, through macOS's jsc shell or a bun on PATH. Some patterns that V8 runs fast are
