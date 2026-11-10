@@ -15,13 +15,18 @@
 # 3:2 --no people text, photorealistic", whose last phrase --no would leave out (step 1e).
 # Residuals: the Short version's parameters aren't checked; words after --no, --sref or --cref with
 # no comma read as their list ("--no people text photorealistic"); and any other parameter with two
-# values fails. The (?<!#) keeps a long run of # linear; the description is read once, up to its
-# end, and a lookahead finds the --ar among the parameters, so a long line of parameters stays
-# linear too. The fence opener takes all of its backticks, so a long run of them is read once and
-# the closing fence has the opener's length, as output-format.md asks
+# values fails. The (?<!#) keeps a long run of # linear. The description is read once, up to its
+# end, in a lookahead, and then matched as one piece by a backreference, so the engine can't give
+# it back one character at a time: it did, and read the rest of the line again from each place, on
+# a line that ends in a long run of spaces, tabs or single-dash words (step 1e, B2.1.2). Giving
+# some of it back could only turn single-dash words before the first " --" and a letter into
+# parameters, and a line that matches that way also matches with the whole description, so the
+# verdicts are the same. A lookahead then finds the --ar among the parameters, so a long line of
+# parameters stays linear too. The fence opener takes all of its backticks, so a long run of them
+# is read once and the closing fence has the opener's length, as output-format.md asks
 # (scripts/test/eval-grader-time.test.mjs).
 type: regex
-pattern: '(?<!#)#+[ \t]*Full prompt[^\n]*\n\s*(?<f>`{3,})(?!`)[^\n]*\n[ \t]*[^\s`-](?:(?![ \t]--[a-z])[^\n])*(?=(?:[ \t]+(?:--(?:no|sref|cref)(?:[ \t]+[^\s,、，-][^\s,、，]*)+|--?(?!(?:no|sref|cref)\b)[a-z][\w-]*(?:[ \t]+[^\s,、，-][^\s,、，]*)?))*?[ \t]+--(?:ar|aspect)[ \t]+\d+:\d+(?:[ \t]|\n))(?:[ \t]+(?:--(?:no|sref|cref)(?:[ \t]+[^\s,、，-][^\s,、，]*)+|--?(?!(?:no|sref|cref)\b)[a-z][\w-]*(?:[ \t]+[^\s,、，-][^\s,、，]*)?))+(?<![,;.])[ \t]*\n(\s*\n)?\k<f>|^(?![\s\S]*?#[ \t]*Full prompt)(?:(?!(?:^|\n)[ \t]*`{3})[\s\S])*(?:^|\n)[ \t]*(?<g>`{3,})(?!`)[^\n]*\n[ \t]*[^\s`-](?:(?![ \t]--[a-z])[^\n])*(?=(?:[ \t]+(?:--(?:no|sref|cref)(?:[ \t]+[^\s,、，-][^\s,、，]*)+|--?(?!(?:no|sref|cref)\b)[a-z][\w-]*(?:[ \t]+[^\s,、，-][^\s,、，]*)?))*?[ \t]+--(?:ar|aspect)[ \t]+\d+:\d+(?:[ \t]|\n))(?:[ \t]+(?:--(?:no|sref|cref)(?:[ \t]+[^\s,、，-][^\s,、，]*)+|--?(?!(?:no|sref|cref)\b)[a-z][\w-]*(?:[ \t]+[^\s,、，-][^\s,、，]*)?))+(?<![,;.])[ \t]*\n(\s*\n)?\k<g>'
+pattern: '(?<!#)#+[ \t]*Full prompt[^\n]*\n\s*(?<f>`{3,})(?!`)[^\n]*\n[ \t]*[^\s`-](?=(?<d>(?:(?![ \t]--[a-z])[^\n])*))\k<d>(?=(?:[ \t]+(?:--(?:no|sref|cref)(?:[ \t]+[^\s,、，-][^\s,、，]*)+|--?(?!(?:no|sref|cref)\b)[a-z][\w-]*(?:[ \t]+[^\s,、，-][^\s,、，]*)?))*?[ \t]+--(?:ar|aspect)[ \t]+\d+:\d+(?:[ \t]|\n))(?:[ \t]+(?:--(?:no|sref|cref)(?:[ \t]+[^\s,、，-][^\s,、，]*)+|--?(?!(?:no|sref|cref)\b)[a-z][\w-]*(?:[ \t]+[^\s,、，-][^\s,、，]*)?))+(?<![,;.])[ \t]*\n(\s*\n)?\k<f>|^(?![\s\S]*?#[ \t]*Full prompt)(?:(?!(?:^|\n)[ \t]*`{3})[\s\S])*(?:^|\n)[ \t]*(?<g>`{3,})(?!`)[^\n]*\n[ \t]*[^\s`-](?=(?<e>(?:(?![ \t]--[a-z])[^\n])*))\k<e>(?=(?:[ \t]+(?:--(?:no|sref|cref)(?:[ \t]+[^\s,、，-][^\s,、，]*)+|--?(?!(?:no|sref|cref)\b)[a-z][\w-]*(?:[ \t]+[^\s,、，-][^\s,、，]*)?))*?[ \t]+--(?:ar|aspect)[ \t]+\d+:\d+(?:[ \t]|\n))(?:[ \t]+(?:--(?:no|sref|cref)(?:[ \t]+[^\s,、，-][^\s,、，]*)+|--?(?!(?:no|sref|cref)\b)[a-z][\w-]*(?:[ \t]+[^\s,、，-][^\s,、，]*)?))+(?<![,;.])[ \t]*\n(\s*\n)?\k<g>'
 flags: i
 weight: 1
 ---

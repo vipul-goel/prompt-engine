@@ -91,6 +91,13 @@ const SHAPES = [
   // until they first looked for the [[ (step 1e, B2.1.1). V8 was fast.
   ['a run of spaces on a line under a Full prompt heading', '### Full prompt\nx', ' ', 3_000],
   ['a run of tabs on a line under a Full prompt heading', '### Full prompt\nx', '\t', 3_000],
+  // The same runs, and single-dash words, on the Full prompt's fenced line: the Midjourney --ar
+  // graders gave their description back one character at a time and read the rest of the line
+  // again from each place, in V8 and JavaScriptCore, until they read it in a lookahead (step 1e,
+  // B2.1.2). In V8 they took over a second only from about 8,000 single-dash words on.
+  ["a run of spaces on the Full prompt's fenced line", '### Full prompt\n```text\nx', ' ', 3_000],
+  ["a run of tabs on the Full prompt's fenced line", '### Full prompt\n```text\nx', '\t', 3_000],
+  ["single-dash words on the Full prompt's fenced line", '### Full prompt\n```text\nx', ' -a', 8_000],
 ];
 // The reply of a shape, and its first half.
 const replies = ([, prefix, piece, n]) => [prefix + piece.repeat(n), prefix + piece.repeat(Math.ceil(n / 2))];

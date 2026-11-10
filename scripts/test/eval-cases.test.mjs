@@ -1734,8 +1734,12 @@ test('the Midjourney aspect-ratio graders want the parameters at the end of the 
     })) assert.equal(regexPasses(g, text), false, `${c}: ${name}`);
     assert.notEqual(lastPhraseAfter(full), full);
     assert.notEqual(paramsMidLine(full), full);
-    // A long run of # or of headings, and a long line without parameters, stay fast.
-    for (const s of [`${'#'.repeat(40_000)}x`, `\n${'#'.repeat(40_000)}x`, '# Full prompt\n'.repeat(3_000), `### ${headings[0]}\n\`\`\`text\n${'a '.repeat(20_000)}\n\`\`\``]) {
+    // A long run of # or of headings, and a long line without parameters, stay fast. So does a
+    // prompt line that ends in a long run of spaces, tabs or single-dash words, which the
+    // description gave back one character at a time until step 1e read it in a lookahead (B2.1.2).
+    const line = (tail) => `### ${headings[0]}\n\`\`\`text\nx${tail}\n\`\`\``;
+    for (const s of [`${'#'.repeat(40_000)}x`, `\n${'#'.repeat(40_000)}x`, '# Full prompt\n'.repeat(3_000), `### ${headings[0]}\n\`\`\`text\n${'a '.repeat(20_000)}\n\`\`\``,
+      line(' '.repeat(40_000)), line('\t'.repeat(40_000)), line(' -a'.repeat(13_000))]) {
       vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });
     }
   }
@@ -1759,8 +1763,11 @@ test('the Midjourney aspect-ratio graders read the first fenced block of a reply
       // With the template, its Full prompt's block counts, and a right block later doesn't help.
       'the template with a wrong Full prompt, then a right bare fence': `${midjourneyReply(headings, midLine(full), null)}\n\n\`\`\`\n${full}\n\`\`\``,
     })) assert.equal(regexPasses(g, text), false, `${c}: ${name}`);
-    // A long reply without the template stays fast.
-    for (const s of [`${'x\n'.repeat(40_000)}\`\`\`\n${full}`, `${'\`'.repeat(40_000)}\n${full}`, `${'#'.repeat(40_000)}\n\`\`\`\n${full}`]) {
+    // A long reply without the template stays fast, also when the block's line ends in a long run
+    // of spaces, tabs or single-dash words (step 1e, B2.1.2).
+    const line = (tail) => `\`\`\`\nx${tail}\n\`\`\``;
+    for (const s of [`${'x\n'.repeat(40_000)}\`\`\`\n${full}`, `${'\`'.repeat(40_000)}\n${full}`, `${'#'.repeat(40_000)}\n\`\`\`\n${full}`,
+      line(' '.repeat(40_000)), line('\t'.repeat(40_000)), line(' -a'.repeat(13_000))]) {
       vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });
     }
   }
