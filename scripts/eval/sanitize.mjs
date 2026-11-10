@@ -8,9 +8,10 @@
 // every string except thinking blocks, it rewrites the plugin folder to /plugin, the working
 // folder to /workspace and the home folder to ~, each where a path starts and with the rest of
 // its path (a home folder that is a file-system root holds nothing private and stays as it is),
-// and the original session ID to FIXED_SESSION. Then it scans the result and throws, listing
-// "line N: kind", if anything still looks private. No scan recognises every secret or
-// another machine's name, so read a fixture before you commit it.
+// and the original session ID to FIXED_SESSION. Then it throws, listing "line N: kind", if the
+// plugin or working folder is left anywhere else in those strings, or if the scan finds that
+// anything still looks private. No scan recognises every secret or another machine's name, so
+// read a fixture before you commit it.
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -168,19 +169,28 @@ export function scanText(text, { extra = [], allowText = '' } = {}) {
 // Windows drive path), and only at a path boundary at both ends. It starts where a path starts,
 // not after an ASCII letter or digit, _, ., ~ or -: so a home of /root rewrites /root/a,
 // file:///root/a and PATH=/bin:/root/bin, but not https://github.com/acme/root or /var/root,
-// which are other paths. A home folder left inside another path stays as recorded, and the scan,
-// which looks for it there too, refuses it. And it ends where a name ends, so /srv/people/al
-// doesn't rewrite /srv/people/alex.
+// which are other paths. And it ends where a name ends, so /srv/people/al doesn't rewrite
+// /srv/people/alex.
 // It becomes `to` followed by the rest of its path; for a Windows path, the rest's
 // backslashes become "/", so build.mjs recognises a /plugin/... Read. A file-system root
 // (isRoot) is left as it is.
+// A folder left anywhere else, inside another path or glued to text as in -I/opt/x/include, stays
+// as recorded: the rewrite can't tell the two apart. left(s) says whether s holds one, so that
+// sanitize() refuses a plugin or working folder there; the scan refuses a home folder there, since
+// it looks for one anywhere in a path.
 function prefixRule(prefix, to) {
-  if (isRoot(prefix)) return (s) => s;
+  if (isRoot(prefix)) return { rewrite: (s) => s, left: () => false };
   const folder = prefix.replace(/[\\/]+$/, '');
   const windows = /^[A-Za-z]:[\\/]/.test(folder);
   const source = folder.split(/[\\/]/).map(esc).join('[\\\\/]');
-  const re = new RegExp(`(?<![\\w.~-])${source}((?:[\\\\/][^\\s"'<>|*?]*)?)(?![\\w-]|\\.\\w)`, windows ? 'gi' : 'g');
-  return (s) => s.replace(re, (_, rest) => to + (windows ? rest.replaceAll('\\', '/') : rest));
+  const end = '(?![\\w-]|\\.\\w)';
+  const re = new RegExp(`(?<![\\w.~-])${source}((?:[\\\\/][^\\s"'<>|*?]*)?)${end}`, windows ? 'gi' : 'g');
+  const anywhere = new RegExp(`${source}${end}`, windows ? 'i' : '');
+  return {
+    rewrite: (s) => s.replace(re, (_, rest) => to + (windows ? rest.replaceAll('\\', '/') : rest)),
+    // The folder in what the rewrite doesn't take, each of its matches read as one NUL.
+    left: (s) => anywhere.test(s.replace(re, '\0')),
+  };
 }
 
 /**
@@ -202,14 +212,19 @@ export function sanitize(raw, { cwd, repo, home, host, allowText = '' } = {}) {
   // A path realpath reports under /private/var (macOS) may also appear in its /var form.
   const forms = (p) => (!p ? [] : p.startsWith('/private/') ? [p, p.slice('/private'.length)] : [p]);
   // The repository usually sits under the home folder, so the repository and the working
-  // folder are rewritten first.
+  // folder are rewritten first. Each with the kind that names it where the rewrite leaves it;
+  // the home folder has none, since the scan looks for it anywhere in a path.
   const rules = [
-    ...forms(repo).map((p) => prefixRule(p, '/plugin')),
-    ...forms(cwd).map((p) => prefixRule(p, '/workspace')),
-    ...forms(home).map((p) => prefixRule(p, '~')),
+    ...forms(repo).map((p) => [prefixRule(p, '/plugin'), "this machine's plugin folder"]),
+    ...forms(cwd).map((p) => [prefixRule(p, '/workspace'), "this machine's working folder"]),
+    ...forms(home).map((p) => [prefixRule(p, '~'), null]),
   ];
+  let left; // the kinds of folder that the rewrite left in the row being read
   const fix = (s) => {
-    for (const rule of rules) s = rule(s);
+    for (const [rule, kind] of rules) {
+      if (kind && rule.left(s)) left.add(kind);
+      s = rule.rewrite(s);
+    }
     return original ? s.split(original).join(FIXED_SESSION) : s;
   };
   const walk = (v) => {
@@ -222,17 +237,22 @@ export function sanitize(raw, { cwd, repo, home, host, allowText = '' } = {}) {
     return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
   };
   const lines = [];
+  const leftHits = [];
   for (const e of events) {
     if (!kept.has(e.uuid)) continue;
+    left = new Set();
     const o = {};
     for (const k of KEEP_KEYS) if (k in e) o[k] = walk(e[k]);
     o.parentUuid = nearestKept(e.parentUuid);
     o.sessionId = FIXED_SESSION;
     o.cwd = '/workspace';
     lines.push(JSON.stringify(o));
+    for (const kind of left) leftHits.push(`line ${lines.length}: ${kind}`);
   }
   const text = `${lines.join('\n')}\n`;
-  const hits = scanText(text, { extra: machinePatterns({ home, host }), allowText });
+  // By line, the scan's hits first on each.
+  const lineOf = (hit) => Number(hit.match(/^line (\d+)/)[1]);
+  const hits = [...scanText(text, { extra: machinePatterns({ home, host }), allowText }), ...leftHits].sort((a, b) => lineOf(a) - lineOf(b));
   if (hits.length) throw new Error(`refusing to write the history; it still contains what looks like private data:\n  ${hits.join('\n  ')}`);
   return text;
 }

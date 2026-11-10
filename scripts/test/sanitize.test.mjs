@@ -202,11 +202,12 @@ test('folders are rewritten at path boundaries, the session ID is replaced and m
 // folder inside other paths too, so it refuses one there instead of letting a user name such as al
 // in /mnt/opt/al/backup through. No public text, so that a path the skill's files or an eval prompt
 // someday quote isn't allowed.
+const midPath = (text, over) => {
+  const ctx = { repo: '/srv/build/prompt-engine', cwd: '/srv/tmp/pe-history-abc', home: '/opt/al', host: 'build-host-1', allowText: '', ...over };
+  try { return JSON.parse(sanitize(textEvent(text), ctx)).message.content[0].text; } catch (e) { return e.message; }
+};
+const refusedAs = (out, kind) => out.startsWith('refusing to write the history') && out.includes(`\n  line 1: ${kind}`);
 test('a folder inside a longer path or a URL is never rewritten, and the scan refuses a home folder there', () => {
-  const at = (home) => ({ repo: '/srv/build/prompt-engine', cwd: '/srv/tmp/pe-history-abc', home, host: 'build-host-1', allowText: '' });
-  const outcome = (text, home) => {
-    try { return JSON.parse(sanitize(textEvent(text), at(home))).message.content[0].text; } catch (e) { return e.message; }
-  };
   for (const [home, text, kind] of [
     ['/root', 'See https://github.com/acme/root/blob/main/x.py.', 'this machine\'s home folder'],
     ['/root', 'The files in /var/root/cache.', 'this machine\'s home folder'],
@@ -214,14 +215,38 @@ test('a folder inside a longer path or a URL is never rewritten, and the scan re
     // Outside /Users and /home, only the scan's own pattern for this machine's home folder sees it.
     ['/opt/al', 'Mount it at /mnt/opt/al/backup.', 'this machine\'s home folder'],
   ]) {
-    const out = outcome(text, home);
-    assert.ok(out.startsWith('refusing to write the history') && out.includes(`\n  line 1: ${kind}`), `home ${home}: ${JSON.stringify(text)} gave ${JSON.stringify(out)}`);
+    const out = midPath(text, { home });
+    assert.ok(refusedAs(out, kind), `home ${home}: ${JSON.stringify(text)} gave ${JSON.stringify(out)}`);
   }
-  // The working folder's text inside another path, which holds nothing the scan looks for.
-  assert.equal(outcome('Copied to /backup/srv/tmp/pe-history-abc/x.md.', '/opt/al'), 'Copied to /backup/srv/tmp/pe-history-abc/x.md.');
   // Where a path starts: at the start, after a space, a quote, a bracket, = or :, and after the
   // second / of file:///.
-  assert.equal(outcome('/root/a, "/root/b" (/root/c) --dir=/root/d PATH=/bin:/root/e file:///root/f', '/root'), '~/a, "~/b" (~/c) --dir=~/d PATH=/bin:~/e file://~/f');
+  assert.equal(midPath('/root/a, "/root/b" (/root/c) --dir=/root/d PATH=/bin:/root/e file:///root/f', { home: '/root' }), '~/a, "~/b" (~/c) --dir=~/d PATH=/bin:~/e file://~/f');
+});
+
+// The plugin and working folders the same way. Neither is under the home folder here, so the scan
+// doesn't know them: a plugin folder glued to an option, as in -I/srv/build/prompt-engine/include,
+// was written as recorded, where before the rewrite looked for path starts it became
+// -I/plugin/include. The rewrite can't tell that from another path that holds the folder's text,
+// so sanitize() refuses both.
+test('a plugin or working folder that the rewrite leaves, glued to text or inside another path, is refused', () => {
+  const win = { repo: 'D:\\Projects\\Jane\\prompt-engine', cwd: 'D:\\Temp\\pe-history-abc', home: `C:\\${'Users'}\\jane` };
+  for (const [text, kind, over] of [
+    ['Built with -I/srv/build/prompt-engine/include now.', 'this machine\'s plugin folder'],
+    ['Copied to /backup/srv/build/prompt-engine/skills.', 'this machine\'s plugin folder'],
+    ['Copied to /backup/srv/tmp/pe-history-abc/x.md.', 'this machine\'s working folder'],
+    ['Saved to x/srv/tmp/pe-history-abc/out.md.', 'this machine\'s working folder'],
+    // A Windows folder, with either separator; and the /var form of a working folder under /private.
+    ['Ran tool.exe /IXD:\\Projects\\Jane\\prompt-engine\\include now.', 'this machine\'s plugin folder', win],
+    ['Ran tool.exe /IXd:/projects/jane/prompt-engine/include now.', 'this machine\'s plugin folder', win],
+    ['Saved to x/var/folders/xy/T/pe-history-abc/out.md.', 'this machine\'s working folder', { cwd: '/private/var/folders/xy/T/pe-history-abc' }],
+  ]) {
+    const out = midPath(text, over);
+    assert.ok(refusedAs(out, kind), `${JSON.stringify(text)} gave ${JSON.stringify(out)}`);
+  }
+  // Where a path starts, each is rewritten as before.
+  assert.equal(midPath('See /srv/build/prompt-engine/skills, then "/srv/tmp/pe-history-abc/x.md" and --out=/srv/tmp/pe-history-abc.'),
+    'See /plugin/skills, then "/workspace/x.md" and --out=/workspace.');
+  assert.equal(midPath('Open D:\\Projects\\Jane\\prompt-engine\\SKILL.md and (d:/temp/pe-history-abc/x.md).', win), 'Open /plugin/SKILL.md and (/workspace/x.md).');
 });
 
 test('thinking blocks are left as recorded, and one that holds a home path is refused', () => {
