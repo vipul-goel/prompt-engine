@@ -192,10 +192,14 @@ test('release.mjs --zip with the matching tag, in either form, builds the zip', 
 });
 
 // ---------- what a run checks before and after it builds ----------
-test('release.mjs stops when validate.mjs fails, before it builds anything', { skip: NO_ZIP }, () => {
+// It ends with one line after validate.mjs's errors: execFileSync's throw printed a stack trace,
+// with node's absolute path.
+test('release.mjs stops when validate.mjs fails, before it builds anything, with one line', { skip: NO_ZIP }, () => {
   const r = zipCopy((dir) => writeFileSync(join(dir, '.mcp.json'), '{}\n'));
-  assert.notEqual(r.code, 0, r.out);
+  assert.equal(r.code, 1, r.out);
   assert.match(r.out, /^error: \.mcp\.json: not allowed at the repo root/m);
+  assert.match(r.out, /\n\n1 error\(s\)\nrelease\.mjs stopped: node scripts\/validate\.mjs exited with code 1\n$/);
+  assert.doesNotMatch(r.out, /^\s+at |Command failed/m, 'no stack trace');
   assert.deepEqual(r.entries, [], 'no zip');
 });
 
@@ -211,6 +215,23 @@ test('release.mjs refuses a zip whose entries are not all under prompt-engine/',
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stderr, /^zip layout is wrong: expected everything under prompt-engine\/$/m);
     assert.doesNotMatch(r.stdout, /dist\/prompt-engine\.zip \(/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+test('release.mjs stops with one line when unzip fails, naming the zip by its path in the checkout', { skip: (process.platform === 'win32' && 'the stand-in for unzip is a shell script') || NO_ZIP }, () => {
+  const dir = copyRepo();
+  let bin;
+  try {
+    bin = mkdtempSync(join(tmpdir(), 'pe-unzip-'));
+    writeFileSync(join(bin, 'unzip'), '#!/bin/sh\necho "unzip: cannot read the archive" >&2\nexit 9\n');
+    chmodSync(join(bin, 'unzip'), 0o755);
+    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'release.mjs'), '--zip'], { env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, PE_ROOT: dir }, encoding: 'utf8' });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /unzip: cannot read the archive\nrelease\.mjs stopped: unzip -Z1 dist\/prompt-engine\.zip exited with code 9\n$/);
+    assert.doesNotMatch(r.stderr, /^\s+at |Command failed/m, 'no stack trace');
   } finally {
     rmSync(dir, { recursive: true, force: true });
     if (bin) rmSync(bin, { recursive: true, force: true });

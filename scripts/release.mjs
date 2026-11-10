@@ -13,7 +13,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import { root, ZIP_EXCLUDES, normalize } from './build.mjs';
 
@@ -32,7 +32,20 @@ if (cli.tag && (cli.tag.length > 1 || cli.tag[0] === '')) {
   process.exit(2);
 }
 const tag = cli.tag?.[0];
-const run = (cmd, cmdArgs, opts = {}) => execFileSync(cmd, cmdArgs, { cwd: root, stdio: 'inherit', ...opts });
+// Runs a command, which prints its own messages. One that fails ends the run with one line and exit
+// 1, which names node and the files under the checkout without their absolute paths: execFileSync's
+// throw printed a stack trace, with node's absolute path, after validate.mjs's list of errors. A
+// command that isn't installed is rethrown, for needs() below.
+const run = (cmd, cmdArgs, opts = {}) => {
+  try {
+    return execFileSync(cmd, cmdArgs, { cwd: root, stdio: 'inherit', ...opts });
+  } catch (e) {
+    if (e.code === 'ENOENT') throw e;
+    const what = [cmd === process.execPath ? 'node' : cmd, ...cmdArgs.map((a) => (a.startsWith(root + sep) ? a.slice(root.length + 1) : a))].join(' ');
+    console.error(`release.mjs stopped: ${what} ${typeof e.status === 'number' ? `exited with code ${e.status}` : `failed (${e.signal ?? e.code ?? e.message})`}`);
+    process.exit(1);
+  }
+};
 const dist = join(root, 'dist');
 
 // normalize(), as validate.mjs reads it: a byte-order mark would make JSON.parse throw here.
@@ -59,7 +72,7 @@ const needs = (cmd, fn) => {
   }
 };
 needs('zip', () => run('zip', ['-q', '-r', zipPath, 'prompt-engine', '-x', ...ZIP_EXCLUDES], { cwd: join(root, 'skills') }));
-const listing = needs('unzip', () => execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' })).split('\n').filter(Boolean);
+const listing = needs('unzip', () => run('unzip', ['-Z1', zipPath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })).split('\n').filter(Boolean);
 if (!listing.includes('prompt-engine/SKILL.md') || listing.some((f) => !f.startsWith('prompt-engine/'))) {
   console.error('zip layout is wrong: expected everything under prompt-engine/');
   process.exit(1);
