@@ -1685,6 +1685,31 @@ test('the Midjourney aspect-ratio graders want the parameters at the end of the 
   }
 });
 
+// Without the template, as the no-skill arm writes, the aspect-ratio graders read the reply's first
+// fenced block: one whose prompt line is right passes, so 01 doesn't count the missing template
+// again, which the case's other graders score (step 1e). The four kept no-skill replies are bare
+// fences, under a bold label in Japanese.
+test('the Midjourney aspect-ratio graders read the first fenced block of a reply without the template', () => {
+  const bare = (line, label = '') => `I don't have that skill here, so here is a Midjourney prompt.\n\n${label}\`\`\`\n${line}\n\`\`\`\n\n- **Aspect ratio:** use \`--ar 2:3\` for a portrait.`;
+  for (const [c, headings, full] of MIDJOURNEY) {
+    const g = graderOf(c, '01-aspect-ratio-parameter');
+    assert.ok(regexPasses(g, bare(full)), `${c}: a bare fence`);
+    assert.ok(regexPasses(g, bare(full, '**Midjourney prompt**\n\n')), `${c}: a bold label, then the fence`);
+    for (const [name, text] of Object.entries({
+      'parameters on a line of their own': bare(ownLine(full)),
+      '--ar mid-line': bare(midLine(full)),
+      'the last phrase after the parameters': bare(lastPhraseAfter(full)),
+      'a first fenced block that holds only a tip': `Tip:\n\`\`\`\n--ar 3:2\n\`\`\`\n\n${bare(full)}`,
+      // With the template, its Full prompt's block counts, and a right block later doesn't help.
+      'the template with a wrong Full prompt, then a right bare fence': `${midjourneyReply(headings, midLine(full), null)}\n\n\`\`\`\n${full}\n\`\`\``,
+    })) assert.equal(regexPasses(g, text), false, `${c}: ${name}`);
+    // A long reply without the template stays fast.
+    for (const s of [`${'x\n'.repeat(40_000)}\`\`\`\n${full}`, `${'\`'.repeat(40_000)}\n${full}`, `${'#'.repeat(40_000)}\n\`\`\`\n${full}`]) {
+      vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });
+    }
+  }
+});
+
 // The media cases want a Short version too (SKILL.md, Present: "3. Short version in a fenced
 // block"; image-video.md: "The same blocks serve both versions"). The English cases check its
 // heading, as writing-quick-launch-email's 02 does; the Japanese case, whose headings D3
