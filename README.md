@@ -32,7 +32,7 @@ You:   ok
 - **It's built to explain itself.** It lists the main things it added, each with its reason and a tag saying whether it came from you, from your answers or from best practice.
 - **It follows current prompting guidance.** Prompts state their goal and success criteria and give reasons instead of shouting rules in capitals. They don't ask the model to show its reasoning, which the newest Claude models may refuse, and they don't rely on tricks that newer models reject.
 - **It knows the domain.** There are dedicated checklists for coding agents, writing and marketing, research and analysis, and image and video generation. Image and video prompts come out in the target tool's own syntax, such as Midjourney parameters or Veo sound cues.
-- **Nothing runs until you choose.** You get the prompt first. You decide whether to run it, refine it or save it.
+- **It's built so nothing runs until you choose.** You get the prompt first. You decide whether to run it, refine it or save it. In a rehearsal on 2026-11-09, a read-only shell command ran before the pick to look at the folder, though no file changed; the skill has been changed since, and no run since is recorded ([Known limits](docs/compatibility.md#known-limits)).
 
 ## Install: pick one
 
