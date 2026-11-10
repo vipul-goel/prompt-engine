@@ -50,6 +50,7 @@ Use the app's custom instructions or space or agent instructions field, and atta
   - Questions arrive as a numbered list rather than clickable dialogs.
   - "Run it now" carries out the prompt in the same chat.
   - "Save to file" appears only when the app has a tool that saves files on your computer; most chat apps don't.
+  - Some of the skill's rules don't fit in `prompt-engine.md`, so its replies can differ from the skill's in places. [Known limits](../docs/compatibility.md#known-limits) lists those rules; the knowledge file has them.
 - **Other people's private details.** With these instructions, on Claude too, secrets such as API keys are kept out of the prompt, but there is no rule for other people's private details, which the skill replaces with placeholders. [Known limits](../docs/compatibility.md#known-limits) has the details.
 - **Privacy.** Prompt Engine is just instructions: your prompts go only to the AI app you're already using.
 - **Testing status.** A conversation test checks these instructions on Claude through `claude -p`, with no tools or MCP servers loaded. It makes billed calls and is run by hand; [docs/compatibility.md](../docs/compatibility.md) has the date and result of the last run. Results in other apps may differ.
