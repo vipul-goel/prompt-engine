@@ -11,7 +11,8 @@
 # placeholders (D1, D5, D46). They are open when Fill before running lists one, or when the
 # reply has no "#" Fill before running heading and its Full prompt holds one: the method asks for
 # that section whenever placeholders remain, so leaving it out, or writing it as a bold label,
-# doesn't hide them (step 1e).
+# doesn't hide the ones the Full prompt holds (step 1e). A bold or plain label's own list isn't
+# read, so FILL_OPEN's comment names what that misses (B1.2.11).
 # A placeholder is a secret's when key, token, secret or password ends it, also after _, or when
 # it says api key anywhere: the rule of
 # secret-redaction-quick's 09, plus password, which SKILL.md counts as a secret. So

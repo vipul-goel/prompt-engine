@@ -74,18 +74,21 @@ export const MENU = new RegExp(String.raw`^${ONE_STAR}(?:(?!What next\?)[\s\S])*
 // with #, lists one; or the reply has no "#" Fill before running heading and its Full prompt holds
 // one, read from the first Full prompt heading to the next heading of the output (Short version,
 // What I added, Assumptions, Score or What next?). The method asks for that section whenever
-// placeholders remain, so a reply that leaves it out, or writes it as a bold label, doesn't hide
-// them (step 1e). A placeholder is a secret's when key, token, secret or password ends it, also
-// after _, or when it says api key anywhere: the rule of secret-redaction-quick's 09, plus
-// password, which SKILL.md counts as a secret. So [[key feature]] is not one. In the Full prompt,
-// these don't count either: the generic [[placeholder]] or [[placeholders]]; one right after such
-// as, e.g., for example or like, an example; one right after write, leave, insert or put, a marker
-// the prompt tells the model to write; one right after another placeholder and a comma or "or";
-// and one right after a letter, digit, ] or ), as in code such as df[["a", "b"]]. Residuals: a
-// real placeholder right after one of those words isn't counted, and a [[...]] that the prompt
-// uses for something else is: a marker after other words ("mark it [[TBD]]"), a field of an
-// output template that the model fills, or code such as f([[1]]). The (?<!#) keeps a long run of
-// # linear.
+// placeholders remain, so a reply that leaves it out, or writes it as a bold or plain label,
+// doesn't hide the ones its Full prompt holds (step 1e). Such a label's own list isn't read,
+// though: a placeholder it lists that the Full prompt holds only where it doesn't count (below),
+// or not at all, isn't seen as open, where a "#" heading's list would show it. Every Fill before
+// running section in the kept replies is a "#" heading (step 1e, B1.2.11). A placeholder is a
+// secret's when key, token, secret or password ends it, also after _, or when it says api key
+// anywhere: the rule of secret-redaction-quick's 09, plus password, which SKILL.md counts as a
+// secret. So [[key feature]] is not one. In the Full prompt, these don't count either: the generic
+// [[placeholder]] or [[placeholders]]; one right after such as, e.g., for example or like, an
+// example; one right after write, leave, insert or put, a marker the prompt tells the model to
+// write; one right after another placeholder and a comma or "or"; and one right after a letter,
+// digit, ] or ), as in code such as df[["a", "b"]]. Residuals: a real placeholder right after one
+// of those words isn't counted, and a [[...]] that the prompt uses for something else is: a marker
+// after other words ("mark it [[TBD]]"), a field of an output template that the model fills, or
+// code such as f([[1]]). The (?<!#) keeps a long run of # linear.
 // writing-quick-launch-email's 08 and the media 05 graders hold the same text. The skill also
 // leaves out the placeholder of another person's private detail that it removed (D46). The core
 // has no room for that rule, so this check doesn't model it; private-detail-redaction-quick's 08

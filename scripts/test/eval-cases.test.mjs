@@ -1477,8 +1477,9 @@ test("coding-vague-asks-questions 08 judges only each ★ option's own text, and
 // The menu graders' open-placeholder condition (D1, D5): placeholders other than secrets' are open
 // when Fill before running lists one, or when the reply has no "#" Fill before running heading and
 // its Full prompt holds one. The method asks for that section whenever placeholders remain, so a
-// reply that drops it, or writes it as a bold label, and stars Run it now or Done, fails (step 1e,
-// B1.1.6). In the Full prompt, the generic [[placeholder]], an example after such as, e.g., for
+// reply that drops it, or writes it as a bold label, and stars Run it now or Done, fails while its
+// Full prompt holds an open placeholder (step 1e, B1.1.6); a bold label's own list isn't read
+// (B1.2.11). In the Full prompt, the generic [[placeholder]], an example after such as, e.g., for
 // example or like, a marker after write, leave, insert or put, and a secret's placeholder don't
 // count, so a prompt that holds only those may still star Run it now or Done.
 const MENU_SCORE = '| | Original | Enhanced |\n|---|---|---|\n| Clear goal | 1 | 3 |\n| Context | 0 | 3 |\n| Constraints | 0 | 3 |\n| Output format | 0 | 3 |\n| Edge cases | 0 | 3 |';
