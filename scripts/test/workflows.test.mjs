@@ -458,28 +458,46 @@ esac`;
 // that nothing pins must not run where it could change the files that the publishing jobs take, or
 // in a job that can request an OIDC token. So outside the pack-check job, npm runs only the commands
 // below, which install nothing or only what the lockfile pins. A command is the word after npm where
-// a command starts (a line, or after if, then, !, ;, &, | or $( ), with run's script name; npm also
-// takes any unambiguous start of a command's name, so a list of what's barred would miss some.
+// a command starts (a line, or after if, then, else, elif, do, while, until, !, ;, &, |, (, ), { or a
+// backquote), with run's script name. It counts after NAME=value words, or after a wrapper command
+// such as sudo, env, time, exec or bash -c and the words that follow it, and for npm quoted, escaped
+// or named by its path. npm also takes any unambiguous start of a command's name, so a list of what's
+// barred would miss some.
 const PINNED_NPM = ['ci', 'run build', 'test', 'pack', 'view', 'publish'];
+const NPM_COMMAND = new RegExp([
+  String.raw`(?:^|[;&|()!{\x60]|\b(?:if|then|else|elif|do|while|until)\b)[ \t]*`,
+  String.raw`(?:(?:[A-Za-z_]\w*=|(?:sudo|doas|env|command|builtin|exec|eval|time|nice|nohup|timeout|stdbuf|xargs|setsid|(?:ba|da|z|k)?sh)\b)[^\n;&|]*?[ \t])?`,
+  String.raw`["'\\]?(?:[^\s;&|"'\x60]*\/)?npm["']?[ \t]+([^\s;&|)\x60]+)(?:[ \t]+([^\s;&|)\x60]+))?`,
+].join(''), 'gm');
 function npmCommands(run) {
   const code = run.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
-  return [...code.matchAll(/(?:^|[;&|(!]|\b(?:if|then|do|else)\b)[ \t]*npm[ \t]+(\S+)(?:[ \t]+(\S+))?/gm)]
-    .map((m) => (m[1] === 'run' || m[1] === 'run-script' ? `run ${m[2]}` : m[1]));
+  return [...code.matchAll(NPM_COMMAND)].map((m) => (m[1] === 'run' || m[1] === 'run-script' ? `run ${m[2]}` : m[1]));
 }
+// Other package runners and ways to fetch code: npx, pnpm, yarn, bun, corepack, deno, pip, uv, wget,
+// docker or podman; a gh command other than api and release create; git clone, fetch, pull, submodule
+// or remote; fetch( in node code; a URL; and a pipe into a shell.
+const FETCHES = /\b(?:npx|pnpm|pnpx|yarn|bunx?|corepack|deno|pipx?|uvx?|wget|docker|podman)\b|smoke-pack|\bgh[ \t]+(?!api\b|release[ \t]+create\b)[\w-]|\bgit\b[^\n;&|]*?\b(?:clone|fetch|pull|submodule|remote)\b|\bfetch\(|\b[a-z][a-z0-9+.-]*:\/\/|\|[ \t]*(?:sudo[ \t]+)?(?:ba|da|z|k)?sh\b/;
 
-test('release.yml: outside the pack-check job, npm runs only commands that install what the lockfile pins or nothing, and nothing runs npx or smoke-pack or downloads code', () => {
+// These read the commands as written: one that runs npm or fetches code through a variable or through
+// another program, such as node, gets past them, so a reviewer still reads each change to these jobs.
+test('release.yml: outside the pack-check job, npm runs only commands that install what the lockfile pins or nothing, no step runs another package runner or fetches code in the ways listed, and only the registry step runs curl or names a URL', () => {
   assert.deepEqual(npmCommands('npm ci\nif npm view x version; then\n  # npm install x\n  a="$(npm run test:pack -- y)"\nfi\nnpm -g i z\n'), ['ci', 'view', 'run test:pack', '-g']);
+  assert.deepEqual(npmCommands('CI=1 npm install x\nenv -u CI npm update\nsudo -E npm i -g npm@latest\ntime -p "npm" install x\n\\npm exec y\n/usr/bin/npm ci;\n{ npm test; }\nbash -c "npm install x"\ncommand -v npm\necho "not on npm yet"\n'),
+    ['install', 'update', 'i', 'install', 'exec', 'ci', 'test', 'install']);
+  for (const l of ['npx y', 'pnpm dlx y', 'yarn dlx y', 'bunx y', 'corepack enable', 'pip install y', 'wget y', 'gh release download v1 -R a/b', 'git -C d clone a', `node -e 'fetch(u)'`, 'echo https://example.com/x', 'x | bash']) assert.match(l, FETCHES, l);
+  for (const l of ['gh api "repos/a/b" --jq .sha', 'gh release create "$t" --verify-tag', 'x | sha256sum -c -', 'printf x | node -e "y"']) assert.doesNotMatch(l, FETCHES, l);
   for (const [name, j] of jobs(release)) {
     if (name === 'pack-check') continue;
     for (const [i, s] of j.steps.entries()) {
       const what = label({ ...s, job: name, i });
       const code = (s.run ?? '').replace(/^\s*#.*$/gm, '');
       for (const c of npmCommands(code)) assert.ok(PINNED_NPM.includes(c), `${what}: npm ${c}`);
-      assert.doesNotMatch(code, /\bnpx\b|smoke-pack|\bwget\b/, what);
-      // The registry job's two curl calls, the lookup and the download that its checksum checks, are
-      // tested with that job below.
-      const curls = code.split('\n').filter((l) => /\bcurl\b/.test(l)).length;
-      assert.equal(curls, name === 'registry' && s.name === 'Publish to the MCP Registry' ? 2 : 0, `${what}: curl calls`);
+      // The registry step's two curl calls, the lookup and the download that its checksum checks, run
+      // below with a stand-in curl that fails on any other URL, so their URLs are the only ones here.
+      const registry = name === 'registry' && s.name === 'Publish to the MCP Registry';
+      assert.equal((code.match(/\bcurl\b/g) ?? []).length, registry ? 2 : 0, `${what}: curl calls`);
+      const rest = registry ? code.replace(/\bcurl\b[^\n;&|]*?"https:\/\/[^"\s]*"/g, 'curl') : code;
+      assert.doesNotMatch(rest, FETCHES, `${what}: ${FETCHES.exec(rest)?.[0]}`);
     }
   }
 });
