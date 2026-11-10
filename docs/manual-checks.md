@@ -117,7 +117,7 @@ Use a new configuration folder for every run, including a re-run after a fix. Cl
    cd "$(mktemp -d)" && claude --permission-mode manual
    ```
 
-   Check that the status bar under the prompt shows `⏸ manual mode on`; if it shows another mode, press Shift+Tab until it does. Claude Code's docs say a terminal session starts in auto mode from version 2.1.283, and that auto mode creates files in the working folder without asking, so the save check below would show no prompt. Then, in Claude Code, run:
+   In a new configuration folder, Claude Code 2.1.319 first showed a theme picker and security notes (press Enter on each), then a folder trust dialog with "No, exit" selected: choose "Yes, I trust this folder". Each new working folder shows the trust dialog again. Check that the status bar under the prompt shows `⏸ manual mode on`; if it shows another mode, press Shift+Tab until it does. Claude Code's docs say a terminal session starts in auto mode from version 2.1.283, and that auto mode creates files in the working folder without asking, so the save check below would show no prompt. Then, in Claude Code, run:
 
    ```text
    /prompt-engine write a blog post about remote work
@@ -141,13 +141,13 @@ printf 'import os\nprint(os.path.join("a", "b"))\n' > utils.py
 claude --permission-mode manual
 ```
 
-In Claude Code, run the prompt below. Claude may read the files first. Accept the recommended answers if it asks questions, then press Esc at the Next step dialog instead of picking.
+Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. Claude may read the files first. Accept the recommended answers if it asks questions, then press Esc at the Next step dialog instead of picking.
 
 ```text
 /prompt-engine delete all the .log files in this folder and refactor utils.py to use pathlib
 ```
 
-- [ ] Before the pick, Claude makes no Bash call. Check the tool calls in the transcript: Claude Code runs read-only commands such as `ls` without a permission prompt in every mode, so a prompt won't show them.
+- [ ] Before the pick, Claude makes no Bash call. Press Ctrl+O to open the transcript viewer and look for a Bash call among the tool calls: Claude Code runs read-only commands such as `ls` without a permission prompt in every mode, and 2.1.319's main screen folded one into a line such as "Listed 1 directory", as it folds file reads.
 - [ ] Before the pick, no permission prompt appears.
 - [ ] `app.log` is still there, and `utils.py` is unchanged.
 
