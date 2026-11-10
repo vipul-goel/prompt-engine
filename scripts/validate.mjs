@@ -488,6 +488,14 @@ else if (market) {
     if (entry.source !== './') err('.claude-plugin/marketplace.json: prompt-engine source should be "./"');
     if (entry.version) err('.claude-plugin/marketplace.json: set version only in plugin.json (it silently wins)');
   }
+  // The rules above cover the first prompt-engine entry only. Any other entry, a second one for
+  // prompt-engine included, would be a plugin that no check here covers. With a source in this
+  // repository, its component fields (commands, agents, skills, hooks, output styles, themes) apply
+  // on top of plugin.json, since strict defaults to true (marketplace-reference, "How an entry
+  // combines with plugin.json", fetched 2026-11-10); with one elsewhere, nothing here reads it.
+  for (const p of plugins) {
+    if (p !== entry) err(`.claude-plugin/marketplace.json: ${entry && p.name === entry.name ? 'a second entry for' : 'an entry for'} ${JSON.stringify(p.name) ?? '(no name)'} isn't allowed: the marketplace lists prompt-engine alone, and validate.mjs checks only its first entry; extend the checks before adding a plugin`);
+  }
 }
 // The versions kept in step with plugin.json's, compared only when plugin.json was read.
 const version = plugin?.version;

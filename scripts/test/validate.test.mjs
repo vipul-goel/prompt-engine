@@ -496,6 +496,13 @@ const ROWS = [
     Object.assign(j.plugins[0], { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo hi' }] }] }, commands: ['./docs'], strict: false, icon: './x.png' });
   }), [...['hooks', 'commands', 'strict', 'icon'].map((k) => new RegExp(`^error: \\.claude-plugin/marketplace\\.json: key "${k}" of the prompt-engine entry isn't allowed: the plugin ships skills/prompt-engine alone, and a key other than its metadata can add commands, agents, skills, hooks or servers, or change how it loads \\(ENTRY_KEYS in scripts/validate\\.mjs lists the metadata keys\\)$`, 'm')),
     /^4 error\(s\)$/m]],
+  // Another entry, from this repository or elsewhere, would be a second plugin that no check here
+  // covers: with plugin.json present, an entry's commands, agents, skills or hooks are added to it.
+  ['rejects a second marketplace entry, of another plugin or of prompt-engine again', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => {
+    j.plugins.push({ name: 'helper', source: './', hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo hi' }] }] } },
+      { name: 'remote', source: { source: 'github', repo: 'someone/other' } }, { ...j.plugins[0], commands: ['./docs'] });
+  }), [...[['an entry for', 'helper'], ['an entry for', 'remote'], ['a second entry for', 'prompt-engine']].map(([what, name]) => new RegExp(`^error: \\.claude-plugin/marketplace\\.json: ${what} "${name}" isn't allowed: the marketplace lists prompt-engine alone, and validate\\.mjs checks only its first entry`, 'm')),
+    /^3 error\(s\)$/m]],
   // The metadata keys Claude Code documents, which load nothing, are allowed.
   ['accepts plugin.json and marketplace entry metadata', (d) => {
     editJson(d, '.claude-plugin/plugin.json', (j) => Object.assign(j, { $schema: 'https://example.com/s.json', metadata: { a: 1 }, icon: './.claude-plugin/icon.png', supportUrl: 'https://example.com' }));
