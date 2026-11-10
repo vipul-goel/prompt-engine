@@ -67,6 +67,9 @@ const SHAPES = [
   // lead-ins that the ask checks accept before a verb.
   ['spaces after a full stop', 'x.', ' ', 40_000],
   ['if you, repeated', 'x ', 'if you ', 6_000],
+  // A fence opener's backticks, which the Midjourney aspect-ratio graders read again for every
+  // shorter fence they tried (B1.2.3).
+  ['a run of backticks under a Full prompt heading', '### Full prompt\n', '`', 40_000],
 ];
 const reply =([, prefix, piece, n]) => prefix + piece.repeat(n);
 

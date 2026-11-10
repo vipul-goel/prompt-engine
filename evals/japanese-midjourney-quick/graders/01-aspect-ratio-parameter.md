@@ -10,9 +10,11 @@
 # aren't checked; an --ar inside the description passes when the line also ends with parameters;
 # and a reply with another heading, such as a title, before the Full prompt heading fails, as in 09.
 # A lookahead finds an --ar that the line's end or another parameter follows, so the line is read
-# once and a long line of --ar stays linear (scripts/test/eval-grader-time.test.mjs).
+# once and a long line of --ar stays linear. The fence opener takes all of its backticks, so a long
+# run of them is read once and the closing fence has the opener's length, as output-format.md asks
+# (scripts/test/eval-grader-time.test.mjs).
 type: regex
-pattern: '^(?:(?!`{3}|(?:^|\n)[ \t]*#)[\s\S])*?(?:^|\n)[ \t]*#[^\n]*\n\s*(?<f>`{3,})[^\n]*\n[ \t]*[^\s`-](?=[^\n]*?[ \t]--(?:ar|aspect)[ \t]+\d+:\d+(?:[ \t]+--?[a-z]|[ \t]*\n))[^\n]*(?<![,;.])\n(\s*\n)?\k<f>'
+pattern: '^(?:(?!`{3}|(?:^|\n)[ \t]*#)[\s\S])*?(?:^|\n)[ \t]*#[^\n]*\n\s*(?<f>`{3,})(?!`)[^\n]*\n[ \t]*[^\s`-](?=[^\n]*?[ \t]--(?:ar|aspect)[ \t]+\d+:\d+(?:[ \t]+--?[a-z]|[ \t]*\n))[^\n]*(?<![,;.])\n(\s*\n)?\k<f>'
 weight: 1
 ---
 
