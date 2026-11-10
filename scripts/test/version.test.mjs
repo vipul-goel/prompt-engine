@@ -206,6 +206,28 @@ test('refuses a SKILL.md whose frontmatter Claude Code would end elsewhere, and 
   }
 });
 
+// The version lives in SKILL.md's frontmatter only: a SKILL.md without that line, or with it only
+// in the body, can't be bumped, and nothing else is either.
+test('refuses a SKILL.md without a metadata.version line in its frontmatter, and changes nothing', () => {
+  const dir = copyRepo();
+  try {
+    const rel = 'skills/prompt-engine/SKILL.md';
+    const files = ['.claude-plugin/plugin.json', rel];
+    const original = read(dir, rel);
+    const line = original.match(/^ {2}version: .*\r?\n/m)[0];
+    for (const variant of [original.replace(line, ''), `${original.replace(line, '')}\n${line}`]) {
+      writeFileSync(join(dir, rel), variant);
+      const before = files.map((f) => read(dir, f));
+      const r = run(dir, 'version.mjs', '9.8.7');
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /^skills\/prompt-engine\/SKILL\.md: no metadata\.version line in the frontmatter$/m);
+      assert.deepEqual(files.map((f) => read(dir, f)), before, 'no file changed');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('reminds about CHANGELOG.md until the version has a dated heading', () => {
   const dir = copyRepo();
   try {

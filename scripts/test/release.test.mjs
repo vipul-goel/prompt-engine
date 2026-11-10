@@ -5,7 +5,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
@@ -107,6 +107,26 @@ test('release.mjs --zip leaves out the files Finder and Explorer write', { skip:
   assert.equal(r.code, 0, r.out);
   assert.ok(r.entries.includes('prompt-engine/SKILL.md'), r.entries.join('\n'));
   assert.deepEqual(r.entries.filter((e) => OS_JUNK.has(e.split('/').at(-1))), []);
+});
+
+// zip -r adds to an archive that is already there and keeps the entries whose files are gone, so
+// release.mjs removes an old zip first.
+test('release.mjs --zip replaces an old dist/prompt-engine.zip instead of adding to it', { skip: NO_ZIP }, () => {
+  const r = zipCopy((dir) => {
+    const old = mkdtempSync(join(tmpdir(), 'pe-oldzip-'));
+    try {
+      mkdirSync(join(old, 'prompt-engine'));
+      writeFileSync(join(old, 'prompt-engine', 'OLD.md'), '# Old\n');
+      mkdirSync(join(dir, 'dist'));
+      const z = spawnSync('zip', ['-q', '-r', join(dir, 'dist', 'prompt-engine.zip'), 'prompt-engine'], { cwd: old, encoding: 'utf8' });
+      assert.equal(z.status, 0, z.stderr);
+    } finally {
+      rmSync(old, { recursive: true, force: true });
+    }
+  });
+  assert.equal(r.code, 0, r.out);
+  assert.ok(r.entries.includes('prompt-engine/SKILL.md'), r.entries.join('\n'));
+  assert.ok(!r.entries.includes('prompt-engine/OLD.md'), 'the old zip\'s entry is gone');
 });
 
 test('release.mjs --zip reads a plugin.json that starts with a byte-order mark', { skip: NO_ZIP }, () => {
