@@ -48,8 +48,13 @@ const SHAPES = [
   // (B1.2.1): 35 graders, among them every Full prompt heading check, took seconds at 40,000.
   ['a run of #', '', '#', 40_000],
   ['a line, then a run of #', 'x\n', '#', 40_000],
+  // A region that runs from a Full prompt heading to the next heading that starts a line, when
+  // every later heading starts mid-line (B1.2.2): each heading read to the end of the reply.
+  ['Full prompt headings after [[', '', '# Full prompt\n[[', 6_000],
+  // [^\]\n]* read from every [[ to the end of the line (B1.2.2).
+  ['one line of [[x under a Full prompt heading', '# Full prompt\n', '[[x', 15_000],
 ];
-const reply = ([, prefix, piece, n]) => prefix + piece.repeat(n);
+const reply =([, prefix, piece, n]) => prefix + piece.repeat(n);
 
 test('the timing test reads the regex graders', () => {
   assert.ok(PATTERNS.length > 40, `only ${PATTERNS.length} regex patterns found`);

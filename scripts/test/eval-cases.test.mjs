@@ -1041,6 +1041,9 @@ test('private-detail-redaction-quick 01 and 02: the number is gone, and a placeh
   assert.deepEqual(failingRegex(graders, privateReply({ contact: 'tell them to let the conductor know. The choir has [[number of members]] members', fill: '- `[[number of members]]` — how many sing.', menu: '1. Fill placeholders ★\n2. Refine' })), ['02-number-replaced']);
   // The placeholder only in the Short version: the Full prompt needs it.
   assert.deepEqual(failingRegex(graders, privateReply({ contact: 'tell them to let the conductor know', short: "tell them to text [[conductor's mobile number]]" })), ['02-number-replaced']);
+  // The region ends at any "# Full prompt", also one mid-line, and is read again from there, so a
+  // placeholder after one still counts (step 1e, B1.2.2).
+  assert.ok(regexPasses(graderOf(PRIVATE, '02-number-replaced'), privateReply({ contact: "tell them, as the # Full prompt heading says, to text the conductor on [[conductor's mobile number]]" })));
 });
 
 test('private-detail-redaction-quick 05: a reply that asks for the number fails, in the body or at the menu', () => {

@@ -252,7 +252,7 @@ export function asksForKey(text) {
 // hold no [[placeholder]] for the key (09's pattern); the reply's first line suggests rotating
 // it; and after the reply 1, nothing asks the user to paste or send it.
 const KEY_LEFT_OUT = ['key and its pieces left out', (t) => !KEY_PIECES.some((p) => t.includes(p))];
-export const KEY_PLACEHOLDER = /#[ \t]*Full prompt(?:(?!\n#+[ \t]*(?:Fill before running|What I added))[\s\S])*\[\[[^\]\n]*(?:(?:\b|_)(?:key|token|secret)|(?:\b|_)api[ _-]?key(?:\b|_)[^\]\n]*)\]\]/i;
+export const KEY_PLACEHOLDER = /#[ \t]*Full prompt(?:(?!\n#+[ \t]*(?:Fill before running|What I added)|#[ \t]*Full prompt)[\s\S])*\[\[[^\[\]\n]*(?:(?:\b|_)(?:key|token|secret)|(?:\b|_)api[ _-]?key(?:\b|_)[^\[\]\n]*)\]\]/i;
 export const SECRET_OUTPUT = [
   KEY_LEFT_OUT,
   ['names an environment variable', has(/\b[A-Z][A-Z0-9_]*_(KEY|TOKEN|SECRET)\b/)],
