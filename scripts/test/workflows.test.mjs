@@ -162,7 +162,10 @@ function inOrder(text, parts, what) {
 // Runs a step's script under bash -e, as GitHub runs a run: block on Linux when no shell is set,
 // in a new folder, with stand-ins first on PATH. Each stand-in logs its arguments, then runs the
 // shell code given for it. GH_CONFIG_DIR and npm's user config point at the empty folder, so even
-// a real gh or npm reached by mistake would have no login.
+// a real gh or npm reached by mistake would have no login. The tester's tokens, npm settings and
+// variables that change how bash or node start don't reach the step, and neither do the files
+// through which a step on GitHub sets variables, PATH or outputs for later steps, so a step run
+// here can't change the CI job that runs these tests.
 const NO_BASH = (process.platform === 'win32' && 'the stand-ins for gh and npm are shell scripts')
   || (spawnSync('bash', ['--version']).error && 'needs bash');
 function runStep(script, { stubs, env = {}, files = {} }) {
@@ -182,7 +185,7 @@ function runStep(script, { stubs, env = {}, files = {} }) {
     writeFileSync(join(dir, 'npmrc'), '');
     const log = join(dir, 'calls.log');
     writeFileSync(log, '');
-    const keep = Object.entries(process.env).filter(([k]) => !/^(PATH|GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|NODE_AUTH_TOKEN|NPM_TOKEN|NPM_OWNER|npm_config_.*)$/i.test(k));
+    const keep = Object.entries(process.env).filter(([k]) => !/^(PATH|GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|NODE_AUTH_TOKEN|NPM_TOKEN|NPM_OWNER|npm_config_.*|BASH_ENV|ENV|SHELLOPTS|BASHOPTS|NODE_OPTIONS|GITHUB_(?:ENV|PATH|OUTPUT|STATE|STEP_SUMMARY))$/i.test(k));
     const r = spawnSync('bash', ['--noprofile', '--norc', '-e', join(dir, 'step.sh')], {
       cwd: dir,
       encoding: 'utf8',
@@ -256,6 +259,20 @@ test('the only if: conditions are the Node 22 steps in ci.yml and the evals.yml 
     for (const s of steps(wf[f])) if (s.if !== undefined) assert.ok(allowed[f].includes(s.if), `${f}, ${label(s)}: if: ${s.if}`);
   }
   for (const f of ['ci.yml', 'evals.yml']) for (const [name, j] of jobs(wf[f])) assert.equal(j.if, undefined, `${f}, job ${name}`);
+});
+
+// bash runs the file that BASH_ENV names before a step's script, so an env: entry could redefine exit
+// or turn errexit off there without a change to the script. ENV, SHELLOPTS and BASHOPTS also change
+// how bash starts, NODE_OPTIONS how node does, and NPM_CONFIG_* variables what npm does. So the env:
+// maps set only these variables, and no script writes to GITHUB_ENV or GITHUB_PATH, which set
+// variables and PATH for the job's later steps.
+const ENV_KEYS = ['GH_TOKEN', 'GH_REPO', 'NPM_OWNER', 'MCP_PUBLISHER_VERSION', 'MCP_PUBLISHER_SHA256', 'ACTIONLINT_VERSION', 'ACTIONLINT_SHA256', 'ANTHROPIC_API_KEY', 'RUNS', 'MAX_COST_USD'];
+test('env: sets only the variables listed here, none of which changes how bash, node or npm start, and no script writes to GITHUB_ENV or GITHUB_PATH', () => {
+  for (const f of FILES) {
+    const maps = [['workflow', wf[f].env], ...jobs(wf[f]).flatMap(([name, j]) => [[`job ${name}`, j.env], ...j.steps.map((s, i) => [label({ ...s, job: name, i }), s.env])])];
+    for (const [where, env] of maps) for (const k of Object.keys(env ?? {})) assert.ok(ENV_KEYS.includes(k), `${f}, ${where}: env: ${k}`);
+    for (const s of steps(wf[f])) assert.doesNotMatch(s.run ?? '', /GITHUB_(?:ENV|PATH)\b/, `${f}, ${label(s)}: writes to GITHUB_ENV or GITHUB_PATH`);
+  }
 });
 
 // A tag such as actions/checkout@v7 is moved by the action's publisher with each release, so what
