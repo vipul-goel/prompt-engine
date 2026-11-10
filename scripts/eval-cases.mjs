@@ -416,6 +416,11 @@ function checkGrader(err, where, g, abs, referenced, dir) {
       if (typeof p !== 'string' || p === '') err(`${where}: needs a pattern (the pattern key, or the file's body)`);
       else if (typeof flags !== 'string' || !/^[dgimsuvy]*$/.test(flags)) err(`${where}: flags may use only d g i m s u v y`);
       else { const e = compileError(p, flags); if (e) err(`${where}: pattern: ${e}`); }
+      // claude plugin eval accepts y, but tests the pattern once against the whole text: test() for
+      // contains and not_contains, and the matches with g added for count:N. Under y each looks only
+      // at the start of the text, so a not_contains check passed on any reply that didn't start with
+      // what it forbids. g does no harm there, since each test is made with a new RegExp.
+      if (typeof flags === 'string' && /^[dgimsuvy]*$/.test(flags) && flags.includes('y')) err(`${where}: flags: y makes claude plugin eval look for the pattern only at the start of the text, since it tests the whole text once; leave y out, and write ^ (without the m flag) to match at the start (repo rule)`);
       if (d.match !== undefined && !(typeof d.match === 'string' && /^(?:contains|not_contains|count:\d+)$/.test(d.match))) err(`${where}: match must be contains, not_contains or count:N`);
       view('target');
       break;

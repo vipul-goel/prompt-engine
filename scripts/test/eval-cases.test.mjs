@@ -486,6 +486,23 @@ test('checkEvalCases wants count: followed by a number in a regex grader\'s matc
   assert.deepEqual(errors, ['evals/demo/graders/02-count-word.md: match must be contains, not_contains or count:N']);
 });
 
+// claude plugin eval tests a regex grader's pattern once against the whole text: test() for contains
+// and not_contains, and for count:N the matches with g added. Under the sticky flag y each looks only
+// at the start of the text, so a not_contains check passes on any reply that doesn't start with what
+// it forbids. g is harmless there: each test is made with a new RegExp.
+test('checkEvalCases refuses the sticky flag y on a regex grader', () => {
+  const reply = 'Here is your prompt.\n\n### Full prompt\n```text\nx\n```\n';
+  assert.equal(new RegExp('Full prompt', 'i').test(reply), true);
+  assert.equal(new RegExp('Full prompt', 'iy').test(reply), false);
+  const { errors } = check({
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-no-draft.md': "---\ntype: regex\npattern: 'Full prompt'\nflags: iy\nmatch: not_contains\n---\n",
+    'evals/demo/graders/02-count.md': '---\ntype: regex\npattern: x\nflags: gy\nmatch: count:2\n---\n',
+    'evals/demo/graders/03-other-flags.md': "---\ntype: regex\npattern: 'Full prompt'\nflags: dgimsu\n---\n",
+  });
+  assert.deepEqual(errors, ['01-no-draft', '02-count'].map((n) => `evals/demo/graders/${n}.md: flags: y makes claude plugin eval look for the pattern only at the start of the text, since it tests the whole text once; leave y out, and write ^ (without the m flag) to match at the start (repo rule)`));
+});
+
 test('checkEvalCases refuses a grader type that is not a string, as claude plugin eval does', () => {
   // A one-entry list looked up as an object key reads as its one string, so its options passed
   // unchecked; the CLI refuses a type that isn't a string when it loads the case.

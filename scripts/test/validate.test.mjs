@@ -627,6 +627,8 @@ const ROWS = [
   ['rejects weight 0', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('weight: 1', 'weight: 0')), /03-assumptions-heading\.md: weight must be a number above 0/],
   ['rejects an unknown arm', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('weight: 1', 'weight: 1\narm: bogus')), /03-assumptions-heading\.md: arm must be with-only or both/],
   ['rejects an unknown regex flag', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('flags: i', 'flags: iq')), /03-assumptions-heading\.md: flags may use only d g i m s u v y/],
+  ['rejects the sticky regex flag y, under which the pattern is looked for only at the start of the reply', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('flags: i', 'flags: iy')),
+    /^error: evals\/video-veo-quick\/graders\/03-assumptions-heading\.md: flags: y makes claude plugin eval look for the pattern only at the start of the text[^\n]*\(repo rule\)\n\n1 error\(s\)$/m],
   ['rejects an unknown target', (d) => edit(d, `${VEO}/03-assumptions-heading.md`, (t) => t.replace('type: regex', 'type: regex\ntarget: reply')),
     /03-assumptions-heading\.md: target must be trace, last_message, files, mock_calls or \{source: file, path: <a relative path>\}/],
   ['rejects a regex grader without a pattern', (d) => put(d, `${VEO}/05-empty.md`, grader('regex')), /05-empty\.md: needs a pattern \(the pattern key, or the file's body\)/],
