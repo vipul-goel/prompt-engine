@@ -198,8 +198,9 @@ const FRONTMATTER_REJECTED = [
   // the vertical tab and form feed next to it.
   ...[['a carriage return', '\r'], ['a vertical tab', '\v'], ['a form feed', '\f']].map(([what, c]) => [`${what} in a quoted value`,
     setFront('description', `description: "Use to improve${c} a prompt"`), CONTROL_RULE(`description: "Use to improve${c} a prompt"`)]),
-  // PyYAML refuses the noncharacters U+FFFE and U+FFFF; the message escapes them, so they show.
-  ...['\u{FFFE}', '\u{FFFF}'].map((c) => [`U+${c.codePointAt(0).toString(16).toUpperCase()} in a quoted value`, setFront('description', `description: "Use to improve${c} a prompt"`),
+  // PyYAML refuses the noncharacters U+FFFE and U+FFFF, and reads U+2028 and U+2029 as line breaks;
+  // the message escapes them, so they show.
+  ...['\u{FFFE}', '\u{FFFF}', '\u{2028}', '\u{2029}'].map((c) => [`U+${c.codePointAt(0).toString(16).toUpperCase()} in a quoted value`, setFront('description', `description: "Use to improve${c} a prompt"`),
     CONTROL_RULE('description: "Use to improve a prompt"').replace('improve', `improve\\u${c.codePointAt(0).toString(16)}`)]),
   // Claude Code ends the frontmatter at the first "---" after the opening line, wherever it is, so
   // a value that holds one, or a closing line with more than "---", would load another way than
@@ -1144,8 +1145,11 @@ const SLOW_INPUTS = [
   ['a run of "#" before a recorded output', (d) => editOutput(d, (t) => `${'#'.repeat(LONG)}\n${t}`)],
   // eval-cases.mjs: the text in curly quotes in a history case's rubric.
   ['unclosed curly quotes in a history case\'s rubric', (d) => edit(d, `${OK_CASE}/graders/08-no-invention.md`, (t) => `${t}\n${'\u{201C}a '.repeat(LONG / 2)}\n`)],
-  // validate.mjs: SKILL.md's frontmatter lines.
+  // validate.mjs: SKILL.md's frontmatter lines, also where a run of spaces after the colon ends in
+  // a U+2028 or U+2029, which a regex's . doesn't match.
   ['spaces inside SKILL.md\'s quoted description', setFront('description', `description: "Use${' '.repeat(LONG)}to improve a prompt."`)],
+  ['spaces and a U+2028 after SKILL.md\'s description key', (d) => edit(d, SKILL, (t) => t.replace(/^description: /m, () => `description:${' '.repeat(LONG)}\u{2028}`))],
+  ['spaces and a U+2029 after a metadata key in SKILL.md', metadataLine(`  tag:${' '.repeat(LONG)}\u{2029}x`)],
   // validate.mjs: a contract heading, on each line of a contract file.
   ['a line of spaces in the universal core', (d) => edit(d, CORE, (t) => t.replace('\n', `\n${' '.repeat(LONG)}x\n`))],
   // eval-cases.mjs: a plain case.yaml value, its edges and a # comment.

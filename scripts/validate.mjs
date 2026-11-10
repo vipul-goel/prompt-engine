@@ -101,12 +101,14 @@ const NOT_A_STRING = /^(?:y|n|yes|no|true|false|on|off|null|e[-+]?\d+)$/i;
 // A nested key must start with a letter: 0x1, 012 or 1e5 read as numbers.
 const KEY = /^[A-Za-z][\w-]*$/;
 // Control characters, refused anywhere. In a quoted string, js-yaml and PyYAML read a CR as a
-// line break and refuse the other C0 ones; PyYAML also reads U+0085 as a line break and refuses
-// DEL, the other C1 ones, U+FFFE and U+FFFF.
-const CONTROL = /[\x00-\x08\x0B-\x1F\x7F-\x9F\uFFFE\uFFFF]/;
+// line break and refuse the other C0 ones; PyYAML also reads U+0085, U+2028 and U+2029 as line
+// breaks and refuses DEL, the other C1 ones, U+FFFE and U+FFFF. Refused before the line patterns
+// below run, too: their . doesn't match U+2028 or U+2029, so after a run of spaces that ended in
+// one they tried the end of the line once for each space, which took quadratic time.
+const CONTROL = /[\x00-\x08\x0B-\x1F\x7F-\x9F\u2028\u2029\uFFFE\uFFFF]/;
 // A line in a message: a JSON string, with the characters JSON.stringify leaves as they are (DEL,
-// the C1 range, U+FFFE and U+FFFF) escaped too, so that each one shows.
-const shown = (line) => JSON.stringify(line).replace(/[\x7F-\x9F\uFFFE\uFFFF]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+// the C1 range, U+2028, U+2029, U+FFFE and U+FFFF) escaped too, so that each one shows.
+const shown = (line) => JSON.stringify(line).replace(/[\x7F-\x9F\u2028\u2029\uFFFE\uFFFF]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 // A value without its trailing spaces. A loop: "(.*?) *$" tried the end of the line from each
 // character of the value, which took quadratic time on a long run of spaces inside it.
 const trimEndSp = (s) => {
