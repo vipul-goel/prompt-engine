@@ -185,12 +185,22 @@ const FRONTMATTER_REJECTED = [
   ['a number under metadata', metadataLine('  count: 5'), `${VALUE_RULE}  count: 5`],
   ['a word the yaml package reads as a number', metadataLine('  build: e1'), `${VALUE_RULE}  build: e1`],
   ['a single-quoted value', setFront('license', "license: 'MIT'"), `${VALUE_RULE}license: 'MIT'`],
+  // Escapes read differently across YAML parsers, so a quoted value holds no backslash.
+  ['a backslash inside a quoted value', setFront('description', 'description: "Use to improve a C:\\temp prompt"'), `${VALUE_RULE}description: "Use to improve a C:\\temp prompt"`],
+  ...['y', 'n', 'null'].map((v) => [`${v} as a value`, setFront('license', `license: ${v}`), `${VALUE_RULE}license: ${v}`]),
   ['a tab after the colon', setFront('license', 'license:\tMIT'), TAB_RULE('license:\tMIT')],
   ['a line of a space and a tab', (d) => edit(d, SKILL, (t) => t.replace('license: MIT', 'license: MIT\n \t')), TAB_RULE(' \t')],
   ['a control character in a quoted value', setFront('description', 'description: "Use to improve\u{7} a prompt"'), CONTROL_RULE('description: "Use to improve\u{7} a prompt"')],
   // JSON.stringify leaves a C1 control character as it is; the message escapes it, so it shows.
   ['a C1 control character in a quoted value', setFront('description', 'description: "Use to improve\u{85} a prompt"'),
     CONTROL_RULE('description: "Use to improve a prompt"').replace('improve', 'improve\\u0085')],
+  // A carriage return that doesn't end a line, which js-yaml and PyYAML read as a line break, and
+  // the vertical tab and form feed next to it.
+  ...[['a carriage return', '\r'], ['a vertical tab', '\v'], ['a form feed', '\f']].map(([what, c]) => [`${what} in a quoted value`,
+    setFront('description', `description: "Use to improve${c} a prompt"`), CONTROL_RULE(`description: "Use to improve${c} a prompt"`)]),
+  // PyYAML refuses the noncharacters U+FFFE and U+FFFF; the message escapes them, so they show.
+  ...['\u{FFFE}', '\u{FFFF}'].map((c) => [`U+${c.codePointAt(0).toString(16).toUpperCase()} in a quoted value`, setFront('description', `description: "Use to improve${c} a prompt"`),
+    CONTROL_RULE('description: "Use to improve a prompt"').replace('improve', `improve\\u${c.codePointAt(0).toString(16)}`)]),
   // Claude Code ends the frontmatter at the first "---" after the opening line, wherever it is, so
   // a value that holds one, or a closing line with more than "---", would load another way than
   // validate.mjs and build.mjs read it.
@@ -284,9 +294,15 @@ const ROWS = [
   ['rejects a name that is not lowercase and hyphenated', setFront('name', 'name: Prompt_Engine'), /name "Prompt_Engine" must be 1-64 chars of a-z/],
   ['rejects a name that differs from the folder name', setFront('name', 'name: prompt-engines'), /name "prompt-engines" must equal the folder name "prompt-engine"/],
   ['rejects a reserved word in the name', setFront('name', 'name: claude-prompts'), /name "claude-prompts" uses a reserved word/],
+  ['rejects anthropic in the name', setFront('name', 'name: anthropic-prompts'), /name "anthropic-prompts" uses a reserved word/],
+  ['rejects the reserved name synced', setFront('name', 'name: synced'), /name "synced" uses a reserved word/],
+  ['rejects a name over 64 characters', setFront('name', `name: ${'a'.repeat(65)}`), /name "a{65}" must be 1-64 chars of a-z, 0-9 and single hyphens/],
   ['requires a description', (d) => edit(d, SKILL, (t) => t.replace(/^description:.*\n/m, '')), /SKILL\.md: description is required/],
+  ['requires a description that is more than spaces', setFront('description', 'description: "   "'), /SKILL\.md: description is required/],
+  ['rejects > in the description', setFront('description', 'description: "Use for prompts > 100 words."'), /description must not contain < or >/],
   ['rejects angle brackets in the description', setFront('description', 'description: "Use <when> asked to improve a prompt."'), /description must not contain < or >/],
   ['rejects a description that starts like a YAML block scalar', setFront('description', 'description: "| Improve prompts for any AI tool."'), /description must be a single-line string, not a YAML block scalar/],
+  ['rejects a description that starts like a folded YAML block scalar', setFront('description', 'description: "> Improve prompts for any AI tool."'), /description must be a single-line string, not a YAML block scalar/],
   ['rejects a description over the hard limit', setFront('description', `description: "${'word '.repeat(220).trim()}"`), new RegExp(`description is \\d+ chars \\(hard limit ${BUDGETS.descriptionHardMaxChars}\\)`)],
   ['rejects a description over the cap', setFront('description', `description: "${'word '.repeat(60).trim()}"`), new RegExp(`description is \\d+ chars \\(current cap ${BUDGETS.descriptionMaxChars};`)],
   ['requires license MIT', setFront('license', 'license: Apache-2.0'), /license should be MIT/],
@@ -317,6 +333,8 @@ const ROWS = [
   ['rejects a $N placeholder that Claude Code would substitute', (d) => edit(d, `${REF}/writing.md`, (t) => `${t}\nPrices start at $1 per month.\n`), /writing\.md: contains \$N \(e\.g\. "\$1"\),/],
   ['rejects a ${CLAUDE_ variable in skill text', (d) => edit(d, `${REF}/writing.md`, (t) => `${t}\nSee \${CLAUDE_PLUGIN_ROOT}/x.\n`), /writing\.md: contains \$\{CLAUDE_\.\.\.\},/],
   ['rejects a !`command` line in skill text', (d) => edit(d, `${REF}/writing.md`, (t) => `${t}\n!\`date\`\n`), /writing\.md: contains !`command`,/],
+  ['rejects a !`command` inside a line of skill text', (d) => edit(d, `${REF}/writing.md`, (t) => `${t}\nToday is !\`date\`.\n`), /writing\.md: contains !`command`,/],
+  ['rejects $0, which Claude Code substitutes too', (d) => edit(d, `${REF}/writing.md`, (t) => `${t}\nThe free plan costs $0.\n`), /writing\.md: contains \$N \(e\.g\. "\$1"\),/],
   ['rejects a ```! fence in skill text', (d) => edit(d, `${REF}/writing.md`, (t) => `${t}\n\`\`\`!\ndate\n\`\`\`\n`), /writing\.md: contains ```! fence,/],
   // ---- lint rules
   ['reports a lint rule whose pattern does not compile', (d) => editJson(d, 'data/lint-rules.json', (j) => { j.rules.find((r) => r.id === PLAIN_RULE).pattern = '('; }),
@@ -390,6 +408,10 @@ const ROWS = [
     /output-format\.md: missing contract heading "What next\?"/],
   ['rejects a renamed heading in a list item', (d) => edit(d, CORE, (t) => t.replace('\n- ### Score:', '\n- ### Rating:')), /universal\/prompt-engine\.md: missing contract heading "Score"/],
   ['rejects a renamed bold label in a list item', (d) => edit(d, SKILL, (t) => t.replace('\n7. **Score**', '\n7. **Rating**')), /SKILL\.md: missing contract heading "Score"/],
+  // Only ## to ####, at the start of a line or of a list item.
+  ...['#', '#####'].map((h) => [`rejects a contract heading written as ${h}`, (d) => edit(d, `${REF}/output-format.md`, (t) => t.replace('\n### Score\n', `\n${h} Score\n`)),
+    /output-format\.md: missing contract heading "Score"/]),
+  ['rejects a contract heading in the middle of a line', (d) => edit(d, `${REF}/output-format.md`, (t) => t.replace('\n### Score\n', '\nSee ### Score\n')), /output-format\.md: missing contract heading "Score"/],
   // The contract's own shape: a group name that required doesn't define, or a list written as a
   // string, turned an artifact's checks off without a message. The copy is built again, since the
   // MCP server's content holds the contract.
@@ -473,6 +495,8 @@ const ROWS = [
   ['rejects an mcp/manifest.json version mismatch', (d) => editJson(d, 'mcp/manifest.json', (j) => { j.version = '9.9.9'; }), /mcp\/manifest\.json: version 9\.9\.9 != /],
   // ---- data
   ['requires https sources', target((t) => { t.sources = ['http://example.com/docs']; }), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: needs https sources`)],
+  ['requires at least one source', target((t) => { t.sources = []; }), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: needs https sources`)],
+  ['requires each source to start with https://', target((t) => { t.sources = ['see https://example.com/docs']; }), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: needs https sources`)],
   ['rejects a malformed last_verified date', target((t) => { t.last_verified = '2026-1-29'; }), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: last_verified must be a real YYYY-MM-DD date`)],
   ['rejects an impossible last_verified date', target((t) => { t.last_verified = '2024-02-30'; }), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: last_verified must be a real YYYY-MM-DD date`)],
   ['rejects a last_verified date in the future', target((t) => { t.last_verified = '2099-01-01'; }), new RegExp(`media-targets\\.json ${MEDIA_ID_RE}: last_verified 2099-01-01 is in the future`)],
@@ -792,6 +816,7 @@ const ROWS = [
     /^error: evals\/save-to-file-existing\/graders\/05-file-is-the-full-prompt\.md: pattern doesn't match the recorded Full prompt, so a correct save would fail; derive it again from history\.jsonl \(repo rule\)\n\n1 error\(s\)$/m],
   // ---- generated files
   ['rejects a stale generated file', (d) => edit(d, `${REF}/media-targets.md`, (t) => `${t}\nhand edit\n`), /references\/media-targets\.md: stale; run node scripts\/build\.mjs/],
+  ['rejects a generated file that is missing', (d) => rmSync(join(d, 'universal/prompt-engine-knowledge.md')), /universal\/prompt-engine-knowledge\.md: stale; run node scripts\/build\.mjs/],
   // The eval lint graders are generated from data/lint-rules.json (finding 59, D36). build.mjs
   // never deletes a file, so a lint grader it doesn't write is reported too.
   ['rejects a hand-edited lint grader', (d) => edit(d, 'evals/research-quick-vector-databases/graders/lint-prompt.md', (t) => t.replace('IMPORTANT', 'IMPORTANT|URGENT')),
@@ -802,6 +827,8 @@ const ROWS = [
   }), Object.keys(LINT_GRADER_CASES).map((c) => new RegExp(`evals/${reEsc(c)}/graders/lint-prompt\\.md: stale`))],
   ['rejects a lint grader that build.mjs does not write', (d) => put(d, 'evals/coding-vague-asks-questions/graders/lint-prompt.md', '---\ntype: regex\npattern: x\n---\n'),
     /evals\/coding-vague-asks-questions\/graders\/lint-prompt\.md: looks generated, but scripts\/build\.mjs doesn't write it; delete it or add the case to LINT_GRADER_CASES/],
+  ['rejects a lint grader of another name that build.mjs does not write', (d) => put(d, 'evals/coding-vague-asks-questions/graders/lint-prompt-x.md', '---\ntype: regex\npattern: x\n---\n'),
+    /evals\/coding-vague-asks-questions\/graders\/lint-prompt-x\.md: looks generated, but scripts\/build\.mjs doesn't write it/],
   // With the build failed, no file counts as written: the other cases' graders aren't listed.
   ['reports a lint-grader case that is gone, and lists no lint grader as unwritten', (d) => rmSync(join(d, 'evals/spanish-quick'), { recursive: true }),
     /error: build failed: LINT_GRADER_CASES in scripts\/build\.mjs names evals\/spanish-quick\/graders, which does not exist/, 1, /looks generated/],
@@ -874,6 +901,11 @@ const GIT_ROWS = [
     put(d, 'docs/later-nul.txt', Buffer.concat([Buffer.from('x'.repeat(8_000)), Buffer.from([0]), Buffer.from('x\n')]));
     git(['add', '-f', 'docs/late-nul.txt', 'docs/later-nul.txt']);
   }, /warning: docs\/late-nul\.txt: a binary file; Anthropic's plugin directory holds/, 0, /later-nul\.txt/],
+  ['does not warn about a large JPEG or a binary font', (d, git) => {
+    put(d, 'docs/photo.jpg', 'x'.repeat(300_000));
+    put(d, 'docs/font.woff2', Buffer.from([0x77, 0x4f, 0x46, 0x32, 0x00, 0x01]));
+    git(['add', '-f', 'docs/photo.jpg', 'docs/font.woff2']);
+  }, /validate: OK/, 0, [/photo\.jpg/, /font\.woff2/]],
   ['warns about a tracked binary file that is not an image or font, but not about the PNG icons', (d, git) => {
     put(d, 'docs/guide.pdf', Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00, 0x01]));
     git(['add', '-f', 'docs/guide.pdf']);
