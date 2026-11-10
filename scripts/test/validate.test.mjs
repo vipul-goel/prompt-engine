@@ -364,8 +364,8 @@ const ROWS = [
     new RegExp(`SKILL\\.md: section "${reEsc(h)}" starts at char \\d+; keep it within the first ${BUDGETS.skillKeySectionsWithinChars}`)]),
   ['rejects a missing key section', (d) => edit(d, SKILL, (t) => t.replaceAll(BUDGETS.skillKeySections[0], '### Renamed section')),
     new RegExp(`SKILL\\.md: missing section "${reEsc(BUDGETS.skillKeySections[0])}"`)],
-  // A key section is its heading line outside fenced blocks: the heading's text in a contents line,
-  // in a fenced example or at the start of a longer heading doesn't stand in for it.
+  // A key section is its heading line outside fenced blocks and HTML comments: the heading's text in
+  // a contents line, in a fenced example or at the start of a longer heading doesn't stand in for it.
   ['rejects a key section named in a contents line near the top that starts past the limit', (d) => {
     moveSection(KEY_LAST, KEY_LIMIT + 100)(d);
     const first = BUDGETS.skillKeySections[0];
@@ -376,6 +376,16 @@ const ROWS = [
     return t.replace(`\n${KEY_LAST}\n`, () => `\n${KEY_LAST.replace(/\S+$/, 'Renamed')}\n`)
       .replace(`\n${first}`, () => `\n\`\`\`text\n${KEY_LAST}\n\`\`\`\n\n${first}`);
   }), new RegExp(`SKILL\\.md: missing section "${reEsc(KEY_LAST)}"`)],
+  // Nor does a copy of the heading line in an HTML comment: from a line that starts with <!-- to
+  // the line that holds -->, as CommonMark reads such a block.
+  ['rejects a key section whose heading line is copied into an HTML comment near the top', (d) => {
+    moveSection(KEY_LAST, KEY_LIMIT + 100)(d);
+    edit(d, SKILL, (t) => t.replace(`\n${BUDGETS.skillKeySections[0]}`, () => `\n<!-- a note\n${KEY_LAST}\n-->\n\n${BUDGETS.skillKeySections[0]}`));
+  }, new RegExp(`SKILL\\.md: section "${reEsc(KEY_LAST)}" starts at char \\d+; keep it within the first ${KEY_LIMIT} `)],
+  ['accepts a key section right after a one-line HTML comment', (d) => {
+    edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n<!-- a note -->\n${KEY_LAST}\n`));
+    rebuild(d);
+  }, /validate: OK/, 0],
   ['rejects a key section whose heading line goes on with more of a word', (d) => edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n${KEY_LAST}s\n`)),
     new RegExp(`SKILL\\.md: missing section "${reEsc(KEY_LAST)}"`)],
   // "Within the first 8,000 characters": the last offset that passes is 7,999.
