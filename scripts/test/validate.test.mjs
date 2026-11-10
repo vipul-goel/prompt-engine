@@ -473,6 +473,10 @@ const ROWS = [
   ['requires the plugin name prompt-engine', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.name = 'prompt-engine-x'; }), /plugin\.json: name must be prompt-engine/],
   ['requires a semver plugin version', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.version = '1.0'; }), /plugin\.json: version must be semver/],
   ['rejects a plugin version with a leading zero', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.version = '1.2.03'; }), /plugin\.json: version must be semver/],
+  // npm's semver refuses a part above Number.MAX_SAFE_INTEGER, and a version that isn't a string.
+  ['rejects a plugin version with a part npm reads as too large', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.version = '9007199254740992.0.0'; }), /plugin\.json: version must be semver/],
+  ['rejects a plugin version written as a list', (d) => editJson(d, '.claude-plugin/plugin.json', (j) => { j.version = [j.version]; }), /plugin\.json: version must be semver/],
+  ['rejects a metadata.version with a part npm reads as too large', (d) => edit(d, SKILL, (t) => t.replace(/^ {2}version: "[^"]*"$/m, '  version: "1.0.99999999999999999999"')), /SKILL\.md: metadata\.version must be semver/],
   ['requires a marketplace entry for prompt-engine', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins[0].name = 'other'; }), /marketplace\.json: no entry for prompt-engine/],
   ['requires the marketplace source ./', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins[0].source = './plugin'; }), /prompt-engine source should be "\.\/"/],
   ['rejects a version in the marketplace entry', (d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins[0].version = '0.1.0'; }), /marketplace\.json: set version only in plugin\.json/],

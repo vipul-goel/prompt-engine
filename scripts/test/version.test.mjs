@@ -87,12 +87,12 @@ test('sets the version everywhere and the repository still validates', () => {
 });
 
 // A part with a leading zero isn't semver: npm publish refuses 01.2.3 (EBADSEMVER), though npm pack
-// keeps it.
-test('rejects a version that is not major.minor.patch, or has a leading zero, and changes nothing', () => {
+// keeps it. npm's semver also refuses a part above Number.MAX_SAFE_INTEGER (9007199254740991).
+test('rejects a version that is not major.minor.patch, has a leading zero or a part npm reads as too large, and changes nothing', () => {
   const dir = copyRepo();
   try {
     const before = read(dir, '.claude-plugin/plugin.json');
-    for (const v of ['v1.0', '01.2.3', '1.02.3', '1.2.03']) {
+    for (const v of ['v1.0', '01.2.3', '1.02.3', '1.2.03', '9007199254740992.0.0', '1.99999999999999999999.0', `1.0.${'1'.repeat(264)}`]) {
       const r = run(dir, 'version.mjs', v);
       assert.equal(r.code, 2, `${v}: ${r.out}`);
       assert.match(r.out, /^usage: /, v);
@@ -102,6 +102,12 @@ test('rejects a version that is not major.minor.patch, or has a leading zero, an
     const ok = run(dir, 'version.mjs', '10.0.20');
     assert.equal(ok.code, 0, ok.out);
     assert.equal(JSON.parse(read(dir, '.claude-plugin/plugin.json')).version, '10.0.20');
+    // The largest part npm reads, which validate.mjs takes too.
+    const max = run(dir, 'version.mjs', '9007199254740991.0.0');
+    assert.equal(max.code, 0, max.out);
+    assert.equal(JSON.parse(read(dir, '.claude-plugin/plugin.json')).version, '9007199254740991.0.0');
+    const checked = run(dir, 'validate.mjs');
+    assert.equal(checked.code, 0, checked.out);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

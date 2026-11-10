@@ -20,7 +20,7 @@
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, relative, basename } from 'node:path';
-import { buildAll, root, normalize, readJson, splitFrontmatter, isOsJunk, KNOWLEDGE_ORDER, SEMVER } from './build.mjs';
+import { buildAll, root, normalize, readJson, splitFrontmatter, isOsJunk, KNOWLEDGE_ORDER, isSemver } from './build.mjs';
 import { checkEvalCases, checkSuiteRules, checkConversations } from './eval-cases.mjs';
 import { scanText, publicText } from './eval/sanitize.mjs';
 
@@ -192,7 +192,7 @@ if (!front) {
   if (front['allowed-tools'] !== undefined && front['allowed-tools'] !== 'Read') err(`${SKILL}: allowed-tools should be exactly "Read"`);
   const meta = front.metadata ?? {};
   if (typeof meta !== 'object') err(`${SKILL}: metadata must be a mapping`);
-  if (!SEMVER.test(meta.version ?? '')) err(`${SKILL}: metadata.version must be semver`);
+  if (!isSemver(meta.version)) err(`${SKILL}: metadata.version must be semver`);
 }
 
 // ---------- skill folder ----------
@@ -475,7 +475,7 @@ const plugin = readObject('.claude-plugin/plugin.json');
 const market = readObject('.claude-plugin/marketplace.json');
 if (plugin) {
   if (plugin.name !== 'prompt-engine') err('.claude-plugin/plugin.json: name must be prompt-engine');
-  if (!SEMVER.test(plugin.version ?? '')) err('.claude-plugin/plugin.json: version must be semver');
+  if (!isSemver(plugin.version)) err('.claude-plugin/plugin.json: version must be semver');
   metadataOnly((k) => `.claude-plugin/plugin.json: key ${JSON.stringify(k)}`, plugin, PLUGIN_KEYS, 'PLUGIN_KEYS');
 }
 const plugins = market?.plugins ?? [];
