@@ -220,6 +220,34 @@ test('splitFrontmatter ends the frontmatter only where Claude Code ends it too',
   }
 });
 
+// splitFrontmatter as it was before it found Claude Code's close without its pattern: the
+// reference for the linear search. Claude Code's pattern backtracked into a run of white space
+// after the opening "---" once for each character, when no "---" followed.
+const referenceSplit = (text) => {
+  const strict = text.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
+  const close = text.match(/^---\s*\n[\s\S]*?(?=---)/)?.[0].length;
+  if (!strict && close === undefined) return null;
+  if (!strict || close !== strict[1].length + 5) return 'throws';
+  return { front: strict[1], body: text.slice(strict[0].length) };
+};
+
+test('splitFrontmatter finds Claude Code\'s close as its pattern does, in time in step with the text', () => {
+  // Every text of one to six of these pieces, white space that \s matches among them.
+  const pieces = ['---', '-', '\n', ' ', '\r', '\u{A0}', 'x'];
+  let texts = [''];
+  for (let n = 1; n <= 6; n++) {
+    texts = texts.flatMap((t) => pieces.map((p) => t + p));
+    for (const text of texts) {
+      let got;
+      try { got = splitFrontmatter(text); } catch (e) { assert.equal(e.message, SPLIT_RULE); got = 'throws'; }
+      assert.deepEqual(got, referenceSplit(text), JSON.stringify(text));
+    }
+  }
+  const t0 = performance.now();
+  for (const run of ['\n', ' \n', '\n\t']) assert.equal(splitFrontmatter(`---\n${run.repeat(100_000)}name: x\n`), null, JSON.stringify(run));
+  assert.ok(performance.now() - t0 < 1_000, `${Math.round(performance.now() - t0)} ms`);
+});
+
 test('build.mjs stops on a SKILL.md whose frontmatter Claude Code would end elsewhere, and writes nothing', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pe-front-'));
   try {

@@ -37,8 +37,14 @@ export function readJson(p) {
 // copied into recordings another.
 export function splitFrontmatter(text) {
   const strict = text.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
-  // Where Claude Code's closing "---" starts; strict's starts after "---\n", the block and "\n".
-  const close = text.match(/^---\s*\n[\s\S]*?(?=---)/)?.[0].length;
+  // Where Claude Code's closing "---" starts; strict's starts after "---\n", the block and "\n". Its
+  // pattern's opening is "---" and the white space after it up to the run's last line break, and
+  // its close the first "---" after that, which no "---" inside the run can be. Found with indexOf:
+  // the pattern itself tried the rest of the text once for each character of the run when no "---"
+  // followed, which took quadratic time on a long run of blank lines.
+  const run = text.match(/^---(\s*)/)?.[1];
+  const at = run?.includes('\n') ? text.indexOf('---', 3 + run.length) : -1;
+  const close = at < 0 ? undefined : at;
   if (!strict && close === undefined) return null;
   if (!strict || close !== strict[1].length + 5) throw new Error('frontmatter must open and close with a line of exactly "---", with no other "---" in between: Claude Code ends it at the first "---" after the opening line, even inside a value or in a line such as "--- " or "----"');
   return { front: strict[1], body: text.slice(strict[0].length) };
