@@ -1460,6 +1460,11 @@ const FAST = [
   ['"The user\'s whole request" repeated on one line, with no quote', () => histories(recordedCase('phrase', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
     '01-request.md': judge("The user's whole request ".repeat(RUN / 25)),
   }))],
+  // Each phrase opens a curly quote that nothing closes, so the end of each quote is looked for: from
+  // each, that search ran to the end of the line.
+  ['"The user\'s whole request" and an unclosed curly quote, repeated on one line', () => histories(recordedCase('curly', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
+    '01-request.md': judge("The user's whole request \u{201C}".repeat(2 * RUN / 26)),
+  }))],
   ['an <original_prompt> tag repeated, never closed', () => histories(recordedCase('tags', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
     '01-request.md': judge('<original_prompt>x '.repeat(2.5 * RUN / 19)),
   }))],
