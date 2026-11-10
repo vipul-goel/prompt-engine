@@ -107,7 +107,8 @@ test('an llm grader with no focus counts as one that read the last message', () 
 
 // The files skill-creator's eval-viewer/generate_review.py leaves out of a run's outputs
 // (METADATA_FILES, line 31, in anthropics/skills at 3d59511 and in the claude.ai example
-// skill-creator of 2026-10-28). The tool calls go in a file the viewer shows (step 1e, B1.2.8).
+// skill-creator of 2026-10-28). The tool calls go in a file the viewer shows (step 1e, B1.2.8),
+// so no file the script writes in a run's outputs/ may have one of these names.
 const VIEWER_SKIPS = new Set(['transcript.md', 'user_notes.md', 'metrics.json']);
 
 test('with a kept trace, takes the final reply and the tool calls from it', () => {
@@ -122,7 +123,7 @@ test('with a kept trace, takes the final reply and the tool calls from it', () =
     const run1 = join(out, 'eval-case-a', 'without_skill', 'run-1');
     assert.equal(readFileSync(join(run1, 'outputs', 'response.md'), 'utf8'), 'Final reply\n');
     assert.deepEqual(readdirSync(join(run1, 'outputs')).sort(), ['response.md', 'tool-calls.md']);
-    assert.ok(!VIEWER_SKIPS.has('tool-calls.md'));
+    for (const f of readdirSync(join(run1, 'outputs'))) assert.ok(!VIEWER_SKIPS.has(f), `${f} is a file the viewer leaves out`);
     assert.match(readFileSync(join(run1, 'outputs', 'tool-calls.md'), 'utf8'), /^- Skill \{"skill":"prompt-engine"\}/);
     assert.equal(json(join(run1, 'timing.json')).total_tokens, 15);
   } finally { rmSync(dir, { recursive: true, force: true }); rmSync(tdir, { recursive: true, force: true }); }
