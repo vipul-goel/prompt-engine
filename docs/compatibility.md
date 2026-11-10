@@ -35,6 +35,8 @@ Each case runs once per arm during development, so one result can pass or fail b
 
 In two-arm runs, `claude plugin eval` leaves the checks that the skill started (`tool_used` on Skill) out of the score unless they set `arm: both`; without the plugin, the skill can't start, so those checks would fail by design. The evals workflow fails a run when one of those unscored checks fails. The trigger cases set `arm: both`, so `trigger-natural-phrasing`, which expects the skill to start, fails its run without the plugin by design (it scores 0.5 when its other check passes). Its result without the plugin, and the mean difference between the arms, can't be compared with rounds 1 and 2. The cases that resume a recorded conversation run with the plugin only.
 
+From round 3 on, each cost below is the one `claude plugin eval` prints and records as `costUsd`, which counts only the agent's calls. The judges' calls are billed on top, and each result records them per run as `judgeCostUsd`: $0.10 for round 3's full suite, $0.67 for its re-checks, $0.01 for its new history cases, $0.10 for round 4 and $0.03 for step 1e's probe. Rounds 1 and 2 didn't record which calls their costs count.
+
 | Round | Cases | With the skill | Without | Cost |
 |---|---|---|---|---|
 | 1 (smoke subset) | 6 | 6/6 passed (score 1.00) | mean score 0.56 | $0.72 |
