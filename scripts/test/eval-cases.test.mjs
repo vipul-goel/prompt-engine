@@ -1262,3 +1262,33 @@ test('the translated cases want the labels in the user\'s language and accept de
     }
   }
 });
+
+// The last text the model wrote in a case's recording.
+const recordedReply = (name) => readFileSync(join(EVALS, name, 'history.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  .filter((r) => r.type === 'assistant').flatMap((r) => (r.message?.content ?? []).filter((p) => p.type === 'text').map((p) => p.text)).at(-1);
+
+// followup-change-assumption and followup-fill-placeholders resume one recorded mug output. Its
+// Full prompt holds two counts that its Assumptions don't state, the hook's "1–2 sentences" and the
+// "2–3 short paragraphs" (a D30 miss of the recording). A reply that keeps the rest of the prompt,
+// as change's 04 asks, keeps them, so both no-invention judges skip them by quote, and fill's 03
+// doesn't credit them to the four assumptions it quotes (step 1e, B1.1.2).
+test('the mug cases\' no-invention judges skip, by quote, the counts that the recorded prompt holds and its Assumptions leave out', () => {
+  const [change, fill] = ['followup-change-assumption', 'followup-fill-placeholders'];
+  const output = recordedReply(change);
+  assert.equal(recordedReply(fill), output, 'both cases resume the same output');
+  const prompt = output.match(/### Full prompt\n```text\n([\s\S]*?)\n```/)[1];
+  const assumptions = output.match(/### Assumptions\n([\s\S]*?)\n\n/)[1];
+  // Each count or range in the prompt, with the word after it; an item of a numbered list isn't one.
+  const words = { 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five' };
+  const stated = (n) => assumptions.includes(n) || (words[n] !== undefined && new RegExp(`\\b${words[n]}\\b`, 'i').test(assumptions));
+  const counts = [...prompt.matchAll(/(?<![\d.])(\d+(?:[–-]\d+)?)(?![.)\d])(?: ([a-z]+(?: [a-z]+)?))?/gi)].map((m) => [m[1], m[0]]);
+  const unstated = counts.filter(([n]) => !stated(n)).map(([, text]) => text);
+  assert.deepEqual(unstated, ['1–2 sentences', '2–3 short paragraphs']);
+  for (const c of [change, fill]) {
+    const g = gradersOf(c).find((x) => x.name.endsWith('-no-invention'));
+    const skip = g.body.split('\n').find((l) => l.startsWith('Check every specific value'));
+    for (const text of unstated) assert.ok(skip.includes(`"${text}"`), `${c}/${g.name}: skips "${text}" by quote`);
+  }
+  const credited = graderOf(fill, '03-no-invention').body.match(/values those four assumptions set \(([^)]*)\)/)[1];
+  assert.equal(credited, 'the word range, the three titles and their length limit, the language');
+});
