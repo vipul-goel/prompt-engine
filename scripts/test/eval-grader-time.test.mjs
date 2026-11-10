@@ -56,11 +56,11 @@ for (const c of readdirSync(EVALS).sort()) {
 }
 const PATTERNS = [...byPattern.values()].map((p) => ({ ...p, name: p.ids.length > 1 ? `${p.ids[0]} (and ${p.ids.length - 1} more)` : p.ids[0] }));
 
-// [label, prefix, piece, repeats, repeats in JavaScriptCore]: the reply is the prefix, then the
-// piece repeated. The last is given for the shapes on which linear patterns took 0.4 to 0.8 s in
-// macOS's jsc at a load of about 10 (step 1e, B2.2.5). With those repeats, the slow patterns that
-// each of these shapes was made for still took from 1.7 s to over a minute there at loads of 15
-// to 22, and V8 runs the full repeats.
+// [label, prefix, piece, repeats, repeats in JavaScriptCore, suffix]: the reply is the prefix, the
+// piece repeated, then the suffix, if any. The repeats in JavaScriptCore, when not null, are given
+// for the shapes on which linear patterns took 0.4 to 0.8 s in macOS's jsc at a load of about 10
+// (step 1e, B2.2.5). With those repeats, the slow patterns that each of these shapes was made for
+// still took from 1.7 s to over a minute there at loads of 15 to 22, and V8 runs the full repeats.
 const SHAPES = [
   // An unanchored search that starts with #+ reads the rest of the run from every # of it
   // (B1.2.1): 35 graders, among them every Full prompt heading check, took seconds at 40,000.
@@ -108,9 +108,20 @@ const SHAPES = [
   ["a run of spaces on the Full prompt's fenced line", '### Full prompt\n```text\nx', ' ', 3_000],
   ["a run of tabs on the Full prompt's fenced line", '### Full prompt\n```text\nx', '\t', 3_000],
   ["single-dash words on the Full prompt's fenced line", '### Full prompt\n```text\nx', ' -a', 8_000],
+  // A heading repeated on one line: the prompt-fenced graders and coding's 06 read the rest of
+  // the line from each heading on it. What I added sections whose headings don't start a line, so
+  // that each section ran on to the end, where an untagged bullet failed it: the English
+  // every-bullet graders read it again from each heading. And indented # lines, whose sections the
+  // translated ones scanned to the end from each line. Until step 1e's B2.2.6 these took seconds
+  // in V8 and JavaScriptCore.
+  ['#Full prompt repeated on one line', '', '#Full prompt', 11_000],
+  ['#Short version repeated on one line', '', '#Short version', 9_400],
+  ['What I added sections that start mid-line, an untagged bullet last', '', 'x # What I added\n- a [you]\n', 5_000, null, '- b\n'],
+  ['indented # lines', '', ' #\n', 11_000],
 ];
-// The reply of a shape with n repeats, and its first half and quarter.
-const replies = (prefix, piece, n) => [n, Math.ceil(n / 2), Math.ceil(n / 4)].map((k) => prefix + piece.repeat(k));
+// The reply of a shape with n repeats, and its first half and quarter, each with the shape's
+// suffix, if it has one.
+const replies = (prefix, piece, n, suffix = '') => [n, Math.ceil(n / 2), Math.ceil(n / 4)].map((k) => prefix + piece.repeat(k) + suffix);
 
 // Whether a pattern is slow on a reply, from time(s), which times it on s: '' when it isn't, else
 // what was measured. half and quarter are the reply's first half and quarter. Both legs run it;
@@ -182,8 +193,8 @@ test('a slow pattern fails only when its time does not grow linearly, so a busy 
 test('every regex grader takes linear time on long repeated replies (V8)', () => {
   const run = new vm.Script("s.match(new RegExp(p, f.includes('g') ? f : f + 'g')); new RegExp(p, f).test(s)");
   const slow = [];
-  for (const [label, prefix, piece, n] of SHAPES) {
-    const [full, half, quarter] = replies(prefix, piece, n);
+  for (const [label, prefix, piece, n, , suffix] of SHAPES) {
+    const [full, half, quarter] = replies(prefix, piece, n, suffix);
     for (const { name, pattern, flags } of PATTERNS) {
       // A try stops at ten times the limit, which fails the pattern anyway.
       const time = (s) => {
@@ -216,7 +227,7 @@ var say = typeof print === 'function' ? print : function (x) { console.log(x); }
 var replies = ${replies};
 ${slowness}
 for (var i = 0; i < S.length; i++) {
-  var texts = replies(S[i][1], S[i][2], S[i][4] || S[i][3]);
+  var texts = replies(S[i][1], S[i][2], S[i][4] || S[i][3], S[i][5]);
   for (var j = 0; j < P.length; j++) {
     var p = P[j];
     say('RUN\\t' + p.name + ' on ' + S[i][0]);
