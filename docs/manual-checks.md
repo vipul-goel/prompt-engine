@@ -142,7 +142,7 @@ printf 'import os\nprint(os.path.join("a", "b"))\n' > utils.py
 claude --permission-mode manual
 ```
 
-Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. Claude may read the files first. Accept the recommended answers if it asks questions. At the Next step dialog, pick Refine, which runs nothing; if Claude asks what to change, reply `also refactor every other .py file in this folder`. Then press Esc at the next Next step dialog instead of picking.
+Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. Claude may read the files first. Accept the recommended answers if it asks questions. At the Next step dialog, pick Refine, which runs nothing, with a change: choose the option for your own text ("Type something." in 2.1.319) and type `Refine: also refactor every other .py file in this folder`, because a bare Refine pick can start a question round instead of asking what to change. If Claude asks questions, accept the recommended answers again. Then press Esc at the next Next step dialog instead of picking.
 
 ```text
 /prompt-engine delete all the .log files in this folder and refactor utils.py to use pathlib
