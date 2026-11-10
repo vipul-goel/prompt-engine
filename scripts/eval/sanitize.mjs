@@ -187,7 +187,9 @@ export function scanText(text, { extra = [], allowText = '' } = {}) {
 // A folder left anywhere else, inside another path or glued to text as in -I/opt/x/include, stays
 // as recorded: the rewrite can't tell the two apart. left(s) says whether s holds one, so that
 // sanitize() refuses a plugin or working folder there; the scan refuses a home folder there, since
-// it looks for one anywhere in a path.
+// it looks for one anywhere in a path. Both end a name at ASCII only, so a folder that a letter
+// outside ASCII follows, which the rewrite reads as another name, is refused too: in text written
+// without spaces, such as Japanese, a folder right before or after a word is refused, not rewritten.
 function prefixRule(prefix, to) {
   if (isRoot(prefix)) return { rewrite: (s) => s, left: () => false };
   const folder = prefix.replace(/[\\/]+$/, '');
@@ -195,7 +197,7 @@ function prefixRule(prefix, to) {
   const source = folder.split(/[\\/]/).map(esc).join('[\\\\/]');
   const end = '(?![\\p{L}\\p{N}\\p{M}_-]|\\.[\\p{L}\\p{N}\\p{M}_])';
   const re = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}_.~-]|:\\/)${source}((?:[\\\\/][^\\s"'<>|*?]*)?)${end}`, windows ? 'giu' : 'gu');
-  const anywhere = new RegExp(`${source}${end}`, windows ? 'iu' : 'u');
+  const anywhere = new RegExp(`${source}(?![\\w-]|\\.\\w)`, windows ? 'i' : '');
   return {
     rewrite: (s) => s.replace(re, (_, rest) => to + (windows ? rest.replaceAll('\\', '/') : rest)),
     // The folder in what the rewrite doesn't take, each of its matches read as one NUL.

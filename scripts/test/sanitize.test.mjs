@@ -235,6 +235,10 @@ test('a folder after or before a letter outside ASCII, or as the host of a URL, 
     ['Open /rootä/x now.', 'this machine\'s home folder', { home: '/root' }],
     ['Fetch https://root/x now.', 'this machine\'s home folder', { home: '/root' }],
     ['Saved to café/srv/tmp/pe-history-abc/out.md.', 'this machine\'s working folder'],
+    // A plugin or working folder that such a letter follows, as Japanese text without a space can:
+    // the rewrite reads another name, and the check for what it leaves reads the folder.
+    ['Saved to /srv/tmp/pe-history-abcです.', 'this machine\'s working folder'],
+    ['See /srv/build/prompt-engineは here.', 'this machine\'s plugin folder'],
   ]) {
     const out = midPath(text, over);
     assert.ok(refusedAs(out, kind), `${JSON.stringify(text)} gave ${JSON.stringify(out)}`);
