@@ -608,13 +608,52 @@ test('refuses a Read of a file outside the skill\'s folder, which a refresh woul
   }
 });
 
+// Only the skill's own files are refreshed. Another file in its folder is refused before it is read:
+// a refresh copied its text from disk into the history. It can be a file the operating system wrote
+// there, which git ignores and validate.mjs skips, so that no check noticed the copy, or an untracked
+// note. A name in another letter case is refused too: on macOS and Windows it opened the skill's file.
+test('refuses a Read of a file in the skill\'s folder that isn\'t one of the skill\'s files, without reading it', () => {
+  const asked = [];
+  const reader = (rel) => { asked.push(rel); return 'LOCAL TEXT'; };
+  for (const name of ['.DS_Store', '._SKILL.md', 'Thumbs.db', 'desktop.ini', 'references/.DS_Store', 'references/._writing.md', 'references/notes.md', 'SKILL copy.md', 'references/Writing.md']) {
+    const rel = `skills/prompt-engine/${name}`;
+    assert.throws(() => refreshHistory(jsonl(readUse({ file_path: `/plugin/${rel}` }), readResult('1\tOLD')), 'BODY', reader),
+      { message: `reads ${rel}, which isn't one of the skill's files (SKILL.md or a reference that KNOWLEDGE_ORDER lists); re-record it` }, rel);
+  }
+  assert.deepEqual(asked, []);
+  for (const rel of ['skills/prompt-engine/SKILL.md', ...KNOWLEDGE_ORDER.map((k) => `skills/prompt-engine/references/${k}.md`)]) {
+    const out = refreshHistory(jsonl(readUse({ file_path: `/plugin/${rel}` }), readResult('1\tOLD')), 'BODY', files({ [rel]: 'NEW' }));
+    assert.equal(JSON.parse(out.split('\n')[1]).message.content[0].content, '1\tNEW', rel);
+  }
+});
+
+test('build.mjs refuses a recorded Read of a file the operating system wrote into the skill\'s folder, and changes nothing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-junk-'));
+  try {
+    copyTo(dir);
+    const junk = 'skills/prompt-engine/.DS_Store';
+    writeFileSync(join(dir, junk), 'LOCAL TEXT\n');
+    const h = join(dir, 'evals/followup-partial-answers/history.jsonl');
+    writeFileSync(h, `${jsonl(readUse({ file_path: `/plugin/${junk}` }), readResult('1\tOLD'))}\n${readFileSync(h, 'utf8')}`);
+    const before = readFileSync(h, 'utf8');
+    const r = node(join(dir, 'scripts', 'build.mjs'));
+    assert.equal(r.code, 1, r.out);
+    assert.equal(r.stderr, `build failed: evals/followup-partial-answers/history.jsonl: reads ${junk}, which isn't one of the skill's files (SKILL.md or a reference that KNOWLEDGE_ORDER lists); re-record it\n`);
+    assert.equal(readFileSync(h, 'utf8'), before);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('build.mjs never copies a file that a link in the skill\'s folder leads to from outside it', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => {
   const parent = mkdtempSync(join(tmpdir(), 'pe-link-'));
   try {
     const dir = join(parent, 'repo');
     copyTo(dir);
     writeFileSync(join(parent, 'notes.txt'), 'OUTSIDE TEXT\n');
-    const link = 'skills/prompt-engine/references/zz-link.md';
+    // One of the skill's own files, which a refresh reads, made a link; no committed history reads it.
+    const link = 'skills/prompt-engine/references/research.md';
+    rmSync(join(dir, link));
     symlinkSync(join(parent, 'notes.txt'), join(dir, link));
     const h = join(dir, 'evals/followup-partial-answers/history.jsonl');
     writeFileSync(h, `${jsonl(readUse({ file_path: `/plugin/${link}` }), readResult('1\tOLD'))}\n${readFileSync(h, 'utf8')}`);

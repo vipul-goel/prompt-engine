@@ -185,8 +185,11 @@ const SKILL_TEXT_HEAD = 'Base directory for this skill: /plugin/skills/prompt-en
 // The names a recording can invoke the skill by: the Skill tool's input.skill, and a typed slash command.
 const SKILL_NAMES = new Set(['prompt-engine', 'prompt-engine:prompt-engine']);
 const COMMAND_NAME = /<command-name>\/(prompt-engine(?::prompt-engine)?)<\/command-name>/;
-// The only files whose Reads refreshHistory refreshes: the skill's own, under the plugin root.
+// The only files whose Reads refreshHistory refreshes: the skill's own, under the plugin root, which
+// are SKILL.md and the references that KNOWLEDGE_ORDER lists (validate.mjs holds the references
+// folder to that list).
 const SKILL_FILES = 'skills/prompt-engine/';
+const SKILL_OWN = new Set([`${SKILL_FILES}SKILL.md`, ...KNOWLEDGE_ORDER.map((k) => `${SKILL_FILES}references/${k}.md`)]);
 // Claude Code's Read result: each line prefixed with its number and a tab.
 const numberLines = (text) => text.split('\n').map((l, i) => `${i + 1}\t${l}`).join('\n');
 
@@ -203,10 +206,11 @@ const numberLines = (text) => text.split('\n').map((l, i) => `${i + 1}\t${l}`).j
 // or a text part whose text isn't a string, skill text without a recorded invocation, arguments without their
 // ARGUMENTS line (or an ARGUMENTS line other than an empty one without them), a plugin path that
 // wasn't rewritten, a Read with offset or limit (D12: Claude Code's partial-read format isn't
-// verified), a Read of a file that no longer exists, or a Read of a file outside the skill's
-// folder (skills/prompt-engine/), or of a path with a ".." segment. A refresh copies the file's
-// text from disk into the history, and other files under the root can be untracked or private,
-// such as an .env file, .git/config or a file that a link leads to.
+// verified), a Read of a file that no longer exists, a Read of a path with a ".." segment, or a
+// Read of any file but the skill's own: SKILL.md and the references that KNOWLEDGE_ORDER lists. A
+// refresh copies the file's text from disk into the history, and other files, in the skill's folder
+// too, can be untracked or private: an .env file, .git/config, a note, a file that a link leads to,
+// or a file the operating system wrote, such as .DS_Store, which git ignores and validate.mjs skips.
 export function refreshHistory(jsonl, skillBody, readPluginFile) {
   const reads = new Map(); // Read tool_use id -> { rel, partial }
   let args = null; // the arguments of the latest prompt-engine invocation; null before the first one
@@ -241,6 +245,7 @@ export function refreshHistory(jsonl, skillBody, readPluginFile) {
         const { rel, partial } = reads.get(part.tool_use_id);
         if (rel.split(/[\\/]/).includes('..')) throw new Error(`reads ${rel}, outside the plugin; re-record it`);
         if (!rel.startsWith(SKILL_FILES)) throw new Error(`reads ${rel}, outside the skill's folder; re-record it`);
+        if (!SKILL_OWN.has(rel)) throw new Error(`reads ${rel}, which isn't one of the skill's files (SKILL.md or a reference that KNOWLEDGE_ORDER lists); re-record it`);
         if (partial) throw new Error(`reads part of ${rel} (offset/limit); re-record it`);
         const current = readPluginFile(rel);
         if (current === undefined) throw new Error(`reads ${rel}, which no longer exists; re-record it`);
