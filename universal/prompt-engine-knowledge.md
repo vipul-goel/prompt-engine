@@ -293,7 +293,7 @@ If the prompt is already strong, don't rebuild it on this skeleton: keep the use
 - **Keep one term per concept and one delimiter style.** Mixing "users", "customers" and "clients", or switching between headings and tags, makes the prompt harder to parse.
 - **Ask for evidence, not visible deliberation.** If the user needs to check the work, ask for the result plus a brief explanation, sources or the commands run. Don't ask the model to write out its internal reasoning or to fill a dedicated reasoning section; current Claude models may refuse such requests, and reasoning models don't need them.
 - **Leave runtime settings out of the prompt text.** Effort or reasoning level, temperature, prefilled assistant turns and token budgets are API settings, not prose. Prefilled answers are not supported on current Claude models.
-- **Don't promise what the model can't see.** If the prompt depends on today's date or recent events, include the date and tell the model to check recent facts or say it can't.
+- **Don't promise what the model can't see.** If the prompt depends on today's date or recent events, write today's date when you know it from your context, and list it under Assumptions so the user can update it for a later run; if you don't know it, use `[[today's date]]`. Tell the model to check recent facts or say it can't.
 
 ### Adapting to the target model
 
@@ -571,7 +571,7 @@ Enhanced prompt (excerpt):
 Find out whether solar panels are worth it for a house in [[country or region]], and recommend whether to go ahead, wait or drop the idea.
 
 # Context
-- Today's date: [[today's date]]. Panel prices, electricity rates and subsidy rules change, so check current sources rather than relying on memory, and give an "as of" date.
+- Today's date: 2026-11-10. Panel prices, electricity rates and subsidy rules change, so check current sources rather than relying on memory, and give an "as of" date.
 - Electricity use: [[yearly electricity use]]. Assume the owner lives in the house and the roof is in good condition unless told otherwise.
 
 # Method
@@ -584,6 +584,8 @@ Work out three things, each as a range: the cost to install a system, the yearly
 # Output
 A one-paragraph recommendation first, then a table of the three ranges with their sources, then caveats and what would change the recommendation.
 ```
+
+Write the date your context gives, not the one in this example, and list it under Assumptions so the user can update it for a later run; if you don't know it, write `- Today's date: [[today's date]].` instead.
 
 ---
 

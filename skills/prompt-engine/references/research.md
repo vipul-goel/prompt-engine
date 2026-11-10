@@ -49,7 +49,7 @@ Enhanced prompt (excerpt):
 Find out whether solar panels are worth it for a house in [[country or region]], and recommend whether to go ahead, wait or drop the idea.
 
 # Context
-- Today's date: [[today's date]]. Panel prices, electricity rates and subsidy rules change, so check current sources rather than relying on memory, and give an "as of" date.
+- Today's date: 2026-11-10. Panel prices, electricity rates and subsidy rules change, so check current sources rather than relying on memory, and give an "as of" date.
 - Electricity use: [[yearly electricity use]]. Assume the owner lives in the house and the roof is in good condition unless told otherwise.
 
 # Method
@@ -62,3 +62,5 @@ Work out three things, each as a range: the cost to install a system, the yearly
 # Output
 A one-paragraph recommendation first, then a table of the three ranges with their sources, then caveats and what would change the recommendation.
 ```
+
+Write the date your context gives, not the one in this example, and list it under Assumptions so the user can update it for a later run; if you don't know it, write `- Today's date: [[today's date]].` instead.
