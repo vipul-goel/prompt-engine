@@ -728,6 +728,13 @@ function findsFullPrompt(pattern, flags) {
   return FULL_PROMPT_REPLIES.some((r) => test(r) && !test(r.replace('Full prompt', 'Rough prompt')) && !test(r.replace('Full prompt', 'Full notes')));
 }
 
+// The inputs of a Skill call that starts prompt-engine, as a tool_used grader's input_match reads
+// them: claude plugin eval tests new RegExp(input_match) against the call's input as text (read in
+// 2.1.322's code), JSON text as the cases' own pattern reads it, which counted the calls of step
+// 1d's runs. The skill is named as a plugin's or on its own, with or without args.
+const SKILL_INPUTS = ['prompt-engine:prompt-engine', 'prompt-engine']
+  .flatMap((skill) => [{ skill }, { skill, args: 'improve my prompt' }]).map((input) => JSON.stringify(input));
+
 // This repo's rules for how the cases run and score, which claude plugin eval doesn't require.
 // cases is checkEvalCases's result; a case with a file that didn't read is skipped.
 export function checkSuiteRules(root, cases, err) {
@@ -743,10 +750,14 @@ export function checkSuiteRules(root, cases, err) {
       if (!skill.length) err(`${c.dir}: a case tagged trigger needs a tool_used grader on Skill (repo rule)`);
       // checkGrader reports an arm value other than with-only or both, and min: 0 without max. A
       // range of calls that holds both 0 and 1, min: 0 with a max of 1 or more, passes whether the
-      // skill starts or not.
+      // skill starts or not. So does an input_match that matches none of the calls that start the
+      // skill, which then aren't counted; with min of 1 or more, the grader fails either way.
       for (const g of skill) {
         if (g.data.arm === undefined || g.data.arm === 'with-only') err(`${g.file}: a trigger case's Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)`);
         if (g.data.min === 0 && whole(g.data.max, 1, Infinity)) err(`${g.file}: min: 0 with a max above 0 passes whether the skill starts or not; use min of 1 or more to check that it starts, or max: 0 to check that it doesn't (repo rule)`);
+        const match = g.data.input_match;
+        const missed = typeof match === 'string' && compileError(match) === null ? SKILL_INPUTS.filter((i) => !new RegExp(match).test(i)) : [];
+        if (missed.length) err(`${g.file}: input_match doesn't match ${missed.join(' or ')}, the input of a Skill call that starts prompt-engine, so claude plugin eval doesn't count such a call and the grader can't tell whether the skill started; match the skill named prompt-engine and prompt-engine:prompt-engine, with and without args (repo rule)`);
       }
     }
     // Every case pins the agent under test, and all pin the same one, so the scores of a run

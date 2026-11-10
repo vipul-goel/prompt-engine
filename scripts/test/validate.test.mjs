@@ -744,6 +744,11 @@ const ROWS = [
     `rejects ${c}'s Skill grader with min: 0 and max: 1, which passes whether the skill starts or not`,
     (d) => edit(d, `evals/${c}/graders/${g}`, (t) => t.replace(/^(?:min|max): \d+\n/gm, '').replace('arm: both\n', 'min: 0\nmax: 1\narm: both\n')),
     new RegExp(`^error: evals/${c}/graders/${reEsc(g)}: min: 0 with a max above 0 passes whether the skill starts or not; use min of 1 or more to check that it starts, or max: 0 to check that it doesn't \\(repo rule\\)\\n\\n1 error\\(s\\)$`, 'm')]),
+  // Nor with an input_match that counts none of the calls that start the skill: a letter dropped.
+  ...[['trigger-natural-phrasing', '02-skill-fired.md'], ['no-trigger-plain-task', '01-skill-not-fired.md']].map(([c, g]) => [
+    `rejects ${c}'s Skill grader with an input_match that counts no call that starts prompt-engine`,
+    (d) => edit(d, `evals/${c}/graders/${g}`, (t) => t.replace(/prompt-engine"'$/m, 'prompt-engin"\'')),
+    new RegExp(`^error: evals/${c}/graders/${reEsc(g)}: input_match doesn't match \\{"skill":"prompt-engine:prompt-engine"\\} or [^\\n]*, the input of a Skill call that starts prompt-engine, so claude plugin eval doesn't count such a call and the grader can't tell whether the skill started; [^\\n]* \\(repo rule\\)\\n\\n1 error\\(s\\)$`, 'm')]),
   ['rejects a trigger case without a tool_used grader on Skill', (d) => rmSync(join(d, 'evals/no-trigger-plain-task/graders/01-skill-not-fired.md')),
     /error: evals\/no-trigger-plain-task: a case tagged trigger needs a tool_used grader on Skill \(repo rule\)/],
   // Every case pins one agent model, and a history case the model it was recorded on (finding 47, D28).

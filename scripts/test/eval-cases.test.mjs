@@ -788,6 +788,42 @@ test('checkSuiteRules refuses a trigger case\'s Skill grader that passes whether
   assert.deepEqual(errors, ['fifty', 'one'].map((n) => `evals/zero-to-${n}/graders/01-skill.md: min: 0 with a max above 0 passes whether the skill starts or not; use min of 1 or more to check that it starts, or max: 0 to check that it doesn't (repo rule)`));
 });
 
+// claude plugin eval counts a call only when the grader's input_match matches the call's input, as
+// JSON text. One that matches no call that starts prompt-engine, such as the cases' own pattern with
+// a letter dropped, counts none: a max: 0 check then passes whether the skill starts or not, and a
+// check that it starts fails either way. Both directions, and the forms a call can take.
+test('checkSuiteRules refuses a trigger case\'s Skill grader whose input_match counts no call that starts prompt-engine', () => {
+  const OURS = '"skill"\\s*:\\s*"(?:[\\w-]+:)?prompt-engine"';
+  const trigger = (name, match, range = '') => ({ [`evals/${name}/prompt.md`]: promptMd('tags: [trigger]\n'), [`evals/${name}/graders/01-skill.md`]: SKILL_CHECK(`input_match: '${match}'\n${range}arm: both\n`) });
+  const PLUGIN = '{"skill":"prompt-engine:prompt-engine"}';
+  const PLUGIN_ARGS = '{"skill":"prompt-engine:prompt-engine","args":"improve my prompt"}';
+  const ALONE = '{"skill":"prompt-engine"}';
+  const ALONE_ARGS = '{"skill":"prompt-engine","args":"improve my prompt"}';
+  const { schema, errors } = rules({
+    ...trigger('ours-never', OURS, 'min: 0\nmax: 0\n'),
+    ...trigger('ours-starts', OURS),
+    ...trigger('dropped-never', OURS.replace('engine', 'engin'), 'min: 0\nmax: 0\n'),
+    ...trigger('dropped-starts', OURS.replace('engine', 'engin')),
+    ...trigger('plugin-only', '"prompt-engine:prompt-engine"', 'min: 0\nmax: 0\n'),
+    ...trigger('no-args', '^\\{"skill":"(?:prompt-engine:)?prompt-engine"\\}$'),
+    // Without input_match, every Skill call counts; one that doesn't compile is checkGrader's.
+    [`evals/any-skill/prompt.md`]: promptMd('tags: [trigger]\n'),
+    [`evals/any-skill/graders/01-skill.md`]: SKILL_CHECK('min: 0\nmax: 0\narm: both\n'),
+    ...trigger('broken', '(prompt-engine', 'min: 0\nmax: 0\n'),
+    // Outside a trigger case, the grader is a check like any other.
+    'evals/smoke/prompt.md': promptMd('tags: [smoke]\n'),
+    'evals/smoke/graders/01-skill.md': SKILL_CHECK(`input_match: '${OURS.replace('engine', 'engin')}'\n`),
+  });
+  assert.deepEqual(schema, ['evals/broken/graders/01-skill.md: input_match: Invalid regular expression: /(prompt-engine/: Unterminated group']);
+  const missing = (name, inputs) => `evals/${name}/graders/01-skill.md: input_match doesn't match ${inputs.join(' or ')}, the input of a Skill call that starts prompt-engine, so claude plugin eval doesn't count such a call and the grader can't tell whether the skill started; match the skill named prompt-engine and prompt-engine:prompt-engine, with and without args (repo rule)`;
+  assert.deepEqual(errors, [
+    missing('dropped-never', [PLUGIN, PLUGIN_ARGS, ALONE, ALONE_ARGS]),
+    missing('dropped-starts', [PLUGIN, PLUGIN_ARGS, ALONE, ALONE_ARGS]),
+    missing('no-args', [PLUGIN_ARGS, ALONE_ARGS]),
+    missing('plugin-only', [ALONE, ALONE_ARGS]),
+  ]);
+});
+
 test('checkSuiteRules reads tags as claude plugin eval does: prompt.md\'s, else case.yaml\'s', () => {
   const caseYaml = (name) => `schema_version: "1.1"\nname: ${name}\ntags: [trigger]\nexecution:\n  model: ${MODEL}\n`;
   const { schema, errors } = rules({
