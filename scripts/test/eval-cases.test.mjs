@@ -1457,6 +1457,19 @@ test("the rubrics that quote answer 7 quote its question too, and deep's 04 quot
   for (const [i, q] of questions.entries()) assert.ok(deep.some((l) => l.startsWith(`${i + 1}. "${q}": "`)), q);
 });
 
+// With the seven questions quoted, deep's 04 could read a new question on a nearby subject as one
+// of them asked again: step 1d's passing round asked "Whose voice is the post written in?" under
+// question 5's "What voice?". writing.md keeps them apart (6, Voice and tone; 9, Point of view and
+// sender), and questions.md's deep rounds cover "gaps the answers opened", so the rubric says what
+// asking again means (step 1e).
+test("deep's 04 says that a question about another decision on a nearby subject is new", () => {
+  const body = graderOf('followup-deep-second-round', '04-further-round').body;
+  assert.ok(body.includes("Asking again means asking the user to decide again what one of these answers decided; a question about a different decision on a nearby subject is new, such as whose point of view the post takes ('I', 'we' or 'you') after question 5's tone."));
+  const writing = readFileSync(join(EVALS, '..', 'skills', 'prompt-engine', 'references', 'writing.md'), 'utf8');
+  assert.match(writing, /\| 6 \| Voice and tone \|/);
+  assert.match(writing, /\| 9 \| Point of view and sender \|/);
+});
+
 // coding-vague-asks-questions 08 (finding 6): `ok` takes the ★, so the ★ must be an answer the
 // prompt can use. Its judge failed T1's reply (votes FAIL PASS FAIL) whose ★ options were all
 // usable: questions.md's Format B can put a question's options on one line, so the unstarred 'b)
