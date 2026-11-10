@@ -120,6 +120,8 @@ test('no Save to file: a Save option after What next? fails, however it goes on;
     '1) Done ★ (paste it into Midjourney)\n2) Refine',
     // Save later in an option's text is no Save option.
     '1) Run it now ★\n2) Refine — or save the prompt yourself by copying it',
+    // A dash in a sentence after the menu starts no option (step 1e).
+    '1) Run it now ★\n2) Refine\n\nTip - save it in your notes app.',
   ]) assert.ok(noSave(output({ menu: m })), m);
   for (const m of [
     '1) Run it now ★\n2) Refine\n3) Save to file',
@@ -132,6 +134,14 @@ test('no Save to file: a Save option after What next? fails, however it goes on;
     '1) Run it now ★\n2) Refine\n3) Save to a file',
     '1) Run it now ★\n2) Refine\n3) Save it to a file',
     '1) Run it now ★\n2) Refine\n3) Save the prompt to a file — `prompts/launch-email.md`',
+    // Other numberings, marks before the word, and the same option in other words (step 1e).
+    '1) Run it now ★\n2) Refine\n3) 💾 Save to file',
+    '(1) Run it now ★\n(2) Refine\n(3) Save to file',
+    '1) Run it now ★\n2) Refine\n3) _Save_ to file',
+    '1) Run it now ★\n2) Refine\n3) `Save to file`',
+    '1: Run it now ★\n2: Refine\n3: Save to file',
+    '1) Run it now ★\n2) Refine\n3) Download it as a file',
+    '1) Run it now ★\n2) Refine\n3) Export to a .md file',
   ]) assert.ok(!noSave(output({ menu: m })), m);
   // Before the menu it is no option, such as in a What I added bullet.
   assert.ok(noSave(output().replace('- Audience', '- Save to file is left out: no tool here writes files [best practice]\n- Audience')));
@@ -682,6 +692,9 @@ const TIMING_SHAPES = [
   // so every sentence needs it (step 1e). Read again for each sentence, the item took seconds.
   ['a list item with many key sentences, after a line that asks', 'To run it, I need:\n- The mailbox; set it in your .env file.\n', '  Use the key here.\n', 8_000],
   ['ready put off again and again on one line', 'prompt ', 'not ready, ', 20_000],
+  // The Save to file check reads the spaces after an option's number once, before any marks
+  // (step 1e).
+  ['a run of spaces after an option number', 'What next?\n1)', ' ', 40_000],
   // A starred option's ★, looked for up to 200 characters on its line (OPTION_STAR), which
   // without the bound read the rest of the line from every bulleted option (step 1e, B1.2.11).
   // The ★ before What next? keeps V8 from returning at once, as it did on a reply with no ★.

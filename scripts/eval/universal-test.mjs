@@ -117,11 +117,16 @@ export const STRUCTURE = [
   // section 5, D1): no starred Run it now, Try it here or Done then.
   ['Fill placeholders ★ while placeholders are open', (t) => !(fillOpen.test(t) && STARRED_NOT_FILL.test(t))],
   // Every tool is off, and the core offers Save to file only with a tool that saves files on the
-  // user's computer (finding 1). Only an option of the menu counts, with MENU's prefix, so a
-  // sentence after the menu that says why Save was left out still passes (finding 5's audit). Any
-  // option that starts with the word Save counts, however it goes on ("Save it to a file") and
-  // whether or not it is bold ("**Save** to file"), not only the core's own words (step 1e).
-  ['no Save to file (tools disabled)', (t) => !/^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Save\b/i.test(t)],
+  // user's computer (finding 1). Only an option of the menu counts, so a sentence after the menu
+  // that says why Save was left out still passes (finding 5's audit). Any option that starts with
+  // the word Save, Download or Export counts, however it goes on ("Save it to a file", "Download it
+  // as a file"), with up to four marks before the word ("**Save**", "`Save to file`", "_Save_", an
+  // emoji), not only the core's own words (step 1e). An option is numbered, as 3. 3) 3: or (3),
+  // where the menu may run on one line, or bulleted at the start of a line, so a dash in a
+  // sentence ("Tip - save it in your notes") starts none. A heuristic: it misses the option in
+  // other words ("Keep a copy") and flags a bullet after the menu that starts with one of those
+  // words ("- Save it somewhere safe").
+  ['no Save to file (tools disabled)', (t) => !/^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?(?:(?:^|\s)\(?\d{1,2}[.):]\)?|(?:^|\n)[ \t]*[-*•])[ \t]*(?:(?:[^\w\s]|_){1,4}[ \t]*)?(?:Save|Download|Export)(?![a-z])/i.test(t)],
 ];
 // An image prompt, which can't be generated here: no Run it now option after "What next?", and a
 // starred Done option, or Fill placeholders ★ while placeholders other than secrets are open
