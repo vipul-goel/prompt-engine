@@ -42,10 +42,13 @@ export function normalizeMode(value: unknown): Mode | undefined {
   return isMode(token) ? token : undefined;
 }
 
-/** One line, no control characters, bounded, so a target can't reshape the brief. */
+/**
+ * One line, no control characters (C0, DEL and C1, as check_prompt's text has none), bounded, so
+ * a target can't reshape the brief.
+ */
 export function normalizeTarget(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  const flat = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const flat = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/\s+/g, ' ').trim();
   return flat ? flat.slice(0, TARGET_MAX_CHARS) : undefined;
 }
 
