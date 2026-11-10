@@ -267,7 +267,8 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
       res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: refused.message }, id: null }));
       return;
     }
-    // 'close' follows both a finished response and a dropped connection.
+    // 'close' follows both a finished response and a dropped connection. On a response that waits
+    // behind another, the 'connection' listener below emits it where Node doesn't.
     inFlight.add(res);
     inFlightBytes += bytes;
     res.once('close', () => {
@@ -278,6 +279,21 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
   });
   httpServer.maxConnections = MAX_CONNECTIONS;
   httpServer.on('connection', (socket: Socket) => {
+    // When a connection closes, Node 24.16 and later 24.x, and 26.1 and later, close every response
+    // on it (nodejs/node#62534). Every 22.x and 25.x, and 26.0, never emit 'close' on a response
+    // that waits behind another, so its slot would stay taken for good, and so would the memory of
+    // an answer over 64 KiB: once that much waits, the MCP SDK writes no more until 'drain' or
+    // 'close', and neither comes. So once Node has closed the responses it will, those still in
+    // flight on the connection are closed here, as the newer versions do.
+    socket.once('close', () =>
+      setImmediate(() => {
+        for (const res of inFlight) {
+          if (res.req.socket !== socket) continue;
+          res.destroy();
+          res.emit('close');
+        }
+      }),
+    );
     // By the time Node calls this, the answer that closes the connection has been written, so an
     // admitted request on it whose answer hasn't been is one sent behind that answer's request.
     socket.destroySoon = () => closeInStages(socket, [...inFlight].some((res) => res.req.socket === socket && !res.writableFinished));

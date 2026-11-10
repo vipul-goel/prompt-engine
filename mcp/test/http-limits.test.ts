@@ -3,8 +3,11 @@
 // run concurrently because the timeout tests wait 10-15 s and 30-35 s.
 
 import { connect, type Socket } from 'node:net';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, it } from 'vitest';
 import { ENV, keepSending, send, sleep, startHttp, startUpload, TOOLS_LIST, waitFor } from './cli-helpers.js';
+import { PKG } from './helpers.js';
 
 /** Opens a TCP connection to the server that sends nothing; resolves once it's connected. */
 function openIdle(port: number, sockets: Socket[]): Promise<Socket> {
@@ -365,6 +368,45 @@ describe.concurrent('--http limits', () => {
       expect(admitted()).toBe(128);
     } finally {
       clearInterval(crlf);
+      sock.destroy();
+      for (const { sock: upload } of held) upload.destroy();
+      server.proc.kill('SIGTERM');
+    }
+  });
+
+  // On Node 22 (and on 24 before 24.16, 25 and 26.0), a response that waits behind another never
+  // gets 'close' when its connection closes (nodejs/node#62534), so the server closes those itself.
+  // Without that, their slots stayed taken for good, and so did the memory of each answer over
+  // 64 KiB, whose MCP SDK handler waited for good to write the rest. This server acts as Node 22
+  // does on any version, and reports the answers it hasn't ended
+  // (fixtures/leave-queued-responses-open.mjs).
+  it('frees the slots of requests waiting behind an answer when the client drops the connection, and ends their answers, where Node leaves them open', async ({ expect }) => {
+    const preload = pathToFileURL(join(PKG, 'test', 'fixtures', 'leave-queued-responses-open.mjs')).href;
+    const server = await startHttp([], { ...ENV, NODE_OPTIONS: `--import=${preload}` });
+    const held: Held[] = [];
+    const admitted = () => held.filter((h) => /^HTTP\/1\.1 100 Continue\r\n\r\n$/.test(h.text)).length;
+    const unended = () => Number([...server.stderr().matchAll(/^\[test\] unended answers: (\d+)$/gm)].at(-1)?.[1] ?? 0);
+    const sock = connect(server.port, '127.0.0.1');
+    sock.on('error', () => {});
+    sock.pause(); // never reads
+    try {
+      await new Promise((resolve) => sock.once('connect', resolve));
+      // Batches of ten image-video checklists, whose answers (230 KB each) add up to more than the
+      // operating system's buffers hold, as many as fit in one read of the socket.
+      const request = post(server.port, JSON.stringify(Array.from({ length: 10 }, (_, i) => ({ ...CHECKLIST_CALL, id: i + 1 }))));
+      sock.write(request.repeat(Math.floor(60_000 / Buffer.byteLength(request))));
+      await sleep(2_000);
+      for (let i = 0; i < 128; i++) await holdUpload(server.port, held);
+      await sleep(300);
+      const left = 128 - admitted();
+      expect(left, 'the operating system took every answer, so the connection holds no slot').toBeGreaterThan(0);
+      expect(unended(), 'no answer waits behind the one being written').toBeGreaterThan(1);
+      sock.destroy();
+      await waitFor(() => unended() === 0, () => `${unended()} answers not ended`, 5_000);
+      for (let i = 0; i < left; i++) await holdUpload(server.port, held);
+      await sleep(300);
+      expect(admitted()).toBe(128);
+    } finally {
       sock.destroy();
       for (const { sock: upload } of held) upload.destroy();
       server.proc.kill('SIGTERM');
