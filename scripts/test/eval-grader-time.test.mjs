@@ -71,7 +71,7 @@ const SHAPES = [
   // shorter fence they tried (B1.2.3).
   ['a run of backticks under a Full prompt heading', '### Full prompt\n', '`', 40_000],
 ];
-const reply =([, prefix, piece, n]) => prefix + piece.repeat(n);
+const reply = ([, prefix, piece, n]) => prefix + piece.repeat(n);
 
 test('the timing test reads the regex graders', () => {
   assert.ok(PATTERNS.length > 40, `only ${PATTERNS.length} regex patterns found`);

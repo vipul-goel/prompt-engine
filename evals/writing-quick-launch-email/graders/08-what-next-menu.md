@@ -2,7 +2,8 @@
 # After What next?: a starred Run it now, Fill placeholders or Try it here option, and Refine
 # later on. Not Done ★: output-format.md's "What next?" table keeps it for image and video
 # prompts. Only one option is starred ("the recommended one marked ★"), so a second ★ after the
-# first What next? fails (step 1e); the sections' order isn't checked. While placeholders other than secrets' are open, no Run it now ★ or Try it here ★: the
+# first What next? fails (step 1e); the sections' order isn't checked. While placeholders other
+# than secrets' are open, no Run it now ★ or Try it here ★: the
 # table's first row that fits is the one for open placeholders that are neither secrets nor
 # removed private details, so the ★ goes to Fill placeholders (D1, D5, D46). They are open when
 # Fill before running lists one, or when the reply has no "#" Fill before running heading and its
