@@ -66,4 +66,18 @@ describe('stalledSockets', () => {
     // Each connection once, however many of its requests are in flight.
     expect(stalledSockets(responses, records, 15_000, LIMIT)).toEqual([stuck]);
   });
+
+  // With a real socket, the bytes handed on grow through a drain, so a record kept past one could
+  // only match again under another rule, such as comparing the buffer's length.
+  it('drops the record of a connection once nothing waits in its buffer', () => {
+    const socket = { bytesWritten: 600_000, writableLength: 10_000 };
+    const records = new WeakMap<StallSocket, StallRecord>();
+    const responses = [{ req: { socket } }];
+    stalledSockets(responses, records, 0, LIMIT);
+    expect(records.get(socket)).toEqual({ handedOn: 590_000, since: 0 });
+    // The client read the rest: every byte has been handed on.
+    socket.writableLength = 0;
+    expect(stalledSockets(responses, records, 5_000, LIMIT)).toEqual([]);
+    expect(records.has(socket)).toBe(false);
+  });
 });

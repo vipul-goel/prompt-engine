@@ -35,16 +35,18 @@ type Handler = () => { content: Array<{ type: 'text'; text: string }>; structure
 type PromptAnswer = { messages: Array<{ role: 'user'; content: { type: 'text'; text: string } }> };
 
 const BRIEF = 'Prompt Engine brief from the prompt-engine MCP server (v0.0.0).\nRequested mode: quick';
+/** The brief for a mode other than the one asked for. */
+const OTHER_BRIEF = BRIEF.replace('mode: quick', 'mode: standard');
 const fault = (): never => {
   throw new Error('bundle-only fault');
 };
 
-/** What a stand-in's prompt, completions and resources answer with. */
+/** What a stand-in's prompt, completions and resources answer with. A read answers with its text, or with a URI and text. */
 interface Parts {
   prompt: () => PromptAnswer;
   /** Completes the enhance prompt's mode argument. */
   modes: (value: string) => string[];
-  method: () => string;
+  method: () => string | { uri: string; text: string };
   questions: () => string;
   checklist: () => string;
   /** The domains the checklist template lists. */
@@ -78,7 +80,10 @@ function standIn(handlers: Record<string, Handler> = {}, parts: Partial<Parts> =
     );
   }
   server.registerPrompt('enhance', { description: 'enhance', argsSchema: z.object({ mode: completable(z.string(), (value) => modes(value ?? '')).optional() }) }, prompt);
-  const read = (text: () => string) => (uri: URL) => ({ contents: [{ uri: uri.href, mimeType: 'text/markdown', text: text() }] });
+  const read = (answer: () => string | { uri: string; text: string }) => (uri: URL) => {
+    const got = answer();
+    return { contents: [{ mimeType: 'text/markdown', ...(typeof got === 'string' ? { uri: uri.href, text: got } : got) }] };
+  };
   server.registerResource('method', 'prompt-engine://method', { description: 'method' }, read(method));
   server.registerResource('questions', 'prompt-engine://questions', { title: 'Asking clarifying questions', description: 'questions' }, read(questions));
   server.registerResource(
@@ -112,8 +117,10 @@ describe("pack-mcpb.mjs's check of the packed server", () => {
   // The bundle's prompt handler, the completions (the prompt's needs its completable() wrapper),
   // the resource template's list and its matching, and the resource reads run in no other gate.
   it('fails a server whose enhance prompt, completions or resources fail', async () => {
-    // The prompt answers without the brief, or throws.
+    // The prompt answers without the brief, with the brief for another mode, or throws.
     await expect(check(() => standIn(answering, { prompt: () => ({ messages: [] }) }))).rejects.toThrow(/enhance prompt \{mode: "quick"\} returned/);
+    const otherMode = (): PromptAnswer => ({ messages: [{ role: 'user', content: { type: 'text', text: `${OTHER_BRIEF}\nImprove the rough prompt.` } }] });
+    await expect(check(() => standIn(answering, { prompt: otherMode }))).rejects.toThrow(/enhance prompt \{mode: "quick"\} returned/);
     await expect(check(() => standIn(answering, { prompt: fault }))).rejects.toThrow(/enhance prompt \{mode: "quick"\} failed: .*bundle-only fault/);
     // The prompt's mode doesn't complete, or its completion throws.
     await expect(check(() => standIn(answering, { modes: () => [] }))).rejects.toThrow(/completion\/complete of the enhance prompt's mode "q" returned/);
@@ -129,6 +136,8 @@ describe("pack-mcpb.mjs's check of the packed server", () => {
     await expect(check(() => standIn(answering, { questions: fault }))).rejects.toThrow(/prompt-engine:\/\/questions failed: .*bundle-only fault/);
     await expect(check(() => standIn(answering, { checklist: fault }))).rejects.toThrow(/prompt-engine:\/\/checklists\/coding failed: .*bundle-only fault/);
     await expect(check(() => standIn(answering, { method: () => 'not the brief' }))).rejects.toThrow(/prompt-engine:\/\/method returned/);
+    // The brief, but as another resource.
+    await expect(check(() => standIn(answering, { method: () => ({ uri: 'prompt-engine://questions', text: BRIEF }) }))).rejects.toThrow(/prompt-engine:\/\/method returned/);
     // A reference whose heading isn't its listed title.
     await expect(check(() => standIn(answering, { questions: () => '# Output format\n\nThe reply.' }))).rejects.toThrow(/prompt-engine:\/\/questions returned/);
     await expect(check(() => standIn(answering, { checklist: () => '# Writing' }))).rejects.toThrow(/prompt-engine:\/\/checklists\/coding returned/);
@@ -144,6 +153,8 @@ describe("pack-mcpb.mjs's check of the packed server", () => {
     await expect(check(() => standIn({ check_prompt: report!, enhance_prompt: fault }))).rejects.toThrow(/enhance_prompt \{mode: "quick"\} returned .*bundle-only fault/);
     // enhance_prompt answers, but not with the brief for the mode it was given.
     await expect(check(() => standIn({ check_prompt: report! }))).rejects.toThrow(/enhance_prompt \{mode: "quick"\} returned/);
+    const otherMode = (): ReturnType<Handler> => ({ content: [{ type: 'text', text: OTHER_BRIEF }] });
+    await expect(check(() => standIn({ check_prompt: report!, enhance_prompt: otherMode }))).rejects.toThrow(/enhance_prompt \{mode: "quick"\} returned/);
     await expect(check(() => standIn({ check_prompt: report!, enhance_prompt: brief!, ask_user: fault }))).rejects.toThrow(/ask_user returned .*bundle-only fault/);
     // ask_user answers, but not with the questions to ask in the chat, which a client without forms gets.
     await expect(check(() => standIn({ check_prompt: report!, enhance_prompt: brief! }))).rejects.toThrow(/ask_user returned/);
