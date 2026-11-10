@@ -977,10 +977,11 @@ const ROWS = [
     [/^error: data\/media-targets\.json targets\[1\]: must be an object$/m, /^error: data\/media-targets\.json \S+: bad status "verifed"$/m, OTHER_ERROR], 1, NO_STACK],
   ['names media targets that are not a list', damaged((d) => editJson(d, 'data/media-targets.json', (j) => { j.targets = { a: j.targets[0] }; })),
     [/^error: data\/media-targets\.json: targets must be a list of entries$/m, OTHER_ERROR], 1, NO_STACK],
+  // build.mjs names them in validate.mjs's words, so the list holds the error once.
   ['names lint rules that are not a list', damaged((d) => editJson(d, 'data/lint-rules.json', (j) => { delete j.rules; })),
-    [/^error: data\/lint-rules\.json: rules must be a list of rules, each an object$/m, OTHER_ERROR], 1, NO_STACK],
+    [/^error: data\/lint-rules\.json: rules must be a list of rules, each an object$/m, OTHER_ERROR], 1, [...NO_STACK, /build failed/]],
   ['names a lint rule that is not an object', damaged((d) => editJson(d, 'data/lint-rules.json', (j) => { j.rules.push(null); })),
-    [/^error: data\/lint-rules\.json: rules must be a list of rules, each an object$/m, OTHER_ERROR], 1, NO_STACK],
+    [/^error: data\/lint-rules\.json: rules must be a list of rules, each an object$/m, OTHER_ERROR], 1, [...NO_STACK, /build failed/]],
   ['names contract budgets that are missing, and skips their checks', damaged((d) => editJson(d, 'data/contract.json', (j) => { delete j.budgets; })),
     [/^error: data\/contract\.json: budgets must map each budget to its limit$/m, OTHER_ERROR], 1, [...NO_STACK, /budgets\./]],
   // A budget below 0 is refused too, instead of failing its check on every file ("max -1").

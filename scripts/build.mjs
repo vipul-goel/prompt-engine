@@ -445,8 +445,12 @@ export function buildAll() {
     // Name the history in the error, so the build's one line says which file to record again.
     try { outputs[p] = refreshHistory(read(p), skillBody, readPluginFile); } catch (e) { throw new Error(`${p}: ${e.message}`); }
   }
-  const lintRules = readJson('data/lint-rules.json').rules;
-  if (!Array.isArray(lintRules)) throw new Error('data/lint-rules.json: rules must be a list of rules');
+  // A list of objects, which renderLintGraders reads; in validate.mjs's words, so that it lists the
+  // error once. A null rule stopped the build with "Cannot read properties of null (reading 'id')".
+  const lintRules = readJson('data/lint-rules.json')?.rules;
+  if (!Array.isArray(lintRules) || !lintRules.every((r) => r !== null && typeof r === 'object' && !Array.isArray(r))) {
+    throw new Error('data/lint-rules.json: rules must be a list of rules, each an object');
+  }
   for (const [c, opts] of Object.entries(LINT_GRADER_CASES)) {
     const dir = `evals/${c}/graders`;
     if (!existsSync(join(root, dir)) || !statSync(join(root, dir)).isDirectory()) throw new Error(`LINT_GRADER_CASES in scripts/build.mjs names ${dir}, which does not exist`);
