@@ -143,18 +143,20 @@ describe.concurrent('--http limits', () => {
     const waiting = () => held.filter((h) => h.sock.destroyed || !/^HTTP\/1\.1 100 Continue\r\n\r\n$/.test(h.text)).length;
     try {
       // A body declared past the 1,500,000-byte cap counts as 1,500,000 bytes, since the SDK
-      // refuses it with 413 before reading it: 413, never 503, whatever length it declares.
+      // refuses it with 413 before reading it: it gets 413 rather than 503, whatever length it
+      // declares, while the budget has room for 1,500,000 bytes.
       expect(await startUpload(server.port, hostname, 9_000_000)).toMatch(/^HTTP\/1\.1 413 /);
       for (let i = 0; i < 4; i++) await holdUpload(server.port, held, 1_500_000);
       expect(await startUpload(server.port, hostname, 3_000_000)).toMatch(/^HTTP\/1\.1 413 /);
       await sleep(100);
-      // Five bodies of the largest size fit; a sixth doesn't, and neither does a chunked
-      // upload, which counts as the largest size. A small request still fits.
+      // Five bodies of the largest size fit; a sixth doesn't, and neither does a chunked upload
+      // or one declared past the cap, which count as the largest size. A small request still fits.
       await holdUpload(server.port, held, 1_500_000);
       const before = server.stderr().length;
       expect(await startUpload(server.port, hostname, 1_500_000)).toMatch(/^HTTP\/1\.1 503 [^]*\r\nretry-after: 1\r\n/i);
       expect(await startUpload(server.port, hostname, 1_000_000)).toMatch(/^HTTP\/1\.1 503 /);
       expect(await startUpload(server.port, hostname, 'chunked')).toMatch(/^HTTP\/1\.1 503 /);
+      expect(await startUpload(server.port, hostname, 9_000_000)).toMatch(/^HTTP\/1\.1 503 /);
       // A client still sending its body reads the 503, rather than a reset connection.
       expect(await keepSending(server.port, hostname, 1_000_000)).toEqual({ head: expect.stringMatching(/^HTTP\/1\.1 503 /), error: undefined });
       expect((await send(server.port, { host: hostname })).status).toBe(200);
