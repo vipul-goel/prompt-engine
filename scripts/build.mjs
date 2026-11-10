@@ -139,6 +139,31 @@ export function fenceAfter(open, line) {
   return f[1][0] === open[0] && f[1].length >= open.length && /^[ \t]*$/.test(f[2]) ? null : open;
 }
 
+// HTML blocks as CommonMark (0.31.2, and commonmark.js's patterns) reads them, types 1 to 6. One
+// starts at a line that starts, after up to three spaces, with <pre, <script, <style or <textarea
+// (1), <!-- (2), <? (3), <! and a letter (4), <![CDATA[ (5) or a block tag such as <div, </p or
+// <details (6). Each of the first five ends at the line that holds its end, </pre> (or another of
+// the four), -->, ?>, > or ]]>, which can be the line it starts on: so <!--> is a whole comment. A
+// block tag's block ends before the next blank line. Given the type of the block open before a line
+// (0 outside one), returns the one open after it. Type 7, a line of only an open or closing tag of
+// another name, isn't read: it can't interrupt a paragraph, which this doesn't follow. Nor are
+// container blocks such as lists. validate.mjs's key-section check uses it.
+const HTML_OPEN = [
+  /^ {0,3}<(?:pre|script|style|textarea)(?:\s|>|$)/i,
+  /^ {0,3}<!--/,
+  /^ {0,3}<\?/,
+  /^ {0,3}<![A-Za-z]/,
+  /^ {0,3}<!\[CDATA\[/,
+  /^ {0,3}<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|\/?>|$)/i,
+];
+const HTML_CLOSE = [/<\/(?:pre|script|style|textarea)>/i, /-->/, /\?>/, />/, /\]\]>/];
+export function htmlBlockAfter(open, line) {
+  if (open === 6) return /^[ \t]*$/.test(line) ? 0 : 6;
+  if (open !== 0) return HTML_CLOSE[open - 1].test(line) ? 0 : open;
+  const type = HTML_OPEN.findIndex((re) => re.test(line)) + 1;
+  return type === 0 || type === 6 || !HTML_CLOSE[type - 1].test(line) ? type : 0;
+}
+
 // Shift markdown headings down one level outside fenced code blocks.
 function demoteHeadings(md) {
   let fence = null;

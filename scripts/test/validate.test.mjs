@@ -404,13 +404,28 @@ const ROWS = [
     edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n<!-- a note -->\n${KEY_LAST}\n`));
     rebuild(d);
   }, /validate: OK/, 0],
-  // Such a block starts after up to three spaces too, and goes on until a line holds -->.
+  // Such a block starts after up to three spaces too, and goes on until a line holds -->. So do the
+  // other HTML blocks that CommonMark reads, to the line that holds their end, or for a block tag
+  // such as <div> up to a blank line. A line that holds --> also ends the comment it opens, as
+  // <!--> and <!---> do: read as open, they hid the fence after them.
   ...[['an HTML comment whose <!-- is indented three spaces', (h) => `   <!-- a note\n${h}\n-->`],
-    ['the third line of an HTML comment', (h) => `<!-- a note\nover two lines\n${h}\n-->`]].map(([what, block]) => [
+    ['the third line of an HTML comment', (h) => `<!-- a note\nover two lines\n${h}\n-->`],
+    ['a <div> block', (h) => `<div>\n${h}\n</div>`],
+    ['a <pre> block', (h) => `<pre>\n${h}\n</pre>`],
+    ['a <details> block', (h) => `<details>\n<summary>Example</summary>\n${h}\n</details>`],
+    ['a fenced block after a <!--> line', (h) => `<!-->\n\`\`\`text\n-->\n${h}\n\`\`\``],
+    ['a fenced block after a <!---> line', (h) => `<!--->\n\`\`\`text\n-->\n${h}\n\`\`\``]].map(([what, block]) => [
     `rejects a key section whose heading line is copied into ${what} near the top`, (d) => {
       moveSection(KEY_LAST, KEY_LIMIT + 100)(d);
       edit(d, SKILL, (t) => t.replace(`\n${BUDGETS.skillKeySections[0]}`, () => `\n${block(KEY_LAST)}\n\n${BUDGETS.skillKeySections[0]}`));
-    }, new RegExp(`SKILL\\.md: section "${reEsc(KEY_LAST)}" starts at char \\d+; keep it within the first ${KEY_LIMIT} `)]),
+    }, new RegExp(`SKILL\\.md: section "${reEsc(KEY_LAST)}" starts at char \\d+; keep it within the first ${KEY_LIMIT} `), 1, /missing section/]),
+  // And a heading after such a block counts: after the line that holds its end, or the blank line
+  // after a block tag's block.
+  ...[['a <pre> block closed on a later line', '<pre>\nx\n</pre>'], ['a <div> block and a blank line', '<div>\nx\n</div>\n'], ['a <!--> line', '<!-->']].map(([what, lines]) => [
+    `accepts a key section right after ${what}`, (d) => {
+      edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n${lines}\n${KEY_LAST}\n`));
+      rebuild(d);
+    }, /validate: OK/, 0, /missing section|starts at char/]),
   ['rejects a key section whose heading line goes on with more of a word', (d) => edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n${KEY_LAST}s\n`)),
     new RegExp(`SKILL\\.md: missing section "${reEsc(KEY_LAST)}"`)],
   // "Within the first 8,000 characters": the last offset that passes is 7,999.

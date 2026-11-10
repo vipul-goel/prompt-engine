@@ -20,7 +20,7 @@
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, relative, basename } from 'node:path';
-import { buildAll, root, normalize, readJson, splitFrontmatter, isOsJunk, KNOWLEDGE_ORDER, isSemver, fenceAfter } from './build.mjs';
+import { buildAll, root, normalize, readJson, splitFrontmatter, isOsJunk, KNOWLEDGE_ORDER, isSemver, fenceAfter, htmlBlockAfter } from './build.mjs';
 import { checkEvalCases, checkSuiteRules, checkConversations } from './eval-cases.mjs';
 import { scanText, publicText } from './eval/sanitize.mjs';
 
@@ -277,31 +277,31 @@ for (const f of INSTRUCTION_FILES) {
 // Budgets
 if (chars(skillBody) > B.skillBodyMaxChars) err(`${SKILL}: body is ${chars(skillBody)} chars (max ${B.skillBodyMaxChars})`);
 if (skillBody.split('\n').length > B.skillBodyMaxLines) err(`${SKILL}: body is ${skillBody.split('\n').length} lines (max ${B.skillBodyMaxLines})`);
-// A key section starts at its heading line: the first line outside fenced blocks and HTML comments
+// A key section starts at its heading line: the first line outside fenced blocks and HTML blocks
 // that starts with the heading, followed by the end of the line or a character that can't continue
-// a word, so "### 3. Ask (standard and deep modes)" counts and "### 5. Presentation" doesn't. Fenced
-// blocks and comments are read as CommonMark reads them: a block as build.mjs's fenceAfter reads it,
-// as demoteHeadings does, and a comment that starts a line from a line that starts with <!-- (after
-// up to three spaces) to the line that holds -->. A search for the heading's text anywhere let a
-// contents line, a fenced example or a comment that named it stand in for a section that started
-// later, or that was gone. Positions count characters from 1, as the body budget counts them:
-// "within the first 8,000" means that the heading's first character is one of the first 8,000.
+// a word, so "### 3. Ask (standard and deep modes)" counts and "### 5. Presentation" doesn't. Both
+// kinds of block are read as CommonMark reads them: a fenced block as build.mjs's fenceAfter reads
+// it, as demoteHeadings does, and an HTML block, such as a comment from <!-- to the line that holds
+// -->, or a <div> up to a blank line, as its htmlBlockAfter does. A search for the heading's text
+// anywhere let a contents line, a fenced example or a comment that named it stand in for a section
+// that started later, or that was gone. Positions count characters from 1, as the body budget
+// counts them: "within the first 8,000" means that the heading's first character is one of the
+// first 8,000.
 const sectionStart = new Map();
 {
   let fence = null;
-  let comment = false;
+  let html = 0; // the type of the HTML block open, or 0
   let at = 0;
   for (const line of skillBody.split('\n')) {
-    const outside = !comment && fence === null;
-    if (comment) comment = !line.includes('-->');
-    else fence = fenceAfter(fence, line);
-    // A line outside both that doesn't open a block: a comment's first line, or a candidate heading.
-    if (outside && fence === null) {
-      if (/^ {0,3}<!--/.test(line)) comment = !line.slice(line.indexOf('<!--') + 4).includes('-->');
-      else {
-        for (const h of B.skillKeySections ?? []) {
-          if (!sectionStart.has(h) && line.startsWith(h) && !/^[\p{L}\p{M}\p{N}_]/u.test(line.slice(h.length, h.length + 2))) sectionStart.set(h, at);
-        }
+    const outside = html === 0 && fence === null;
+    // In a fenced block no HTML block starts, and in an HTML block no fence opens or closes.
+    const htmlBefore = html;
+    if (fence === null) html = htmlBlockAfter(html, line);
+    if (htmlBefore === 0) fence = fenceAfter(fence, line);
+    // A line outside both that opens neither, and so a candidate heading.
+    if (outside && fence === null && html === 0) {
+      for (const h of B.skillKeySections ?? []) {
+        if (!sectionStart.has(h) && line.startsWith(h) && !/^[\p{L}\p{M}\p{N}_]/u.test(line.slice(h.length, h.length + 2))) sectionStart.set(h, at);
       }
     }
     at += chars(line) + 1;
@@ -309,7 +309,7 @@ const sectionStart = new Map();
 }
 for (const h of B.skillKeySections ?? []) {
   const i = sectionStart.get(h);
-  if (i === undefined) err(`${SKILL}: missing section "${h}": no line outside fenced blocks and HTML comments starts with it`);
+  if (i === undefined) err(`${SKILL}: missing section "${h}": no line outside fenced blocks and HTML blocks starts with it`);
   else if (i >= B.skillKeySectionsWithinChars) err(`${SKILL}: section "${h}" starts at char ${i + 1}; keep it within the first ${B.skillKeySectionsWithinChars} so it survives context compaction`);
 }
 const core = read('universal/prompt-engine.md');
