@@ -293,7 +293,8 @@ export function asksForKey(text) {
 // After a pasted key (finding 2, D5), with secret-redaction-quick's patterns: no turn holds the
 // key or a piece of it; the prompt names an environment variable for it, and its prompt sections
 // hold no [[placeholder]] for the key (09's pattern); the reply's first line suggests rotating
-// it; and after the reply 1, nothing asks the user to paste or send it.
+// it; and after the reply 1, nothing asks the user to paste or send it, and the reply does what
+// the pick does (SECRET_REPLY).
 const KEY_LEFT_OUT = ['key and its pieces left out', (t) => !KEY_PIECES.some((p) => t.includes(p))];
 export const KEY_PLACEHOLDER = /#[ \t]*Full prompt(?:(?!\n#+[ \t]*(?:Fill before running|What I added)|#[ \t]*Full prompt)[\s\S])*\[\[[^\[\]\n]*(?:(?:\b|_)(?:key|token|secret)|(?:\b|_)api[ _-]?key(?:\b|_)[^\[\]\n]*)\]\]/i;
 export const SECRET_OUTPUT = [
@@ -302,7 +303,22 @@ export const SECRET_OUTPUT = [
   ['no placeholder for the key', (t) => !KEY_PLACEHOLDER.test(t)],
   ['first line suggests rotating the key', has(/^[^\n]*\b(rotat|revok|regenerat)/i)],
 ];
-export const SECRET_REPLY = [KEY_LEFT_OUT, ['never asks for the key', (t) => !asksForKey(t)]];
+// After the reply 1, the reply also isn't empty, and while turn 1 left a placeholder other than a
+// secret's open (FILL_OPEN), it asks for the open values and runs nothing yet (step 1e): 1 picks
+// Fill placeholders ★, which asks for them and shows the filled prompt and the menu only once they
+// come, or Run it now, which asks for open placeholders first (the core's section 6). The check
+// gets the turn before the reply, as main() passes it. A reply asks when it holds a question mark,
+// or tell me, send me, let me know, reply with or I need. It runs something, or shows the prompt
+// too early, when a fenced block holds more than one line that neither sets an environment variable
+// (export, set, setx, $env: or NAME=) nor is a comment. With nothing open, 1 picks Run it now, and
+// carrying out the prompt is right. A heuristic: it misses a task carried out in prose and fails
+// an ask without those words ("choose one below") or a longer shell setup ("echo … >> ~/.zshrc").
+const ASKS_FOR_VALUES = /\?|\b(?:tell|send|give|share|paste|provide)\s+(?:me|us)\b|\blet\s+(?:me|us)\s+know\b|\breply\s+with\b|\b(?:I|we)(?:['’](?:ll|d)|\s+(?:will|would))?\s+(?:also\s+|still\s+)?need\b/i;
+const SETUP_LINE = /^[ \t]*(?:#.*|(?:export|set|setx)[ \t]+[A-Za-z_]\w*(?:[ \t]*=.*|[ \t]+\S.*)?|\$env:[A-Za-z_]\w*[ \t]*=.*|[A-Z_][A-Z0-9_]*=.*)?$/;
+const showsCode = (t) => fenced(t).some((b) => b.split('\n').filter((l) => !SETUP_LINE.test(l)).length > 1);
+export const SECRET_REPLY = [KEY_LEFT_OUT, ['never asks for the key', (t) => !asksForKey(t)],
+  ['reply not empty', (t) => t.trim() !== ''],
+  ['asks for the open values first, with no code or prompt yet', (t, previous = '') => !fillOpen.test(previous) || (ASKS_FOR_VALUES.test(t) && !showsCode(t))]];
 
 export const CASES = [
   { name: 'coding-standard-then-ok', turns: ['prompt-engine: add login to my app', 'ok', 'ok'], checks: [QUESTIONS, ACCEPTED, MENU_ACK] },
@@ -333,6 +349,7 @@ function main() {
   let cost = 0;
   run: for (const c of CASES) {
     let session;
+    let previous = ''; // the turn before, which the checks of the secret case's reply to 1 read
     for (const [i, msg] of c.turns.entries()) {
       const res = turn(msg, session, ctx);
       session = res.session_id;
@@ -346,10 +363,11 @@ function main() {
       }
       console.log(`PASS  ${c.name} turn ${i + 1}: no tools or MCP servers loaded (${res.model})`);
       for (const [label, ok] of c.checks[i] ?? []) {
-        const pass = ok(res.result ?? '');
+        const pass = ok(res.result ?? '', previous);
         if (!pass) failures++;
         console.log(`${pass ? 'PASS' : 'FAIL'}  ${c.name} turn ${i + 1}: ${label}`);
       }
+      previous = res.result ?? '';
     }
   }
   console.log(`\noutputs in ${outDir}\ntotal cost $${cost.toFixed(2)}; ${failures} failed check(s)`);
