@@ -16,7 +16,7 @@ First version.
   - writes the full prompt, a short version, what was added and why, the assumptions, a before/after score and a "What next?" menu (run it, refine it, or save it in Claude Code);
   - domain checklists for coding agents, writing and marketing, research and analysis, and image and video generation, plus a general fallback;
   - image and video prompts come out in the target tool's own syntax, with each tool's verification status in `data/media-targets.json`;
-  - never invents facts: unknowns become `[[placeholders]]` and choices it made become numbered assumptions;
+  - is built not to invent facts: unknowns become `[[placeholders]]` and the choices it makes become numbered assumptions, though tests still find some small picks missing from them ([Known limits](docs/compatibility.md#known-limits));
   - keeps API keys, passwords and other people's private details out of the prompt: it replaces them with placeholders, says so, and doesn't ask for them back.
 - **Claude Code plugin and marketplace** (`prompt-engine@vipul-goel`). In Claude Code, questions and the menu appear as clickable dialogs.
 - **Universal copy-paste prompt** for ChatGPT, Gemini and other chatbots (`universal/prompt-engine.md`, under 7,500 characters), with an optional knowledge file.

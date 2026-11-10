@@ -28,8 +28,8 @@ You:   ok
 ## Why use it
 
 - **It asks before it guesses.** It asks only questions whose answers would change the prompt, up to 8. Each comes with a recommended answer, so `ok` takes one second. Start with `quick:` to skip the questions, or with `deep:` for a more thorough interview.
-- **It never invents facts.** Anything only you know, such as your product name, prices or dates, becomes a `[[placeholder]]` to fill in. Choices it made for you are listed as assumptions you can change.
-- **It explains itself.** Every addition is listed with its reason and tagged as coming from you, from your answers, or from best practice.
+- **It's built not to invent facts.** Anything only you know, such as your product name, prices or dates, becomes a `[[placeholder]]` to fill in, and the choices it makes for you are listed as assumptions you can change. Tests still find small picks left off that list in some replies, mostly in image and video prompts ([Known limits](docs/compatibility.md#known-limits)).
+- **It explains itself.** It lists the main things it added, each with its reason and a tag saying whether it came from you, from your answers or from best practice, and puts the values it picked under Assumptions.
 - **It follows current prompting guidance.** Prompts state their goal and success criteria and give reasons instead of shouting rules in capitals. They don't ask the model to show its reasoning, which the newest Claude models may refuse, and they don't rely on tricks that newer models reject.
 - **It knows the domain.** There are dedicated checklists for coding agents, writing and marketing, research and analysis, and image and video generation. Image and video prompts come out in the target tool's own syntax, such as Midjourney parameters or Veo sound cues.
 - **Nothing runs until you choose.** You get the prompt first. You decide whether to run it, refine it or save it.
