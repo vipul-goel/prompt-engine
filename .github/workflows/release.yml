@@ -1,12 +1,19 @@
 name: Release
 
-# Push a tag such as v0.1.0 (matching .claude-plugin/plugin.json) on a commit that is on main.
+# Push a tag such as v0.1.0 (matching .claude-plugin/plugin.json) on a commit that is on main,
+# once CHANGELOG.md has a dated heading for that version.
 # No secrets: npm (trusted publishing) and the MCP Registry log in with GitHub OIDC.
 # Variables: NPM_OWNER, the npm account that owns prompt-engine-mcp, checked before a
 # release treats an existing npm version as already published.
-# Each job gets only the permissions it needs, so the job that installs and runs
-# dependencies can only read the repository. A failed run can be re-run: each
-# publishing job skips what is already published.
+# Environment: the npm and MCP Registry jobs run in "release". Create it before the first
+# tag, with a rule that lets only v* tags use it (docs/publishing.md, One-time setup,
+# step 1): a run that names a missing environment creates it with no rules.
+# Each job gets only the permissions it needs, so the jobs that install and run
+# dependencies can only read the repository. The build job installs only what
+# mcp/package-lock.json pins; test:pack, which installs the packed package as npx
+# does, runs in its own job after the upload, and the other jobs take the files by
+# the upload's ID. A failed run can be re-run: each publishing job skips what is
+# already published, and first stops unless the tag still names the run's commit.
 on:
   push:
     tags: ['v*']
@@ -15,9 +22,13 @@ permissions: {}
 
 jobs:
   build:
+    # A fork with Actions turned on skips the release: every other job waits for this one.
+    if: github.repository == 'vipul-goel/prompt-engine'
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
     steps:
       - name: The tagged commit is on main
         env:
@@ -28,12 +39,26 @@ jobs:
             identical|behind) ;;
             *) echo "::error::${GITHUB_REF_NAME} (${GITHUB_SHA}) is not on main (compare status: ${status})"; exit 1;;
           esac
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+      # The tagged tree is what ships, and step 3 of docs/publishing.md's Cut a release dates
+      # this version's heading. version.mjs only reminds, so a tag pushed before then stops here.
+      - name: CHANGELOG.md dates this version
+        run: |
+          node -e '
+            const heading = "## [" + process.argv[1].replace(/^v/, "") + "] - ";
+            let text = "";
+            try { text = require("fs").readFileSync("CHANGELOG.md", "utf8"); } catch {}
+            const dated = text.split(/\r?\n/).some((l) => l.startsWith(heading) && /^\d{4}-\d{2}-\d{2}$/.test(l.slice(heading.length)));
+            if (!dated) {
+              console.log("::error::CHANGELOG.md has no \"" + heading + "YYYY-MM-DD\" heading. Date it on main (docs/publishing.md, Cut a release, step 3), then tag again (step 6).");
+              process.exit(1);
+            }
+          ' "${GITHUB_REF_NAME}"
       - name: Install and test the MCP server
         working-directory: mcp
         run: |
@@ -45,25 +70,60 @@ jobs:
       - name: Pack the npm package (prepack adds LICENSE)
         working-directory: mcp
         run: npm pack --pack-destination ../dist
-      - name: Install and start the packed npm package
-        working-directory: mcp
-        run: npm run test:pack -- "../dist/prompt-engine-mcp-${GITHUB_REF_NAME#v}.tgz"
-      - uses: actions/upload-artifact@v7
+      - id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release
           path: dist/
           if-no-files-found: error
           overwrite: true
 
-  github-release:
+  # test:pack installs the packed package as npx does, with its dependencies' own
+  # dependencies resolved afresh, outside the lockfile. So it runs here, in a job that
+  # doesn't produce the files the publishing jobs take, and they wait for it.
+  pack-check:
     needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: dist
+      - name: Install and start the packed npm package
+        working-directory: mcp
+        run: |
+          npm ci
+          npm run build
+          npm run test:pack -- "../dist/prompt-engine-mcp-${GITHUB_REF_NAME#v}.tgz"
+
+  github-release:
+    needs: [build, pack-check]
     runs-on: ubuntu-latest
     permissions:
       contents: write   # create the GitHub release
     steps:
-      - uses: actions/download-artifact@v8
+      - name: The tag still names this run's commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A re-run publishes this run's commit whatever the tag names by then, so stop if the
+          # tag was deleted or moved since. The API gives an annotated tag's commit.
+          tagged="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF}" --jq .sha)"
+          if [ "${tagged}" != "${GITHUB_SHA}" ]; then
+            echo "::error::${GITHUB_REF_NAME} now names ${tagged}, not this run's commit ${GITHUB_SHA}"
+            exit 1
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
           path: dist
       - name: Create the GitHub release (pre-release while the version is 0.x)
         env:
@@ -76,26 +136,40 @@ jobs:
             echo "Release ${GITHUB_REF_NAME} is already published; skipping"
             exit 0
           fi
-          flags=(--generate-notes)
+          # --verify-tag: without it, gh creates a missing tag from the default branch's head,
+          # so a tag deleted during the run would come back on another commit.
+          flags=(--verify-tag --generate-notes)
           case "${GITHUB_REF_NAME}" in v0.*) flags+=(--prerelease);; esac
           gh release create "${GITHUB_REF_NAME}" "${flags[@]}" \
             dist/prompt-engine.zip dist/prompt-engine.mcpb \
             dist/prompt-engine.md dist/prompt-engine-knowledge.md dist/SHA256SUMS
 
   npm:
-    needs: build
+    needs: [build, pack-check]
     runs-on: ubuntu-latest
+    environment: release   # npm's trusted publisher names it too
     permissions:
       contents: read
       id-token: write   # npm trusted publishing; npm adds provenance itself
     steps:
-      - uses: actions/setup-node@v7
+      - name: The tag still names this run's commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A re-run publishes this run's commit whatever the tag names by then, so stop if the
+          # tag was deleted or moved since. The API gives an annotated tag's commit.
+          tagged="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF}" --jq .sha)"
+          if [ "${tagged}" != "${GITHUB_SHA}" ]; then
+            echo "::error::${GITHUB_REF_NAME} now names ${tagged}, not this run's commit ${GITHUB_SHA}"
+            exit 1
+          fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24   # trusted publishing needs npm 11.5.1 or later; Node 22 bundles npm 10.9
           registry-url: https://registry.npmjs.org
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
           path: dist
       - name: Publish to npm
         env:
@@ -106,13 +180,19 @@ jobs:
             # Skip only when the package is ours. A version someone else published must fail
             # the release here, or the registry job would point this server's entry at their code.
             owners="$(npm view prompt-engine-mcp maintainers --json)"
-            if ! printf '%s' "${owners}" | node -e '
+            # npm prints each maintainer as "name <e-mail address> (url)", leaving out the parts it
+            # lacks. The check compares account names only, which hold no space or "<", and prints
+            # just those for the error line. Output that isn't JSON fails it without a word, because
+            # Node's error would quote it into the log.
+            if ! accounts="$(printf '%s' "${owners}" | node -e '
               const want = process.argv[1] || "";
-              const list = [].concat(JSON.parse(require("fs").readFileSync(0, "utf8")));
-              const names = list.map((m) => (typeof m === "string" ? m.replace(/\s*<[^>]*>\s*$/, "") : m && m.name));
-              process.exit(want !== "" && names.includes(want) ? 0 : 1);
-            ' "${NPM_OWNER:-}"; then
-              echo "::error::prompt-engine-mcp@${version} is already on npm, but the package's maintainers don't include NPM_OWNER (${NPM_OWNER:-not set}): $(printf '%s' "${owners}" | tr -s '\n ' ' ')"
+              let list;
+              try { list = [].concat(JSON.parse(require("fs").readFileSync(0, "utf8"))); } catch { process.exit(1); }
+              const names = list.map((m) => (typeof m === "string" ? m.split(/[\s<]/)[0] : m && m.name));
+              console.log(names.filter(Boolean).join(", ") || "none listed");
+              process.exitCode = want !== "" && names.includes(want) ? 0 : 1;
+            ' "${NPM_OWNER:-}")"; then
+              echo "::error::prompt-engine-mcp@${version} is already on npm, but the package's maintainers don't include NPM_OWNER (${NPM_OWNER:-not set}): ${accounts:-none could be read}"
               exit 1
             fi
             echo "prompt-engine-mcp@${version} is already on npm"
@@ -124,6 +204,7 @@ jobs:
   registry:
     needs: npm
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: read
       id-token: write   # MCP Registry login (github-oidc)
@@ -133,10 +214,21 @@ jobs:
       # registry_1.8.6_checksums.txt). Update both together.
       MCP_PUBLISHER_SHA256: 1fbe93fc0783c2394d8012c8d6e50a59e98cb2cc2d216264cc69f405d0e21340
     steps:
-      - uses: actions/checkout@v7
+      - name: The tag still names this run's commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A re-run publishes this run's commit whatever the tag names by then, so stop if the
+          # tag was deleted or moved since. The API gives an annotated tag's commit.
+          tagged="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF}" --jq .sha)"
+          if [ "${tagged}" != "${GITHUB_SHA}" ]; then
+            echo "::error::${GITHUB_REF_NAME} now names ${tagged}, not this run's commit ${GITHUB_SHA}"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       - name: Publish to the MCP Registry
@@ -160,7 +252,8 @@ jobs:
           done
           archive="${RUNNER_TEMP}/mcp-publisher_linux_amd64.tar.gz"
           curl -fsSL -o "${archive}" "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
-          echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum -c -
+          # The check stops the step itself, not only through bash -e, which a line could turn off.
+          echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum -c - || { echo "::error::The mcp-publisher archive doesn't match MCP_PUBLISHER_SHA256"; exit 1; }
           tar xzf "${archive}" -C "${RUNNER_TEMP}" mcp-publisher
           "${RUNNER_TEMP}/mcp-publisher" login github-oidc
           "${RUNNER_TEMP}/mcp-publisher" publish
