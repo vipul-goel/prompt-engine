@@ -168,6 +168,7 @@ function inOrder(text, parts, what) {
 // here can't change the CI job that runs these tests.
 const NO_BASH = (process.platform === 'win32' && 'the stand-ins for gh and npm are shell scripts')
   || (spawnSync('bash', ['--version']).error && 'needs bash');
+const NO_JQ = NO_BASH || (spawnSync('jq', ['--version']).error && 'needs jq');
 function runStep(script, { stubs, env = {}, files = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'pe-workflow-step-'));
   try {
@@ -342,24 +343,47 @@ test('release.yml: every checkout drops the token it was given (finding 27)', ()
   for (const s of checkouts) assert.equal(s.with?.['persist-credentials'], 'false', label(s));
 });
 
-test('release.yml: the build job first stops unless the tagged commit is on main, and every other job waits for it (finding 32, D16)', { skip: NO_BASH }, () => {
+// A stand-in for `gh api <path>` that answers API_PATH with API_BODY. With API_ERROR set, it fails as
+// gh does on an HTTP error: the error body on stdout, unfiltered, and the error on stderr. Like gh, it
+// applies only the last --jq or -q filter given, here with real jq, and it fails on any other option,
+// so that the step's own filter decides what the step reads from the answer.
+const GH_API = `[ "$1 $2" = "api $API_PATH" ] || { echo "gh stand-in: unexpected call: gh $*" >&2; exit 64; }
+shift 2
+q=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --jq|-q) q="$2"; shift;;
+    --jq=*) q="\${1#--jq=}";;
+    -q?*) q="\${1#-q}"; q="\${q#=}";;
+    *) echo "gh stand-in: $1 isn't modelled" >&2; exit 64;;
+  esac
+  shift
+done
+[ -z "$API_ERROR" ] || { printf '%s\\n' "$API_BODY"; echo "gh: $API_ERROR" >&2; exit 1; }
+if [ -n "$q" ]; then printf '%s' "$API_BODY" | jq -r "$q"; else printf '%s\\n' "$API_BODY"; fi`;
+
+test('release.yml: the build job first stops unless the tagged commit is on main, and every other job waits for it (finding 32, D16)', { skip: NO_JQ }, () => {
   const [first] = release.jobs.build.steps;
-  assert.match(first.run ?? '', /gh api "repos\/\$\{GITHUB_REPOSITORY\}\/compare\/main\.\.\.\$\{GITHUB_SHA\}" --jq \.status/, 'the first step compares the commit with main');
-  // The stand-in gh answers the compare call with COMPARE_STATUS, or fails when COMPARE_FAILS is set.
-  const gh = `[ "$1 $2" = "api repos/example/repo/compare/main...0123abc" ] || exit 64
-[ -z "$COMPARE_FAILS" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
-printf '%s\\n' "$COMPARE_STATUS"`;
-  const go = (env) => runStep(first.run, { stubs: { gh }, env: { GITHUB_REPOSITORY: 'example/repo', GITHUB_SHA: '0123abc', GITHUB_REF_NAME: 'v0.1.0', ...env } });
-  for (const COMPARE_STATUS of ['identical', 'behind']) {
-    const r = go({ COMPARE_STATUS });
-    assert.equal(r.code, 0, `${COMPARE_STATUS}: a commit on main goes on: ${r.out}`);
+  assert.match(first.run ?? '', /^status="\$\(gh api "repos\/\$\{GITHUB_REPOSITORY\}\/compare\/main\.\.\.\$\{GITHUB_SHA\}" --jq \.status\)"$/m, 'the first step compares the commit with main');
+  // GitHub's answer for main...<commit>: the status, with the counts that go with it.
+  const compare = (status) => JSON.stringify({
+    status,
+    ahead_by: ['ahead', 'diverged'].includes(status) ? 2 : 0,
+    behind_by: ['behind', 'diverged'].includes(status) ? 3 : 0,
+    base_commit: { sha: '89abcde' },
+    merge_base_commit: { sha: 'fedcba9' },
+  });
+  const go = (env) => runStep(first.run, { stubs: { gh: GH_API }, env: { GITHUB_REPOSITORY: 'example/repo', GITHUB_SHA: '0123abc', GITHUB_REF_NAME: 'v0.1.0', API_PATH: 'repos/example/repo/compare/main...0123abc', ...env } });
+  for (const status of ['identical', 'behind']) {
+    const r = go({ API_BODY: compare(status) });
+    assert.equal(r.code, 0, `${status}: a commit on main goes on: ${r.out}`);
   }
-  for (const COMPARE_STATUS of ['ahead', 'diverged', '']) {
-    const r = go({ COMPARE_STATUS });
-    assert.equal(r.code, 1, `${COMPARE_STATUS || 'no status'} stops the run: ${r.out}`);
+  for (const status of ['ahead', 'diverged', '']) {
+    const r = go({ API_BODY: compare(status) });
+    assert.equal(r.code, 1, `${status || 'no status'} stops the run: ${r.out}`);
     assert.match(r.out, /^::error::v0\.1\.0 \(0123abc\) is not on main/m);
   }
-  assert.notEqual(go({ COMPARE_FAILS: '1' }).code, 0, 'a failed compare stops the run');
+  assert.notEqual(go({ API_BODY: '{"message":"Not Found","status":"404"}', API_ERROR: 'Not Found (HTTP 404)' }).code, 0, 'a failed compare stops the run');
   for (const [name] of jobs(release)) if (name !== 'build') assert.ok(after(release, name).has('build'), `${name} waits for build`);
 });
 
@@ -576,7 +600,7 @@ function afterCheck(run, check) {
 // and gh release create --verify-tag only checks that the tag exists. So each job that can publish (it
 // can write to the repository or request an OIDC token) first checks that the tag still names the
 // run's commit. The commits endpoint gives an annotated tag's commit, and fails for a deleted tag.
-test("release.yml: each publishing job first stops unless the tag still names the run's commit (finding 25)", { skip: NO_BASH }, () => {
+test("release.yml: each publishing job first stops unless the tag still names the run's commit (finding 25)", { skip: NO_JQ }, () => {
   const publishing = jobs(release).filter(([, j]) => j.permissions?.contents === 'write' || j.permissions?.['id-token'] === 'write').map(([n]) => n);
   assert.deepEqual(publishing, ['github-release', 'npm', 'registry']);
   const firsts = publishing.map((job) => ({ ...release.jobs[job].steps[0], job, i: 0 }));
@@ -585,17 +609,17 @@ test("release.yml: each publishing job first stops unless the tag still names th
     assert.deepEqual(s.env, { GH_TOKEN: '${{ github.token }}' }, label(s));
     assert.equal(s.run, firsts[0].run, `${label(s)}: the same check in each job`);
   }
-  // The stand-in gh answers the lookup with TAGGED, or fails as GitHub's API does for a deleted tag.
-  const gh = `[ "$1 $2" = "api repos/example/repo/commits/refs/tags/v0.1.0" ] || exit 64
-[ -z "$TAG_GONE" ] || { echo '{"message":"No commit found for SHA: refs/tags/v0.1.0","status":"422"}'; echo "gh: No commit found for SHA: refs/tags/v0.1.0 (HTTP 422)" >&2; exit 1; }
-printf '%s\\n' "$TAGGED"`;
-  const go = (env) => runStep(firsts[0].run, { stubs: { gh }, env: { GITHUB_REPOSITORY: 'example/repo', GITHUB_REF: 'refs/tags/v0.1.0', GITHUB_REF_NAME: 'v0.1.0', GITHUB_SHA: '0123abc', ...env } });
-  let r = go({ TAGGED: '0123abc' });
+  assert.match(firsts[0].run, /^tagged="\$\(gh api "repos\/\$\{GITHUB_REPOSITORY\}\/commits\/\$\{GITHUB_REF\}" --jq \.sha\)"$/m, 'the check reads the commit that the tag names');
+  // GitHub's answer for refs/tags/<tag>: the commit the tag names, with its tree and its parent.
+  const commit = (sha) => JSON.stringify({ sha, commit: { tree: { sha: '89abcde' }, message: 'Release' }, parents: [{ sha: 'fedcba9' }] });
+  const go = (env) => runStep(firsts[0].run, { stubs: { gh: GH_API }, env: { GITHUB_REPOSITORY: 'example/repo', GITHUB_REF: 'refs/tags/v0.1.0', GITHUB_REF_NAME: 'v0.1.0', GITHUB_SHA: '0123abc', API_PATH: 'repos/example/repo/commits/refs/tags/v0.1.0', ...env } });
+  let r = go({ API_BODY: commit('0123abc') });
   assert.equal(r.code, 0, `the tag still names the run's commit: ${r.out}`);
-  r = go({ TAGGED: '4567def' });
+  r = go({ API_BODY: commit('4567def') });
   assert.equal(r.code, 1, `a moved tag stops the job: ${r.out}`);
   assert.match(r.out, /^::error::v0\.1\.0 now names 4567def, not this run's commit 0123abc$/m);
-  r = go({ TAG_GONE: '1' });
+  // GitHub's API fails for a deleted tag, and gh prints the error body on stdout.
+  r = go({ API_BODY: '{"message":"No commit found for SHA: refs/tags/v0.1.0","status":"422"}', API_ERROR: 'No commit found for SHA: refs/tags/v0.1.0 (HTTP 422)' });
   assert.notEqual(r.code, 0, `a deleted tag stops the job: ${r.out}`);
 });
 
@@ -673,7 +697,6 @@ test('verify-data.yml runs weekly with a 45-day window, under the 60 days after 
 // keeping only the --json fields as gh does and applying the step's own --jq with real jq; every
 // other gh call is only logged. Returns every gh call (all), and the calls after the lookup as
 // "edit 12" or "create" (calls).
-const NO_JQ = NO_BASH || (spawnSync('jq', ['--version']).error && 'needs jq');
 const TITLE = 'Re-verify image/video tool data';
 const BOT = { is_bot: true, login: 'app/github-actions' };
 function issueStep(issues, env = {}) {
