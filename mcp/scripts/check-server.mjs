@@ -5,12 +5,26 @@
 // argument parsing and, for check_prompt and ask_user, the structured result the server checks
 // against its output schema. ask_user also runs the question checks, the reading of the
 // client's capabilities and, since this client can't show forms, the questions written out for
-// the chat.
+// the chat. Then it fetches the enhance prompt, which manifest.json's prompts_generated lets
+// Claude Desktop list, with its completable argument, and reads two resources: the method, and
+// a checklist through the resource template.
+
+/** Runs one request; an error says which. */
+async function step(label, request) {
+  try {
+    return await request();
+  } catch (error) {
+    throw new Error(`the packed server's ${label} failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+const BRIEF = /^Prompt Engine brief from the prompt-engine MCP server\b/;
 
 /**
  * Checks the server a connected MCP client talks to against manifest.json: its tools are
- * exactly the manifest's, it lists no prompt the manifest doesn't cover, and each tool answers.
- * Throws an Error that says what is wrong; returns a one-line summary.
+ * exactly the manifest's, it lists no prompt the manifest doesn't cover, each tool answers, and
+ * so do the enhance prompt and the resources. Throws an Error that says what is wrong; returns a
+ * one-line summary.
  */
 export async function checkServer(client, manifest) {
   const { tools } = await client.listTools();
@@ -38,7 +52,7 @@ export async function checkServer(client, manifest) {
   // enhance_prompt answers with the brief for the mode it was given.
   const brief = await client.callTool({ name: 'enhance_prompt', arguments: { mode: 'quick' } });
   const briefText = brief.content?.[0]?.type === 'text' ? brief.content[0].text : '';
-  if (brief.isError || !/^Prompt Engine brief from the prompt-engine MCP server\b[^]*\nRequested mode: quick\b/.test(briefText)) {
+  if (brief.isError || !BRIEF.test(briefText) || !/\nRequested mode: quick\b/.test(briefText)) {
     throw new Error(`the packed server's enhance_prompt {mode: "quick"} returned ${shown(brief)}`);
   }
   // ask_user, to a client that can't show a form, returns the questions to ask in the chat.
@@ -51,5 +65,24 @@ export async function checkServer(client, manifest) {
   if (asked.isError || status !== 'ask_in_chat' || typeof questionsText !== 'string' || !questionsText.includes(question)) {
     throw new Error(`the packed server's ask_user returned ${shown(asked)}`);
   }
-  return `the packed server starts, lists: ${names}; prompts: ${prompts.map((p) => p.name).join(', ') || 'none'}; and answers get_checklist, check_prompt, enhance_prompt and ask_user`;
+  // The enhance prompt answers with the brief for the mode it was given.
+  const prompt = await step('enhance prompt {mode: "quick"}', () => client.getPrompt({ name: 'enhance', arguments: { mode: 'quick' } }));
+  const promptText = prompt.messages?.[0]?.content?.type === 'text' ? prompt.messages[0].content.text : '';
+  if (!BRIEF.test(promptText) || !/\nRequested mode: quick\b/.test(promptText)) {
+    throw new Error(`the packed server's enhance prompt {mode: "quick"} returned ${shown(prompt)}`);
+  }
+  // A static resource, the brief, and one read through the checklist template.
+  for (const [uri, expected] of [
+    ['prompt-engine://method', BRIEF],
+    ['prompt-engine://checklists/coding', /coding/i],
+  ]) {
+    const read = await step(`resources/read ${uri}`, () => client.readResource({ uri }));
+    const text = read.contents?.[0]?.uri === uri && typeof read.contents[0].text === 'string' ? read.contents[0].text : '';
+    if (!expected.test(text)) throw new Error(`the packed server's resources/read ${uri} returned ${shown(read)}`);
+  }
+  return (
+    `the packed server starts, lists: ${names}; prompts: ${prompts.map((p) => p.name).join(', ') || 'none'}; ` +
+    'and answers get_checklist, check_prompt, enhance_prompt and ask_user, the enhance prompt, ' +
+    'and reads of prompt-engine://method and prompt-engine://checklists/coding'
+  );
 }
