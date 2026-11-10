@@ -387,6 +387,47 @@ test('checkEvalCases names a case, a case file, a graders folder or a fixture fo
   }
 });
 
+// A fixture is looked up by its exact name, as claude plugin eval looks it up on a file system that
+// minds letter case, such as Linux CI's: on macOS's and Windows', setup.sh opened Setup.sh, so the
+// checks passed there and failed in CI with a message that didn't name the file. Each kind of
+// fixture whose name, or a folder on its path, the case folder holds only in another letter case
+// is named, with the name it holds, on every file system (de4b99f's rule for case.yaml and the rest).
+test('checkEvalCases names a fixture that the case folder holds only in another letter case, on every file system', () => {
+  const { errors } = check({
+    'evals/demo/case.yaml': 'schema_version: "1.1"\nname: demo\ncontext:\n  scaffold_script: setup.sh\n  history_file: history.jsonl\n  add_dirs: [fixtures/docs]\n',
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-x.md': '---\ntype: baseline\nbaseline_file: ref/out.jsonl\n---\nPASS if as good.\n',
+    'evals/demo/Setup.sh': 'true\n',
+    'evals/demo/History.jsonl': '{}\n',
+    'evals/demo/Fixtures/docs/a.txt': 'a\n',
+    'evals/demo/ref/Out.jsonl': '{}\n',
+    // A recording that no context.history_file names is looked for by its exact name too.
+    'evals/other/prompt.md': PROMPT,
+    'evals/other/graders/01-x.md': REGEX,
+    'evals/other/History.jsonl': '{}\n',
+  });
+  const differs = (where, what, rel, listed) => `${where}: ${what} "${rel}": the case folder has "${listed}", which only a file system that ignores letter case, such as macOS's or Windows', matches to that name; give both the same name`;
+  assert.deepEqual(errors, [
+    differs('evals/demo/case.yaml', 'context.scaffold_script', 'setup.sh', 'Setup.sh'),
+    differs('evals/demo/case.yaml', 'context.history_file', 'history.jsonl', 'History.jsonl'),
+    differs('evals/demo/case.yaml', 'add_dirs entry', 'fixtures/docs', 'Fixtures'),
+    differs('evals/demo/graders/01-x.md', 'baseline_file', 'ref/out.jsonl', 'ref/Out.jsonl'),
+    'evals/other/History.jsonl: no context.history_file in case.yaml names it, so claude plugin eval doesn\'t resume it; name it history.jsonl and set context.history_file: history.jsonl, or delete the file',
+  ]);
+});
+
+// The suite and conversation rules skip such a case, as one whose file didn't read: on macOS and
+// Windows they read the recording, and on Linux they didn't, so each reported other errors after it.
+test('checkSuiteRules and checkConversations skip a case whose recording is there only in another letter case', () => {
+  const other = { type: 'assistant', message: { id: 'msg_1', role: 'assistant', model: 'claude-other-5-5', content: [{ type: 'text', text: '### Full prompt\n```text\nWrite the notes.\n```\n\n### What next?\n1. Run it now \u{2605}' }], stop_reason: 'end_turn' } };
+  const files = recordedCase('rec', [userRow('write the notes'), other], '1', { '01-x.md': judge('The user\'s whole request was "write the notes".') });
+  files['evals/rec/History.jsonl'] = files['evals/rec/history.jsonl'];
+  delete files['evals/rec/history.jsonl'];
+  assert.deepEqual(histories(files).errors, [
+    'evals/rec/case.yaml: context.history_file "history.jsonl": the case folder has "History.jsonl", which only a file system that ignores letter case, such as macOS\'s or Windows\', matches to that name; give both the same name',
+  ]);
+});
+
 test('checkEvalCases names evals itself when it is a link, and reads no case through it', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => {
   const outside = tree({ 'demo/prompt.md': promptMd(), 'demo/graders/01-x.md': REGEX });
   try {

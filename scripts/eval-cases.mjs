@@ -326,6 +326,28 @@ const linkOn = (abs, dir, rel) => {
   return null;
 };
 const throughLink = (where, what, rel, p) => `${where}: ${what} "${rel}" goes through ${p}, a link; ${LINK_RULE}; keep fixtures in the case folder itself`;
+// A fixture's path rel as the case folder abs lists it, up to the first part that it holds only in
+// another letter case, or null. claude plugin eval looks a fixture up by its exact name, which on
+// macOS's and Windows' default file systems opens a name in another letter case and on Linux, as in
+// CI, doesn't: so the checks, which looked it up the same way, passed on the first and failed in CI
+// with a message that didn't name the file. The rule de4b99f applies to case.yaml, prompt.md and
+// graders/ (the name loop in checkEvalCases), here for scaffold_script, history_file, add_dirs and
+// baseline_file.
+const otherCase = (abs, rel) => {
+  const parts = rel.split(/[\\/]/).filter((s) => s !== '' && s !== '.');
+  let at = abs;
+  for (let i = 0; i < parts.length; i++) {
+    let names;
+    try { names = readdirSync(at); } catch { return null; }
+    if (!names.includes(parts[i])) {
+      const listed = names.find((n) => n.toLowerCase() === parts[i].toLowerCase());
+      return listed === undefined ? null : [...parts.slice(0, i), listed].join('/');
+    }
+    at = join(at, parts[i]);
+  }
+  return null;
+};
+const inOtherCase = (where, what, rel, listed) => `${where}: ${what} "${rel}": the case folder has "${listed}", which only a file system that ignores letter case, such as macOS's or Windows', matches to that name; give both the same name`;
 
 // Values that sit at the top of prompt.md, and at the top of case.yaml or under its execution:
 // or context: (top, exec and ctx are those mappings, execKeys the keys allowed in exec). Only
@@ -419,6 +441,7 @@ function checkGrader(err, where, g, abs, referenced, dir) {
       const c = fromBody('criteria');
       if (typeof c !== 'string' || c.trim() === '') err(`${where}: needs criteria (the criteria key, or the file's body)`);
       if (d.type === 'llm') view('focus');
+      else if (inside(d.baseline_file) && otherCase(abs, d.baseline_file) !== null) err(inOtherCase(where, 'baseline_file', d.baseline_file, otherCase(abs, d.baseline_file)));
       else if (!inside(d.baseline_file) || !isPlainFile(join(abs, d.baseline_file))) err(`${where}: baseline_file "${d.baseline_file}" is not a plain file in the case folder`);
       else if (linkOn(abs, dir, d.baseline_file) !== null) err(throughLink(where, 'baseline_file', d.baseline_file, linkOn(abs, dir, d.baseline_file)));
       else referenced.add(`${dir}/${d.baseline_file}`);
@@ -494,7 +517,8 @@ export function checkEvalCases(root, err, warn = () => {}) {
       checkValues(err, file, cy, exec, ctx, EXECUTION_KEYS);
       for (const k of ['scaffold_script', 'history_file']) {
         if (typeof ctx[k] !== 'string') continue;
-        if (!inside(ctx[k]) || !isPlainFile(join(abs, ctx[k]))) err(`${file}: context.${k} "${ctx[k]}" is not a plain file in the case folder`);
+        if (inside(ctx[k]) && otherCase(abs, ctx[k]) !== null) err(inOtherCase(file, `context.${k}`, ctx[k], otherCase(abs, ctx[k])));
+        else if (!inside(ctx[k]) || !isPlainFile(join(abs, ctx[k]))) err(`${file}: context.${k} "${ctx[k]}" is not a plain file in the case folder`);
         else if (linkOn(abs, dir, ctx[k]) !== null) err(throughLink(file, `context.${k}`, ctx[k], linkOn(abs, dir, ctx[k])));
         else referenced.add(`${dir}/${ctx[k]}`);
       }
@@ -502,7 +526,8 @@ export function checkEvalCases(root, err, warn = () => {}) {
       // The CLI refuses an add_dir that is the case folder itself or covers its graders/ or mocks/.
       for (const d of Array.isArray(ctx.add_dirs) ? ctx.add_dirs : []) {
         const first = typeof d === 'string' ? d.split(/[\\/]/).find((s) => s !== '' && s !== '.') : undefined;
-        if (!inside(d) || first === undefined || first === 'graders' || first === 'mocks' || !isDir(join(abs, d))) err(`${file}: add_dirs entry "${d}" is not a fixture folder in the case folder (one that isn't the case folder, graders/ or mocks/)`);
+        if (inside(d) && otherCase(abs, d) !== null) err(inOtherCase(file, 'add_dirs entry', d, otherCase(abs, d)));
+        else if (!inside(d) || first === undefined || first === 'graders' || first === 'mocks' || !isDir(join(abs, d))) err(`${file}: add_dirs entry "${d}" is not a fixture folder in the case folder (one that isn't the case folder, graders/ or mocks/)`);
         else if (linkOn(abs, dir, d) !== null) err(throughLink(file, 'add_dirs entry', d, linkOn(abs, dir, d)));
       }
     }
@@ -528,7 +553,8 @@ export function checkEvalCases(root, err, warn = () => {}) {
     // case is read on macOS and Windows and skipped on Linux; it reads only the .md files directly
     // in graders/; and it layers a case's own mocks/ over the suite's. A recording that no
     // context.history_file names isn't resumed, so the case runs without it.
-    for (const n of readdirSync(abs).sort()) {
+    const names = readdirSync(abs).sort();
+    for (const n of names) {
       const lower = n.toLowerCase();
       const want = /^case\.ya?ml$/.test(lower) ? 'case.yaml' : /^prompt\.(?:md|markdown)$/.test(lower) ? 'prompt.md' : /^graders?$/.test(lower) ? 'graders' : null;
       if (lower === 'mocks') err(`${dir}/${n}: a case's own mocks aren't used in this repo, and validate.mjs doesn't check them (repo rule)`);
@@ -536,8 +562,11 @@ export function checkEvalCases(root, err, warn = () => {}) {
       else if (lower === want) err(`${dir}/${n}: claude plugin eval looks for ${want} by that exact name, which only a file system that ignores letter case, such as macOS's or Windows', matches to this one; name it ${want}`);
       else err(`${dir}/${n}: claude plugin eval reads ${want}, not this name, so it skips this one; name it ${want}`);
     }
-    if (caseParsed && isFile(join(abs, 'history.jsonl')) && !(isMapping(cy?.context) && cy.context.history_file !== undefined)) {
-      err(`${dir}/history.jsonl: no context.history_file in case.yaml names it, so claude plugin eval doesn't resume it; set context.history_file: history.jsonl, or delete the file`);
+    // Found by the name the folder lists, in any letter case, so that it is named the same way on
+    // every file system.
+    const recording = names.find((n) => n.toLowerCase() === 'history.jsonl');
+    if (caseParsed && recording !== undefined && isFile(join(abs, recording)) && !(isMapping(cy?.context) && cy.context.history_file !== undefined)) {
+      err(`${dir}/${recording}: no context.history_file in case.yaml names it, so claude plugin eval doesn't resume it; ${recording === 'history.jsonl' ? '' : 'name it history.jsonl and '}set context.history_file: history.jsonl, or delete the file`);
     }
     // Listed without following links: one that leads nowhere, such as the lock file Emacs keeps next
     // to a file with unsaved changes, stopped the read with Node's own ENOENT line.
@@ -585,15 +614,19 @@ export function checkEvalCases(root, err, warn = () => {}) {
 }
 
 // ---------- this repo's rules for runs ----------
-// True when a file of the case didn't read (it didn't parse, a grader has no front matter, or a
-// case file or the graders folder is a link, also one that leads nowhere). checkEvalCases has
-// reported that file, and the rules below would misread the case without it.
+// True when a file of the case didn't read (it didn't parse, a grader has no front matter, a case
+// file or the graders folder is a link, also one that leads nowhere, or the recording is there only
+// in another letter case, which a file system that ignores letter case would read and another
+// wouldn't). checkEvalCases has reported that file, and the rules below would misread the case
+// without it.
 function unread(root, c) {
   const abs = join(root, c.dir);
   const gdir = join(abs, 'graders');
   const there = (p) => isFile(p) || isLink(p);
   const graders = isDir(gdir) && !isLink(gdir) ? readdirSync(gdir).filter((f) => f.endsWith('.md')).length : 0;
-  return (there(join(abs, 'prompt.md')) && !c.prompt) || (there(join(abs, 'case.yaml')) && !c.caseYaml) || isLink(gdir) || graders !== c.graders.length;
+  const history = isMapping(c.caseYaml?.context) ? c.caseYaml.context.history_file : undefined;
+  return (there(join(abs, 'prompt.md')) && !c.prompt) || (there(join(abs, 'case.yaml')) && !c.caseYaml) || isLink(gdir) || graders !== c.graders.length
+    || (inside(history) && otherCase(abs, history) !== null);
 }
 
 // A case's settings as claude plugin eval resolves them: a key in prompt.md's front matter wins
