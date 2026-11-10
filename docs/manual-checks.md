@@ -92,7 +92,7 @@ Record the Claude Desktop version you tested and which bundle you installed (the
 
 ## Claude Code (interactive)
 
-The automated runs have no question dialogs and don't grant shell commands. This check covers them by hand: the question dialogs, the "What next?" dialog, saving to a file, and a prompt that asks for shell commands. It's an interactive Claude Code session on your account, so it counts toward your plan's usage, or is billed, like any other session.
+The automated runs have no question dialogs, don't grant shell commands, and grant the Glob and Grep tools, which a default Claude Code session on macOS, Linux or WSL doesn't have. This check covers them by hand: the question dialogs, the "What next?" dialog, saving to a file, and a prompt that asks for shell commands. It's an interactive Claude Code session on your account, so it counts toward your plan's usage, or is billed, like any other session.
 
 Use a new configuration folder for every run, including a re-run after a fix. Claude Code keeps an installed plugin until its version number changes, and the number stays the same between releases, so a folder you used before can run an older copy. In a new folder, you may need to sign in again.
 
@@ -130,7 +130,7 @@ Expected:
 - [ ] The questions appear as dialogs: at most 4 per dialog, each with a short header (12 characters at most), the "(Recommended)" option first, then a review screen before you submit.
 - [ ] The output follows the order in [check 2](#2-accept-the-recommendations), except for the menu: "What next?" is a dialog headed **Next step**. It offers Run it now marked "(Recommended)", Refine, and Save to file with the path it will use. In place of Run it now, the recommended option is Fill placeholders while placeholders remain (those for secrets, or for other people's private details that Claude removed from your prompt, don't count), or else Try it here if Claude takes the prompt to be for another tool.
 - [ ] Nothing runs before you pick an option.
-- [ ] Pick Save to file. Claude Code asks for permission to create `prompts/<name>.md` as a file, not to run a shell command, and the reply gives the path. Then ask it to save to the same path again: it writes `prompts/<name>-2.md`, leaves the first file unchanged and doesn't offer to overwrite it. Ask a third time: it writes `prompts/<name>-3.md`. In the transcript viewer (Ctrl+O), the lookup before each save is a Glob or Read call, not Bash.
+- [ ] Pick Save to file. Claude Code asks for permission to create `prompts/<name>.md` as a file, not to run a shell command, and the reply gives the path. Then ask it to save to the same path again: it writes `prompts/<name>-2.md`, leaves the first file unchanged and doesn't offer to overwrite it. Ask a third time: it writes `prompts/<name>-3.md`. In the transcript viewer (Ctrl+O), the lookup before each save is a Read call (or a Glob call, where the session has Glob), not Bash.
 - [ ] Optional: in another session, press Esc on a question dialog, and note whether the questions come back as a numbered list.
 
 Then check that a prompt asking for shell commands doesn't run them. In the same shell, create two files in another new, empty folder and start Claude Code there, in Manual mode again:
