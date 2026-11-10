@@ -29,7 +29,8 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 // A Read rule for the skill's folder. In Claude Code's permission rules "//" starts an
 // absolute path, and a Windows path is matched in POSIX form: C:\dev\repo becomes /c/dev/repo.
-const skillReadRule = (dir) => `Read(/${dir.replace(/^([A-Za-z]):[\\/]/, (_, d) => `/${d.toLowerCase()}/`).replaceAll('\\', '/')}/skills/prompt-engine/**)`;
+// Exported for its test, which runs on every platform.
+export const skillReadRule = (dir) => `Read(/${dir.replace(/^([A-Za-z]):[\\/]/, (_, d) => `/${d.toLowerCase()}/`).replaceAll('\\', '/')}/skills/prompt-engine/**)`;
 
 const USAGE = 'usage: record-history.mjs <out.jsonl> "<first user message>" [--model <id>]';
 

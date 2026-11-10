@@ -51,6 +51,8 @@ const KINDS = [
   ['Stripe key', `${'sk'}_live_${r('A', 24)}`, `${'pk'}_live_${r('A', 24)}`],
   ['Stripe key', `${'rk'}_test_${r('B', 24)}`, `${'sk'}_live_${r('A', 10)}`],
   ['GitHub token', `gh${'p'}_${r('R', 36)}`, `gh${'x'}_${r('R', 36)}`],
+  // The pattern's other GitHub token prefixes: gho_, ghu_, ghs_ and ghr_.
+  ...['o', 'u', 's', 'r'].map((k) => ['GitHub token', `gh${k}_${r('R', 36)}`, `gh${k}_${r('R', 20)}`]),
   ['GitHub token', `github${'_pat_'}${r('a', 22)}_${r('b', 59)}`, `github${'_pat_'}${r('a', 10)}`],
   ['GitLab token', `gl${'pat'}-${r('C', 20)}`, `gl${'pat'}-${r('C', 10)}`],
   ['Slack token', `xo${'xb'}-${r('1', 12)}-${r('d', 24)}`, `xo${'xz'}-${r('1', 12)}`],
@@ -62,6 +64,7 @@ const KINDS = [
   ['private key', `-----BEGIN ${'RSA PRIVATE'} KEY-----`, '-----BEGIN PUBLIC KEY-----'],
   ['private key', `-----BEGIN ${'PRIVATE'} KEY-----`, '-----BEGIN CERTIFICATE-----'],
   ['home folder path', `/${'Users'}/someone/notes.txt`, 'GET /users/42'],
+  ['home folder path', `/${'home'}/someone/notes.txt`, 'GET /homes/42'],
   ['claude.ai session ID', `ses${'sion_'}${r('G', 24)}`, `ses${'sion_'}id`],
   ['e-mail address', `someone${'@'}mailhost.invalid`, 'name@example.com'],
 ];
@@ -80,6 +83,19 @@ test('only the reserved example domains are allowed, as whole domains', () => {
   for (const domain of ['example.com.attacker.invalid', 'notexample.com', 'example.community']) {
     assert.deepEqual(scanText(`name${'@'}${domain}`), ['line 1: e-mail address'], domain);
   }
+});
+
+// The commit-trailer address is allowed as a whole address only, not inside a longer one.
+test('only noreply@anthropic.com itself is allowed, not an address that holds it', () => {
+  for (const address of [`x.noreply${'@'}anthropic.com`, `noreply${'@'}anthropic.com.mailhost.invalid`]) {
+    assert.deepEqual(scanText(`cc ${address}`), ['line 1: e-mail address'], address);
+  }
+});
+
+// textsOf reads a JSON row's keys as well as its values: a pasted secret can land in either.
+test('a token in a JSON key of a row is found', () => {
+  const row = JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: { [fake.anthropic]: 'x' } }] } });
+  assert.deepEqual(scanText(row), ['line 1: Anthropic or OpenAI-style key']);
 });
 
 test('a sanitized row keeps only the conversation\'s keys', () => {
@@ -159,6 +175,14 @@ test('this machine\'s name and home folder are looked for, never replaced', () =
   assert.equal(JSON.parse(sanitize(textEvent('write a macOS guide'), { ...ctx, allowText: '' })).message.content[0].text, 'write a macOS guide');
   // Nor is "localhost", which names no machine in particular.
   assert.equal(refusal(() => run(textEvent('serve it on localhost:3000'), { ...ctx, host: 'localhost.localdomain' })), '');
+});
+
+// Only at a path boundary, so that a sibling folder whose name starts with the same letters, which
+// names someone else, isn't reported as this machine's: /srv/people/al isn't /srv/people/alex.
+test('this machine\'s home folder is looked for at a path boundary', () => {
+  const extra = machinePatterns({ home: '/srv/people/al' });
+  for (const s of ['see /srv/people/al/notes', 'see /srv/people/al.', 'see /srv/people/al']) assert.deepEqual(scanText(s, { extra }), ['line 1: this machine\'s home folder'], s);
+  for (const s of ['see /srv/people/alex/notes', 'see /srv/people/al-x/notes', 'see /srv/people/al.d/notes']) assert.deepEqual(scanText(s, { extra }), [], s);
 });
 
 test('folders are rewritten at path boundaries, the session ID is replaced and message IDs are kept', () => {

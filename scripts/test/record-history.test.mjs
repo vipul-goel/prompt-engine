@@ -6,12 +6,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { FIXED_SESSION } from '../eval/sanitize.mjs';
+import { skillReadRule } from '../eval/record-history.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // The model every eval case pins (D28), which a recording is made on unless --model says otherwise:
@@ -24,10 +25,11 @@ const STAND_IN = process.platform === 'win32' && 'the stand-in for claude is a s
 // that it started, and the session variables it inherited to $FAKE_ARGS.env. Then, like
 // `claude -p --output-format json`, it writes a transcript, under $CLAUDE_CONFIG_DIR/projects or,
 // when that is unset or empty, ~/.claude/projects (FAKE_PROJECTS overrides both), and prints the
-// result the recorder reads. FAKE_LEAK adds an address to the reply; FAKE_NO_TRANSCRIPT skips the
-// transcript.
+// result the recorder reads. FAKE_LEAK adds an address to the reply, FAKE_HOST this machine's name;
+// FAKE_NO_TRANSCRIPT skips the transcript, and FAKE_EXIT sets the exit code.
 const FAKE = `
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
 const args = process.argv.slice(2);
 writeFileSync(process.env.FAKE_ARGS, JSON.stringify(args));
@@ -36,12 +38,13 @@ const repo = args[args.indexOf('--plugin-dir') + 1];
 const sid = '11111111-2222-4333-8444-555555555555';
 const ev = (type, uuid, parentUuid, content) => JSON.stringify({ type, uuid, parentUuid, sessionId: sid, cwd: process.cwd(), message: { role: type, content } });
 const reply = 'Saved to ' + join(process.cwd(), 'notes.md') + ' and ' + join(process.env.HOME, 'backup.md') + (process.env.FAKE_LEAK ? ' for someone@mailhost.invalid' : '');
+const named = process.env.FAKE_HOST ? ' on ' + hostname() : '';
 const lines = [
   ev('user', 'u1', null, args[args.indexOf('-p') + 1]),
   JSON.stringify({ type: 'attachment', uuid: 'x1', parentUuid: 'u1', sessionId: sid, attachment: { email: 'owner@mailhost.invalid' } }),
   ev('assistant', 'a1', 'x1', [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: join(repo, 'skills', 'prompt-engine', 'references', 'questions.md') } }]),
   ev('user', 'u2', 'a1', [{ type: 'tool_result', tool_use_id: 't1', content: '1\\tQuestions' }]),
-  ev('assistant', 'a2', 'u2', [{ type: 'text', text: reply }]),
+  ev('assistant', 'a2', 'u2', [{ type: 'text', text: reply + named }]),
 ];
 if (!process.env.FAKE_NO_TRANSCRIPT) {
   const projects = process.env.FAKE_PROJECTS || join(process.env.CLAUDE_CONFIG_DIR || join(process.env.HOME, '.claude'), 'projects');
@@ -50,6 +53,7 @@ if (!process.env.FAKE_NO_TRANSCRIPT) {
   writeFileSync(join(dir, sid + '.jsonl'), lines.join('\\n') + '\\n');
 }
 console.log(JSON.stringify({ session_id: sid, result: 'done', total_cost_usd: 0 }));
+process.exitCode = Number(process.env.FAKE_EXIT || 0);
 `;
 
 function setup(from = repo) {
@@ -297,6 +301,66 @@ test('record-history.mjs writes nothing when the recording still looks private o
   } finally {
     cleanup();
   }
+});
+
+// The stand-in prints its usual result and leaves its transcript, but exits 1: the recorder goes by
+// the exit code.
+test('record-history.mjs writes nothing when claude exits with an error', { skip: STAND_IN }, () => {
+  const { parent, out, record, cleanup } = setup();
+  try {
+    const cfg = join(parent, 'cfg');
+    mkdirSync(join(cfg, 'projects'), { recursive: true });
+    const r = record([out, 'write a blog post about remote work'], { CLAUDE_CONFIG_DIR: cfg, FAKE_EXIT: '1' });
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(!existsSync(out), 'no history was written');
+  } finally {
+    cleanup();
+  }
+});
+
+// sanitize.mjs looks for this machine's name only when it has 6 characters or more and isn't
+// localhost. The test builds the name at run time and never prints it.
+const HOST = hostname();
+const SHORT_HOST = !(HOST.length >= 6 && HOST.toLowerCase() !== 'localhost') && 'this machine\'s name is too short for the scan to look for it';
+test('record-history.mjs writes nothing when the recording names this machine', { skip: STAND_IN || SHORT_HOST }, () => {
+  const { parent, out, record, cleanup } = setup();
+  try {
+    const cfg = join(parent, 'cfg');
+    mkdirSync(join(cfg, 'projects'), { recursive: true });
+    const r = record([out, 'write a blog post about remote work'], { CLAUDE_CONFIG_DIR: cfg, FAKE_HOST: '1' });
+    assert.equal(r.status, 1, 'the recording was refused');
+    assert.match(r.stderr, /refusing to write the history[^\n]*\n {2}line 4: this machine's name/);
+    assert.ok(!r.stderr.includes(HOST), 'the name itself is not printed');
+    assert.ok(!existsSync(out));
+  } finally {
+    cleanup();
+  }
+});
+
+// claude runs in a folder the recorder makes in the temp folder, and reports the folder's real
+// path, so a temp folder reached through a link must be rewritten in its real form too.
+test('record-history.mjs rewrites the working folder when the temp folder is reached through a link', { skip: STAND_IN }, () => {
+  const { parent, out, record, cleanup } = setup();
+  try {
+    const cfg = join(parent, 'cfg');
+    mkdirSync(join(cfg, 'projects'), { recursive: true });
+    const link = join(parent, 'tmp-link');
+    symlinkSync(join(parent, 'tmp'), link, 'dir');
+    const r = record([out, 'write a blog post about remote work'], { CLAUDE_CONFIG_DIR: cfg, TMPDIR: link, TMP: link, TEMP: link });
+    assert.equal(r.status, 0, r.stderr);
+    const rows = readFileSync(out, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.equal(rows[3].message.content[0].text, 'Saved to /workspace/notes.md and ~/backup.md');
+  } finally {
+    cleanup();
+  }
+});
+
+// The rule as the comment above skillReadRule describes it: "//" and the path, a Windows path in
+// POSIX form.
+test('skillReadRule writes the skill folder as Claude Code matches it, a Windows drive path included', () => {
+  assert.equal(skillReadRule('C:\\dev\\prompt engine'), 'Read(//c/dev/prompt engine/skills/prompt-engine/**)');
+  assert.equal(skillReadRule('D:/work/repo'), 'Read(//d/work/repo/skills/prompt-engine/**)');
+  assert.equal(skillReadRule('/srv/build/repo'), 'Read(//srv/build/repo/skills/prompt-engine/**)');
 });
 
 test('record-history.mjs passes a first message that holds the safety eval\'s fake key, which is public text', { skip: STAND_IN }, () => {
