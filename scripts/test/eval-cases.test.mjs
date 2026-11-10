@@ -1523,6 +1523,24 @@ test('the media menu graders see an open placeholder in the Full prompt when the
   for (const prompt of CLOSED_TEXT) assert.ok(regexPasses(g, menuReply({ prompt, menu: done })), prompt);
 });
 
+// output-format.md: "Three options at most, the recommended one marked ★". The menu graders fail
+// a second ★ after the first What next?; a ★ before it, such as in What I added, doesn't count
+// (step 1e, B1.1.9). Every kept reply has one ★ after What next?.
+test('the menu graders fail a second ★ in the menu', () => {
+  const writing = graderOf('writing-quick-launch-email', '08-what-next-menu');
+  const media = graderOf('image-midjourney-quick', '05-done-not-run');
+  const fillMenu = (second) => `1. Fill placeholders ★ — reply with the app name and the feature\n2. Refine — change any assumption\n3. Save to file${second} — \`prompts/launch-email.md\``;
+  assert.ok(regexPasses(writing, menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: fillMenu('') })));
+  assert.equal(regexPasses(writing, menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: fillMenu(' ★') })), false);
+  assert.equal(regexPasses(writing, menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: '1. Fill placeholders ★ 2. Refine ★' })), false);
+  assert.ok(regexPasses(writing, menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: fillMenu('') }).replace('- **Your task** [you]', '- **The ★ you accepted** [your answer]')));
+  const done = (menu) => menuReply({ prompt: 'A cozy cabin in the snow at night --ar 3:2', menu });
+  assert.ok(regexPasses(media, done('1. Done ★ — paste it into the tool\n2. Refine')));
+  assert.equal(regexPasses(media, done('1. Done ★ — paste it into the tool\n2. Refine\n3. Save to file ★')), false);
+  assert.deepEqual(failingRegex(gradersOf(PRIVATE), privateReply({ menu: '1. Try it here ★ (results there may differ)\n2. Fill placeholders ★\n3. Refine' })), ['08-what-next-menu']);
+  assert.deepEqual(failingRegex(gradersOf(PRIVATE), privateReply({ menu: '1. Run it now ★\n2. Refine ★' })), ['08-what-next-menu']);
+});
+
 test('private-detail-redaction-quick 08 reads the Full prompt too when Fill before running is missing', () => {
   const graders = gradersOf(PRIVATE);
   const members = { contact: "tell them to text [[conductor's mobile number]]. The choir has [[number of members]] members", fill: '' };

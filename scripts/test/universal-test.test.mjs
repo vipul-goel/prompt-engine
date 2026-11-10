@@ -98,6 +98,9 @@ test('what next menu: a starred option the method allows after What next?, numbe
     '1) Run it now\n2) Refine ★',
     '1) Run it now\n2) Refine\nTell me when you are done ★ reviewing.',
     '1) Run it now ★\n2) Save to file',
+    // One ★: output-format.md marks the recommended option only (step 1e).
+    '1) Run it now ★\n2) Refine ★',
+    '1) Fill placeholders ★ 2) Refine 3) Save to file ★',
   ]) assert.ok(!menu(output({ menu: m })), m);
 });
 
@@ -182,6 +185,7 @@ test('Done ★, not Run it now: the Midjourney case wants a starred Done option,
     '1) Done\n2) Run it now ★\n3) Refine',
     '1) Done ★\n2) Run it now\n3) Refine',
     '1) Refine ★\n2) Done',
+    '1) Done ★\n2) Refine ★',
     // Nothing is open, so Fill placeholders is not the ★.
     '1) Fill placeholders ★\n2) Refine',
   ]) assert.ok(!done(image(m)), m);
@@ -204,6 +208,11 @@ test('menu patterns: the Midjourney check is the media graders\' pattern, and wr
   assert.equal(U.MEDIA_MENU.source, pattern('video-veo-quick/graders/05-done-menu.md'));
   assert.ok(pattern('writing-quick-launch-email/graders/08-what-next-menu.md').includes(`(?=${U.FILL_OPEN})`));
   assert.equal(pattern('followup-change-assumption/graders/03-what-next-menu.md'), pattern('writing-quick-launch-email/graders/08-what-next-menu.md'));
+  // Each fails a second ★ after What next?, as MENU and MEDIA_MENU do.
+  for (const file of ['writing-quick-launch-email/graders/08-what-next-menu.md', 'image-midjourney-quick/graders/05-done-not-run.md', 'private-detail-redaction-quick/graders/08-what-next-menu.md']) {
+    assert.ok(pattern(file).startsWith(`^${U.ONE_STAR}`), file);
+  }
+  assert.ok(U.MENU.source.startsWith(`^${U.ONE_STAR}`));
 });
 
 test('menu patterns: private-detail-redaction-quick 08 holds the same open-placeholder condition, with the number\'s placeholder left out too (D46)', () => {
@@ -215,7 +224,7 @@ test('menu patterns: private-detail-redaction-quick 08 holds the same open-place
   const num = String.raw`phone|mobile|\bcell(?:phone)?\b|(?:conductor|\bher\b|personal|private|contact)[^\[\]\n]{0,40}?number|(?:conductor|\bher\b|personal|private)[^\[\]\n]{0,40}?contact`;
   const open = U.FILL_OPEN.replaceAll(secret, () => `(?:\\b|_)api[ _-]?key(?:\\b|_)|${num}))`);
   // With such a placeholder open, Fill placeholders ★; without one, Run it now ★ or Try it here ★.
-  assert.ok(pattern.startsWith(`^(?:(?=${open})`));
+  assert.ok(pattern.startsWith(`^${U.ONE_STAR}(?:(?=${open})`));
   assert.ok(pattern.includes(`★|(?!${open})`));
 });
 

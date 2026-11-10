@@ -59,7 +59,10 @@ const OPTION = String.raw`(^|\s)(\d[.)]|[-*•])[ \t]*\**`;
 // This pattern, STARRED_NOT_FILL, MEDIA_MENU and the Save to file check read the menu from the
 // first "What next?" on, as the eval graders' menu checks do: the same verdicts as reading from
 // any of them, in time linear in the reply's length (step 1e).
-export const MENU = new RegExp(String.raw`^(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★`, 'i');
+// output-format.md marks only the recommended option with ★, so a second ★ after the first
+// "What next?" fails MENU and MEDIA_MENU, and the eval graders' menu checks (step 1e).
+export const ONE_STAR = String.raw`(?!(?:(?!What next\?)[\s\S])*What next\?[^★]*★[^★]*★)`;
+export const MENU = new RegExp(String.raw`^${ONE_STAR}(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★`, 'i');
 // Whether placeholders other than secrets' are open, read from the start of the reply, as
 // (?=FILL_OPEN) or (?!FILL_OPEN): a Fill before running section, up to the next line that starts
 // with #, lists one; or the reply has no "#" Fill before running heading and its Full prompt holds
@@ -111,7 +114,7 @@ export const STRUCTURE = [
 // An image prompt, which can't be generated here: no Run it now option after "What next?", and a
 // starred Done option, or Fill placeholders ★ while placeholders other than secrets are open
 // (findings 5 and 22; D1). The pattern of image-midjourney-quick's 05 grader.
-export const MEDIA_MENU = new RegExp(String.raw`^(?!(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Run it now)` +
+export const MEDIA_MENU = new RegExp(String.raw`^${ONE_STAR}(?!(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Run it now)` +
   String.raw`(?:(?=${FILL_OPEN})(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Fill (in )?(the )?placeholders\**[ \t]*★` +
   String.raw`|(?!${FILL_OPEN})(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Done\b[^\n]{0,200}★)`, 'i');
 export const DONE_NOT_RUN = ['Done ★ (Fill placeholders ★ while placeholders are open), not Run it now', has(MEDIA_MENU)];
