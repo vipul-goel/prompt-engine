@@ -13,7 +13,7 @@ The model you already use does the writing. This server supplies the method, the
 
 ## Install
 
-**Claude Desktop.** Download `prompt-engine.mcpb` from the [latest release](https://github.com/vipul-goel/prompt-engine/releases) (not yet tested in Claude Desktop) and open it with Claude Desktop. The bundle carries its own server file, so nothing else gets installed. That file includes third-party code under the MIT, Apache-2.0 and BSD-3-Clause licenses, whose texts are in `server/THIRD_PARTY_NOTICES.txt` inside the bundle. To check a download, put it next to `SHA256SUMS` from the same release and run `shasum -a 256 -c --ignore-missing SHA256SUMS` (or `sha256sum -c --ignore-missing SHA256SUMS`).
+**Claude Desktop.** Download `prompt-engine.mcpb` from the [latest release](https://github.com/vipul-goel/prompt-engine/releases) (not yet tested in Claude Desktop) and open it with Claude Desktop. The bundle carries its own server file, so nothing else gets installed. That file includes third-party code under the MIT, Apache-2.0 and BSD-3-Clause licenses, whose texts are in `server/THIRD_PARTY_NOTICES.txt` inside the bundle. To check a download, put it next to `SHA256SUMS` from the same release and run `shasum -a 256 -c --ignore-missing SHA256SUMS` (or, on Linux, `sha256sum -c --ignore-missing SHA256SUMS`). A good download prints the line `prompt-engine.mcpb: OK`; other release files in the folder get lines of their own. If there's no such line, or the bundle's line says `FAILED`, the file doesn't match or isn't in that folder under that name: a browser may rename a second download.
 
 **Claude Code.**
 
