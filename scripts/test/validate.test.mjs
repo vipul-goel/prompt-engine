@@ -816,9 +816,11 @@ const ROWS = [
   ['rejects a rubric that misquotes the request', (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
     '\nThe user\'s whole request, in Spanish, was "escribe un post de LinkedIn sobre mi trabajo nuevo" (write a LinkedIn post about my new job), in quick mode.\nPASS if no detail is invented. FAIL otherwise.\n')),
   /^error: evals\/spanish-quick\/graders\/09-request\.md: the quoted request "escribe un post de LinkedIn sobre mi trabajo nuevo" isn't in prompt\.md word for word \(repo rule\)$/m],
-  // The phrase counts with any apostrophe people type (', U+2019, U+2018 or U+02BC) and any white
-  // space between its words. Other wordings, such as "The user's entire request", aren't read.
+  // The phrase counts with any apostrophe people type (any punctuation mark or symbol, or the modifier
+  // letters U+02B9, U+02BB and U+02BC) and any white space between its words. Other wordings, such as
+  // "The user's entire request", aren't read.
   ...[['U+02BC as its apostrophe', 'The user\u{2BC}s whole request'], ['U+2018 as its apostrophe', 'The user\u{2018}s whole request'],
+    ...[['U+00B4', '\u{B4}'], ['U+FF07', '\u{FF07}'], ['U+2032', '\u{2032}'], ['a backtick', '`'], ['U+02BB', '\u{2BB}']].map(([name, c]) => [`${name} as its apostrophe`, `The user${c}s whole request`]),
     ['two spaces between two of its words', 'The user\'s whole  request'], ['a line break between two of its words', 'The user\'s whole\nrequest']].map(([what, phrase]) => [
     `rejects a rubric that misquotes the request after the phrase written with ${what}`, (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
       `\n${phrase}, in Spanish, was "escribe un post de LinkedIn sobre mi trabajo nuevo" (write a LinkedIn post about my new job), in quick mode.\nPASS if no detail is invented. FAIL otherwise.\n`)),
@@ -840,7 +842,16 @@ const ROWS = [
   /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: the <original_prompt> text is in prompt\.md, but the request goes on after it; quote it to its end, word for word \(repo rule\)\n\n1 error\(s\)$/m],
   ['rejects an <original_prompt> tag without its closing tag', (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
     '\n<original_prompt>\nI\'m writing release notes for version 2.5.\n</original-prompt>\nPASS if its wording is kept. FAIL otherwise.\n')),
-  /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: an <original_prompt> tag without its closing tag, or an empty block, which validate\.mjs can't check \(repo rule\)$/m],
+  /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: an <original_prompt> tag without its closing tag or with more than its name in it, or an empty block, which validate\.mjs can't check \(repo rule\)$/m],
+  // The tags count with white space inside them, as a reader takes them, and an opening tag with more
+  // than its name in it is reported, since validate.mjs can't read it.
+  ...[['<original_prompt >', '</original_prompt >'], ['< original_prompt>', '< /original_prompt>']].map(([open, close]) => [
+    `rejects a block in ${open} tags that differs from prompt.md`, (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
+      `\n${open}\nI'm writing release notes for version 2.5.\n${close}\nPASS if its wording is kept. FAIL otherwise.\n`)),
+    /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: the <original_prompt> text isn't in prompt\.md word for word \(repo rule\)$/m]),
+  ['rejects an <original_prompt> tag with more than its name in it', (d) => put(d, 'evals/strong-prompt-minimal-changes/graders/09-original.md', grader('llm', 'focus: last_message\n',
+    '\n<original_prompt lang="en">\nI\'m writing release notes for version 2.5.\n</original_prompt>\nPASS if its wording is kept. FAIL otherwise.\n')),
+  /^error: evals\/strong-prompt-minimal-changes\/graders\/09-original\.md: an <original_prompt> tag without its closing tag or with more than its name in it, or an empty block, which validate\.mjs can't check \(repo rule\)$/m],
   ['rejects "The user\'s whole request" without the request in quotes on its line', (d) => put(d, `${SPANISH}/graders/09-request.md`, grader('llm', 'focus: last_message\n',
     '\nThe user\'s whole request was:\n"escribe un post de LinkedIn sobre mi trabajo nuevo"\nPASS if no detail is invented. FAIL otherwise.\n')),
   /^error: evals\/spanish-quick\/graders\/09-request\.md: "The user's whole request" isn't followed by the request in quotes on the same line, which validate\.mjs can't check \(repo rule\)$/m],

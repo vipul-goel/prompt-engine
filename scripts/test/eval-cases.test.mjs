@@ -1152,10 +1152,13 @@ test('checkConversations reports a request marker that it cannot read, instead o
     'evals/quick/graders/03-unclosed.md': judge('<original_prompt>\nwrite a launch email\n</original-prompt>'),
     'evals/quick/graders/04-empty.md': judge('<original_prompt></original_prompt>'),
     'evals/quick/graders/05-fine.md': judge('The user\'s whole request was "write a launch email". <original_prompt>write a launch email</original_prompt>'),
+    // An opening tag with more than its name in it can't be read; white space inside a tag can.
+    'evals/quick/graders/06-attribute.md': judge('<original_prompt lang="en">write a launch email</original_prompt>'),
+    'evals/quick/graders/07-spaced-fine.md': judge('< original_prompt >write a launch email</ original_prompt >, and the user\u{2032}s whole request was "write a launch email".'),
   });
-  const tag = (f) => `evals/quick/graders/${f}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`;
+  const tag = (f) => `evals/quick/graders/${f}: an <original_prompt> tag without its closing tag or with more than its name in it, or an empty block, which validate.mjs can't check (repo rule)`;
   const mark = (f) => `evals/quick/graders/${f}: "The user's whole request" isn't followed by the request in quotes on the same line, which validate.mjs can't check (repo rule)`;
-  assert.deepEqual(errors, [mark('01-next-line.md'), mark('02-two-lines.md'), tag('03-unclosed.md'), tag('04-empty.md')]);
+  assert.deepEqual(errors, [mark('01-next-line.md'), mark('02-two-lines.md'), tag('03-unclosed.md'), tag('04-empty.md'), tag('06-attribute.md')]);
 });
 
 // Word for word means in the request's own letter case and spacing too, unlike the looser
@@ -1193,7 +1196,7 @@ test('checkConversations reads the request markers in any letter case, and wants
   assert.deepEqual(errors, [
     'evals/quick/graders/01-lowercase.md: the quoted request "escribe un post de LinkedIn sobre mi trabajo nuevo" isn\'t in prompt.md word for word (repo rule)',
     'evals/quick/graders/02-tag-case.md: the <original_prompt> text isn\'t in prompt.md word for word (repo rule)',
-    'evals/quick/graders/03-tag-unclosed.md: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can\'t check (repo rule)',
+    'evals/quick/graders/03-tag-unclosed.md: an <original_prompt> tag without its closing tag or with more than its name in it, or an empty block, which validate.mjs can\'t check (repo rule)',
     'evals/quick/graders/04-guillemets.md: "The user\'s whole request" isn\'t followed by the request in quotes on the same line, which validate.mjs can\'t check (repo rule)',
     `evals/quick/graders/05-mid-word.md: the quoted request "ribe un post de LinkedIn sobre mi nuevo trabajo" ${midWord}`,
     `evals/quick/graders/06-mid-word-block.md: the <original_prompt> text ${midWord}`,

@@ -817,22 +817,25 @@ const promptOf = (c) => c.prompt?.body || (isMapping(c.caseYaml?.execution) && t
 const criteriaOf = (g) => (g.data.type === 'llm' ? g.data.criteria ?? (g.body !== '' ? g.body : undefined) : undefined);
 // The two ways a rubric quotes the user's request: in <original_prompt> tags, and as the first
 // quoted string after "The user's whole request" (so "The user's whole request, in Spanish, was
-// "..."" counts too). Straight or curly quotes. The tags and the phrase count in any letter case,
-// and the phrase with any apostrophe people type (', U+2019, U+2018 or U+02BC) and any white space
-// between its words, so that no form of them is skipped without a word. Other wordings, such as
+// "..."" counts too). Straight or curly quotes. Both count in any letter case, so that no form of
+// them is skipped without a word. The tags count with white space inside them, as in
+// < original_prompt > and < /original_prompt >, and an opening tag with more than its name in it,
+// such as an attribute, counts as one and is reported as one that can't be read. The phrase counts
+// with any apostrophe people type, any punctuation mark or symbol (', ’, ‘, ´, `, ′ or ＇) or the
+// modifier letters ʹ, ʻ and ʼ, and with any white space between its words. Other wordings, such as
 // "The user's entire request", and quotes in single quotes aren't read (CONTRIBUTING.md says so).
 // Another quotation mark (« », ‹ ›, „, 「 or 『) between the phrase and the double quotes makes the
 // phrase unreadable: the request quoted in that mark was passed over for a later double-quoted word.
-const ORIGINAL_PROMPT_OPEN = /<original_prompt>/gi;
-const WHOLE_REQUEST_MARK = /The\s+user['\u{2018}\u{2019}\u{2BC}]s\s+whole\s+request\b/giu;
+const ORIGINAL_PROMPT_OPEN = /<\s*original_prompt\b/gi;
+const WHOLE_REQUEST_MARK = /The\s+user[\p{P}\p{S}\u{2B9}\u{2BB}\u{2BC}]s\s+whole\s+request\b/giu;
 // Both forms are read in time in step with the text. Lazy patterns, from an opening tag to its
 // closing tag and from the phrase to the quote after it, tried the rest of the text or line again
 // from each tag or phrase that nothing closed, which took quadratic time on a run of them. The
 // readers below give the same answers. When an opening tag has no closing tag after it, no later one
 // has, so the reading stops there. The phrases before one quotation mark or line break share it,
 // and so do the quotes that open before one ", ” or line break, so each is looked for once.
-const PROMPT_TAG_OPEN = /<original_prompt>/gi;
-const PROMPT_TAG_CLOSE = /<\/original_prompt>/gi;
+const PROMPT_TAG_OPEN = /<\s*original_prompt\s*>/gi;
+const PROMPT_TAG_CLOSE = /<\s*\/\s*original_prompt\s*>/gi;
 // After the phrase, the first quotation mark or line break; after the " or “ that opens the request,
 // the first ", ” or line break.
 const REQUEST_STOP = /["\u{201C}\u{AB}\u{BB}\u{2039}\u{203A}\u{201E}\u{300C}\u{300E}\n]/gu;
@@ -957,7 +960,7 @@ export function checkConversations(root, cases, { err, contract }) {
       // A marker that doesn't parse would be skipped without a word: an opening tag without its
       // closing tag, an empty block, or the request's quote on another line or across a line break.
       const blocks = originalPrompts(criteria).map((b) => b.trim());
-      if ((criteria.match(ORIGINAL_PROMPT_OPEN) ?? []).length !== blocks.length || blocks.includes('')) err(`${g.file}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`);
+      if ((criteria.match(ORIGINAL_PROMPT_OPEN) ?? []).length !== blocks.length || blocks.includes('')) err(`${g.file}: an <original_prompt> tag without its closing tag or with more than its name in it, or an empty block, which validate.mjs can't check (repo rule)`);
       for (const block of blocks) {
         const place = block === '' ? 'whole' : placeIn(typed, block);
         if (place !== 'whole') err(`${g.file}: the <original_prompt> text ${misplaced(place, source)} (repo rule)`);
