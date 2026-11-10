@@ -441,7 +441,7 @@ Coding agents take instructions literally and act on them, so these five items p
 
 ### Tips for coding agents
 
-- In a code workspace, read the repo before asking, with your file-reading and search tools (Read, Glob and Grep in Claude Code) rather than shell commands, even read-only ones such as `ls`, because nothing runs until the user picks. If a shell is your only way to read files, read none before the pick: treat what the repo would show as something you can't see, and ask only what the priority rule in the "Asking clarifying questions" section calls for, with a ★ such as "Have the agent find it in the project". Package manifests, configs, the README and the code the prompt mentions answer most stack and convention questions.
+- In a code workspace, read the repo before asking, with your file-reading and search tools (Read, Glob and Grep in Claude Code) rather than shell commands, even read-only ones such as `ls`, and without handing the lookups to a subagent, because nothing runs until the user picks. If a shell is your only way to read files, read none before the pick: treat what the repo would show as something you can't see, and ask only what the priority rule in the "Asking clarifying questions" section calls for, with a ★ such as "Have the agent find it in the project". Package manifests, configs, the README and the code the prompt mentions answer most stack and convention questions.
 - Name files and folders the agent should start from.
 - For large or risky changes, ask the agent to propose a plan first; many agents have a plan mode for this.
 - Rules that must never break (never touch `migrations/`, never push to `main`) are best enforced with the agent's permission settings or hooks, with the prompt explaining why.

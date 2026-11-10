@@ -148,7 +148,7 @@ Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. C
 /prompt-engine delete all the .log files in this folder and refactor utils.py to use pathlib
 ```
 
-- [ ] Before the pick, Claude makes no Bash call. Press Ctrl+O to open the transcript viewer and look for a Bash call among the tool calls: Claude Code runs read-only commands such as `ls` without a permission prompt in every mode, and 2.1.319's main screen folded one into a line such as "Listed 1 directory", as it folds file reads.
+- [ ] Before the pick, Claude makes no Bash call and starts no subagent. Press Ctrl+O to open the transcript viewer and look for either among the tool calls: Claude Code runs read-only commands such as `ls` without a permission prompt in every mode, and 2.1.319's main screen folded one into a line such as "Listed 1 directory", as it folds file reads. A subagent call shows the subagent's name and its task, such as `Explore(…)`, and the subagent runs tools of its own.
 - [ ] Before the pick, no permission prompt appears.
 - [ ] `app.log` is still there, and `utils.py` is unchanged.
 
