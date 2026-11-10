@@ -1,6 +1,6 @@
 # Install Prompt Engine
 
-Steps checked against the vendors' docs on 2026-11-08. Apps rename menus, so if a label differs, look for the closest match.
+Steps checked against the vendors' docs on 2026-11-08, unless a section gives another date. Apps rename menus, so if a label differs, look for the closest match.
 
 Pick one option for the app you use. Some options reach more than one app, so a second install can give you two copies (see [Install it once](#install-it-once)). Each option says whether its steps were verified against the vendor's docs or tested here; see [compatibility.md](compatibility.md) for details.
 
