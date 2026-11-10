@@ -211,6 +211,12 @@ const walk = (dir) => entries(dir).flatMap((e) => {
   return [];
 });
 const skillFiles = walk(SKILL_DIR);
+// The walk starts in skills/prompt-engine, which it reads through a link too, as the build and the
+// skill zip do. Git stores a link, not the files it leads to: a clone has nothing there when the
+// link leads out of the repository, and a checkout without links (Windows' default) has a file.
+for (const d of ['skills', SKILL_DIR]) {
+  if (lstatSync(join(root, d), { throwIfNoEntry: false })?.isSymbolicLink()) err(`${d}: a link; git stores the link, not the files it leads to, so the plugin can ship without the skill, though the checks, the build and the skill zip follow it; keep the skill's files in ${d} itself`);
+}
 // Only SKILL.md and the references folder at the top: anything else there, such as a stray "SKILL
 // copy.md" or another folder, would ship in the skill zip. A file that isn't Markdown is reported
 // below instead.

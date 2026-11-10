@@ -502,13 +502,18 @@ export function checkEvalCases(root, err, warn = () => {}) {
     if (caseParsed && isFile(join(abs, 'history.jsonl')) && !(isMapping(cy?.context) && cy.context.history_file !== undefined)) {
       err(`${dir}/history.jsonl: no context.history_file in case.yaml names it, so claude plugin eval doesn't resume it; set context.history_file: history.jsonl, or delete the file`);
     }
+    // Listed without following links: one that leads nowhere, such as the lock file Emacs keeps next
+    // to a file with unsaved changes, stopped the read with Node's own ENOENT line.
     const gdir = join(abs, 'graders');
-    for (const f of isDir(gdir) ? readdirSync(gdir).sort() : []) {
+    const gentries = isDir(gdir) ? readdirSync(gdir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) : [];
+    for (const e of gentries) {
+      const f = e.name;
       if (OS_JUNK.has(f)) continue;
-      if (isDir(join(gdir, f))) err(`${dir}/graders/${f}: a folder; claude plugin eval reads only the .md files directly in graders/, so it skips the graders in it`);
+      if (e.isDirectory()) err(`${dir}/graders/${f}: a folder; claude plugin eval reads only the .md files directly in graders/, so it skips the graders in it`);
+      else if (!e.isFile()) err(`${dir}/graders/${f}: not a plain file (a link, such as the lock file Emacs keeps while a file has unsaved changes, doesn't survive every checkout), so validate.mjs doesn't read it`);
       else if (!f.endsWith('.md')) err(`${dir}/graders/${f}: claude plugin eval reads only the files in graders/ whose names end in .md, so it skips this one`);
     }
-    const files = isDir(gdir) ? readdirSync(gdir).filter((f) => f.endsWith('.md')).sort() : [];
+    const files = gentries.filter((e) => e.isFile() && e.name.endsWith('.md')).map((e) => e.name);
     let count = 0;
     for (const f of files) {
       const where = `${dir}/graders/${f}`;

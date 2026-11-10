@@ -1061,6 +1061,25 @@ test('names a link in the skill folder, such as an editor\'s lock file, and keep
   /^4 error\(s\)$/m,
 ], 1, NO_STACK));
 
+// The same in a case's graders/ folder, which eval-cases.mjs lists: the lock file stopped its read
+// with Node's own ENOENT line, which named the absolute path, and a link to a grader was read as one.
+test('names a link in a case\'s graders folder in one line, such as an editor\'s lock file', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => withMutation((d) => {
+  symlinkSync('someone@host.4242:1700000000', join(d, `${SPANISH}/graders/.#01-x.md`));
+  symlinkSync('02-no-invention.md', join(d, `${SPANISH}/graders/09-link.md`));
+}, [
+  ...['.#01-x.md', '09-link.md'].map((f) => new RegExp(`^error: ${reEsc(`${SPANISH}/graders/${f}`)}: not a plain file \\(a link`, 'm')),
+  /^2 error\(s\)$/m,
+], 1, [...NO_STACK, /ENOENT/]));
+
+// skills/ or skills/prompt-engine as a link: git stores the link, not the files it leads to, while
+// the checks, the build and the skill zip follow it.
+for (const what of ['skills/prompt-engine', 'skills']) {
+  test(`refuses ${what} when it is a link`, { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => withMutation((d) => {
+    renameSync(join(d, what), join(d, 'moved'));
+    symlinkSync(join(d, 'moved'), join(d, what));
+  }, new RegExp(`^error: ${reEsc(what)}: a link; git stores the link, not the files it leads to`, 'm'), 1, NO_STACK));
+}
+
 // A copy that fails, here of a checkout that isn't there or at a git command, removes its folder
 // before it throws. With an unreadable file in the checkout, each test left one in the temp
 // directory.
