@@ -319,16 +319,20 @@ test('build.mjs reports data it cannot render in one line, without a stack trace
   }
 });
 
-// The shape checks before a render: lint rules that aren't a list, and a media target that isn't an
-// entry. Without them, the build stopped with "rules is not iterable" or "Cannot read properties of
-// null (reading 'status')", which named neither the file nor the entry, and no other test noticed.
-test('build.mjs names lint rules that are not a list, and a media target that is not an entry', () => {
+// The shape checks before a render: lint rules or media targets that aren't a list, and a media
+// target that isn't an entry. Without them, the build stopped with "rules is not iterable",
+// "data.targets.entries is not a function", "Cannot read properties of undefined (reading
+// 'entries')" or "Cannot read properties of null (reading 'status')", which named neither the file
+// nor the entry, and no other test noticed.
+test('build.mjs names lint rules and media targets that are not a list, and a media target that is not an entry', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pe-badshape-'));
   try {
     copyTo(dir);
     for (const [file, change, message] of [
       ['data/lint-rules.json', (j) => { j.rules = {}; }, 'data/lint-rules.json: rules must be a list of rules'],
       ['data/media-targets.json', (j) => { j.targets[0] = null; }, 'media-targets: targets[0] is not an entry'],
+      ['data/media-targets.json', (j) => { j.targets = {}; }, 'media-targets: targets must be a list of entries'],
+      ['data/media-targets.json', (j) => { delete j.targets; }, 'media-targets: targets must be a list of entries'],
     ]) {
       const path = join(dir, file);
       const before = readFileSync(path, 'utf8');
