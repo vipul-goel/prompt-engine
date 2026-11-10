@@ -13,7 +13,7 @@ First version.
   - asks up to 8 multiple-choice questions, each with a ★ recommended answer, and only when the answer changes the prompt;
   - `quick:` skips the questions and `deep:` adds rounds;
   - `ok` accepts every ★, and `2b 4: your own text` overrides some answers;
-  - writes the full prompt, a short version, what was added and why, the assumptions, a before/after score and a "What next?" menu (run it, refine it, or save it in Claude Code);
+  - writes the full prompt, a short version, what was added and why, the assumptions, a before/after score and a "What next?" menu (run it, refine it, or save it to a file where the app can save files on your computer);
   - domain checklists for coding agents, writing and marketing, research and analysis, and image and video generation, plus a general fallback;
   - image and video prompts come out in the target tool's own syntax, with each tool's verification status in `data/media-targets.json`;
   - is built not to invent facts: unknowns become `[[placeholders]]` and the choices it makes become numbered assumptions, though tests still find some small picks missing from them ([Known limits](docs/compatibility.md#known-limits));
