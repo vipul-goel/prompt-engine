@@ -1369,6 +1369,26 @@ test('the mug cases\' no-invention judges skip, by quote, the counts that the re
 // "covered" both ways on the same miss: an item that named what a count measured ('Output is an
 // overview', 'párrafos cortos') passed the unlisted count in 2 of 4 kept runs and failed it in the
 // others (step 1e, B1.1.3). The example comes from none of the cases' requests.
+// Nothing runs until the user picks (SKILL.md) and nothing comes after the menu (output-format.md),
+// so in every quick output case whose prompt asks for text or code, one judge fails a reply that
+// also carries out the prompt, as strong-prompt-minimal-changes' 01 does (step 1e, B1.1.9). The
+// image and video cases have nothing to carry out here; their 05 graders fail Run it now.
+const CARRIES_OUT = [
+  ['writing-quick-launch-email', '15-writing-must-haves', 'writing the launch email'],
+  ['research-quick-vector-databases', '05-research-must-haves', 'writing the comparison of vector databases'],
+  ['secret-redaction-quick', '07-coding-must-haves', 'writing or running the script that summarizes the emails'],
+  ['coding-quick-code-block', '04-no-invention', 'writing the fixed function or its test'],
+  ['spanish-quick', '01-spanish-throughout', 'writing the LinkedIn post'],
+  ['private-detail-redaction-quick', '03-told-not-asked', "answering a member's question as the GPT would"],
+];
+test('the quick output cases fail a reply that also carries out the prompt, as strong-prompt 01 does', () => {
+  assert.ok(graderOf('strong-prompt-minimal-changes', '01-already-strong').body.includes('FAIL if the reply carries out the prompt itself (for example, it writes the release notes)'));
+  for (const [c, g, example] of CARRIES_OUT) {
+    const body = graderOf(c, g).body;
+    assert.ok(body.includes(`Also FAIL if the reply carries out the prompt itself, for example by ${example}, anywhere in the reply`), `${c}/${g}`);
+  }
+});
+
 const NUMBER_RULE = "A number is covered only when an item states it: an item that names what the number measures, such as 'a guest list', doesn't cover '40 guests'.";
 test('the text no-invention rubrics cover a number only with an item that states it (D30)', () => {
   const media = new Set(MEDIA_RUBRICS.map(([c, g]) => `${c}/${g}`));
