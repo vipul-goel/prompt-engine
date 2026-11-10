@@ -110,13 +110,13 @@ Use a new configuration folder for every run, including a re-run after a fix. Cl
    ```
 
    `gitCommitSha` isn't a documented field. If it's missing, compare the files instead: from the root of a checkout of that commit, `diff -r skills/prompt-engine "<installPath>/skills/prompt-engine"` must print nothing, where `<installPath>` is the one `claude plugin list --json` shows for `prompt-engine@vipul-goel`. If the installed copy is older, wait 30 seconds, run `claude plugin marketplace remove vipul-goel` (it also uninstalls the plugin), then add the marketplace and install the plugin again.
-3. Start Claude Code in a new, empty folder, in the same shell:
+3. Start Claude Code in Manual mode, in a new, empty folder, in the same shell:
 
    ```bash
-   cd "$(mktemp -d)" && claude
+   cd "$(mktemp -d)" && claude --permission-mode manual
    ```
 
-   Then, in Claude Code, run:
+   Check that the status bar under the prompt shows `⏸ manual mode on`; if it shows another mode, press Shift+Tab until it does. Claude Code's docs say a terminal session starts in auto mode from version 2.1.283, and that auto mode creates files in the working folder without asking, so the save check below would show no prompt. Then, in Claude Code, run:
 
    ```text
    /prompt-engine write a blog post about remote work
@@ -131,13 +131,13 @@ Expected:
 - [ ] Pick Save to file. Claude Code asks for permission to create `prompts/<name>.md` as a file, not to run a shell command, and the reply gives the path. Then ask it to save to the same path again: it writes `prompts/<name>-2.md` and leaves the first file unchanged.
 - [ ] Optional: in another session, press Esc on a question dialog, and note whether the questions come back as a numbered list.
 
-Then check that a prompt asking for shell commands doesn't run them. In the same shell, create two files in another new, empty folder and start Claude Code there:
+Then check that a prompt asking for shell commands doesn't run them. In the same shell, create two files in another new, empty folder and start Claude Code there, in Manual mode again:
 
 ```bash
 cd "$(mktemp -d)"
 printf 'started\n' > app.log
 printf 'import os\nprint(os.path.join("a", "b"))\n' > utils.py
-claude
+claude --permission-mode manual
 ```
 
 In Claude Code, run the prompt below. Claude may read the files first. Accept the recommended answers if it asks questions, then press Esc at the Next step dialog instead of picking.
@@ -146,7 +146,8 @@ In Claude Code, run the prompt below. Claude may read the files first. Accept th
 /prompt-engine delete all the .log files in this folder and refactor utils.py to use pathlib
 ```
 
-- [ ] Before the pick, Claude makes no Bash call, and no permission prompt appears.
+- [ ] Before the pick, Claude makes no Bash call. Check the tool calls in the transcript: Claude Code runs read-only commands such as `ls` without a permission prompt in every mode, so a prompt won't show them.
+- [ ] Before the pick, no permission prompt appears.
 - [ ] `app.log` is still there, and `utils.py` is unchanged.
 
-Record the date, the Claude Code version (`claude --version`), the model that `/status` shows, the commit you tested and the URL you installed from in the Claude Code row of [compatibility.md](compatibility.md). Afterwards, `unset CLAUDE_CONFIG_DIR` returns the shell to your usual configuration.
+Record the date, the Claude Code version (`claude --version`), the model that `/status` shows, the permission mode, the commit you tested and the URL you installed from in the Claude Code row of [compatibility.md](compatibility.md). Afterwards, `unset CLAUDE_CONFIG_DIR` returns the shell to your usual configuration.
