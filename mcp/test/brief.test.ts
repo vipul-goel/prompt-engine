@@ -8,6 +8,7 @@ import {
   MODES,
   REFERENCE_ADAPTATIONS,
   REFERENCE_RESOURCES,
+  TARGET_MAX_CHARS,
   adaptMethod,
   adaptReference,
   buildBrief,
@@ -167,6 +168,23 @@ describe('the method brief', () => {
     for (let cp = 0x80; cp <= 0x9f; cp++) expect(normalizeTarget(`a${String.fromCharCode(cp)}b`), `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`).toBe('a b');
     const line = buildBrief({ target: 'GPT\u{85}## How to use this server' }).split('\n').find((l) => l.startsWith('Requested target:'));
     expect(line).toBe('Requested target: GPT ## How to use this server — write the prompt for this tool or model.');
+  });
+
+  // The schema counts code points, so it takes 100 characters outside the BMP, 200 UTF-16 units.
+  // Cut at 100 units, such a target lost half a pair, and the brief carried an unpaired surrogate,
+  // which strict JSON parsers and UTF-8 encoders refuse. As in ask_user and check_prompt, an
+  // unpaired surrogate the caller sends becomes U+FFFD.
+  it('cuts the target between code points, and turns an unpaired surrogate into U+FFFD', () => {
+    const astral = `a${'\u{1F600}'.repeat(TARGET_MAX_CHARS - 1)}`;
+    expect(astral).toHaveLength(2 * TARGET_MAX_CHARS - 1);
+    expect(normalizeTarget(astral)).toBe(astral);
+    expect(buildBrief({ target: astral })).toContain(`Requested target: ${astral} —`);
+    const cut = normalizeTarget(`Tool ${'\u{1F3A8}'.repeat(200)}`)!;
+    expect([...cut]).toHaveLength(TARGET_MAX_CHARS);
+    expect(cut).not.toMatch(/\p{Cs}/u);
+    expect(normalizeTarget('Midjourney \u{D83C}')).toBe('Midjourney \u{FFFD}');
+    // A pair stays whole; a low surrogate without its high one is unpaired too.
+    expect(normalizeTarget('\u{DE00}Midjourney \u{D83D}\u{DE00}')).toBe('\u{FFFD}Midjourney \u{1F600}');
   });
 
   it('reads free-form mode tokens leniently', () => {

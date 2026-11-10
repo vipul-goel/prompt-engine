@@ -366,6 +366,10 @@ describe('tool result size', () => {
     return lines.join('\n');
   };
   const longestLine = (n: number, unit: string) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
+  // Targets at the schema's limit, which counts code points: "a" and 99 characters outside the BMP
+  // are 199 UTF-16 units, so a cut at 100 units would split the last pair it keeps, and an unpaired
+  // surrogate, like each of the 100 lone ones, would reach the result as a 6-character escape.
+  const TARGETS = { x: 'x'.repeat(100), 'characters outside the BMP': `a${'\u{1F600}'.repeat(99)}`, 'lone surrogates': '\u{D800}'.repeat(100) };
 
   it('stays under the budget for the largest inputs of every tool', async () => {
     const conn = await connectHttp('modern');
@@ -378,7 +382,10 @@ describe('tool result size', () => {
         'past every cap, with quotes': pastEveryCap('"'),
       };
       const calls: Array<{ label: string; name: string; arguments: Record<string, unknown> }> = [
-        { label: 'enhance_prompt', name: 'enhance_prompt', arguments: { mode: 'standard', target: 'x'.repeat(100) } },
+        ...Object.entries(TARGETS).flatMap(([label, target]) => [
+          { label: `enhance_prompt, target of ${label}`, name: 'enhance_prompt', arguments: { mode: 'standard', target } },
+          { label: `check_prompt, target of ${label}`, name: 'check_prompt', arguments: { prompt: 'Write a haiku about rain.', target } },
+        ]),
         ...DOMAINS.map((domain) => ({ label: `get_checklist ${domain}`, name: 'get_checklist', arguments: { domain } })),
         ...Object.entries(prompts).map(([label, prompt]) => ({ label: `check_prompt: ${label}`, name: 'check_prompt', arguments: { prompt, target: 'x'.repeat(100) } })),
         ...Object.entries(FILLS).map(([label, fill]) => ({ label: `ask_user in text mode, ${label}`, name: 'ask_user', arguments: largestAsk(fill) })),

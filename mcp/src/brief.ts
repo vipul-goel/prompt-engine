@@ -44,12 +44,14 @@ export function normalizeMode(value: unknown): Mode | undefined {
 
 /**
  * One line, no control characters (C0, DEL and C1, as check_prompt's text has none), bounded, so
- * a target can't reshape the brief.
+ * a target can't reshape the brief. The bound counts code points, as the schema does, so a cut
+ * never splits a surrogate pair, and an unpaired surrogate becomes U+FFFD, as in ask_user and
+ * check_prompt: the brief stays text that JSON carries without an escape and UTF-8 can encode.
  */
 export function normalizeTarget(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  const flat = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return flat ? flat.slice(0, TARGET_MAX_CHARS) : undefined;
+  const flat = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/\p{Cs}/gu, '\u{FFFD}').replace(/\s+/g, ' ').trim();
+  return flat ? [...flat].slice(0, TARGET_MAX_CHARS).join('') : undefined;
 }
 
 /** Points `references/x.md` mentions at this server's resources instead of files the host can't see. */
