@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -709,6 +709,38 @@ test('build.mjs never copies a file that a link in the skill\'s folder leads to 
     assert.equal(r.stderr, `build failed: evals/followup-partial-answers/history.jsonl: ${link} leads out of the skill's folder through a link, and only the skill's own files are copied into a recording\n`);
     assert.equal(readFileSync(h, 'utf8'), before);
     assert.doesNotMatch(readFileSync(h, 'utf8'), /OUTSIDE TEXT/);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+// Nor does it write through a link where a file it writes belongs: git stores the link, not what it
+// leads to, which can be outside the repository. A linked recording got the refreshed one, and a
+// linked graders folder the lint graders, before validate.mjs named either link.
+test('build.mjs writes nothing through a link, such as a linked recording or graders folder, and nothing else either', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => {
+  const parent = mkdtempSync(join(tmpdir(), 'pe-write-link-'));
+  try {
+    const dir = join(parent, 'repo');
+    copyTo(dir);
+    const outside = join(parent, 'outside');
+    // A recording and a graders folder moved out of the copy, each with a link in its place, and
+    // the graders folder without the lint graders, which the build writes.
+    mkdirSync(outside);
+    renameSync(join(dir, 'evals/save-to-file/history.jsonl'), join(outside, 'history.jsonl'));
+    symlinkSync(join(outside, 'history.jsonl'), join(dir, 'evals/save-to-file/history.jsonl'));
+    renameSync(join(dir, 'evals/spanish-quick/graders'), join(outside, 'graders'));
+    symlinkSync(join(outside, 'graders'), join(dir, 'evals/spanish-quick/graders'), 'dir');
+    for (const f of ['lint-prompt.md', 'lint-prompt-i.md']) rmSync(join(outside, 'graders', f));
+    appendFileSync(join(dir, 'skills/prompt-engine/SKILL.md'), '\nA line added by the test.\n');
+    const files = (at) => readdirSync(at, { recursive: true }).sort().map((f) => [f, statSync(join(at, f)).isFile() ? readFileSync(join(at, f), 'utf8') : null]);
+    const other = join(dir, 'evals/followup-partial-answers/history.jsonl');
+    const before = { outside: files(outside), other: readFileSync(other, 'utf8') };
+    const r = node(join(dir, 'scripts', 'build.mjs'));
+    assert.equal(r.code, 1, r.out);
+    assert.equal(r.stdout, '');
+    assert.equal(r.stderr, 'build failed: evals/save-to-file/history.jsonl and evals/spanish-quick/graders are links, and the build writes nothing through a link: git stores the link, not what it leads to, which can be outside the repository. Nothing was written; put the file or folder itself there\n');
+    assert.deepEqual(files(outside), before.outside, 'nothing outside the copy changed');
+    assert.equal(readFileSync(other, 'utf8'), before.other, 'no other stale file was written');
   } finally {
     rmSync(parent, { recursive: true, force: true });
   }

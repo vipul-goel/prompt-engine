@@ -8,9 +8,10 @@
 // Zero dependencies: Node >= 22.19 built-ins only. Output is deterministic (no timestamps),
 // so `node scripts/build.mjs && git diff --exit-code` detects stale generated files.
 // `node scripts/build.mjs --check` exits 1 instead of writing when anything is stale. Any other
-// argument is a usage error (exit 2), before anything is read or written.
+// argument is a usage error (exit 2), before anything is read or written. The build writes nothing
+// through a link: it exits 1, having written nothing, while a stale file's path goes through one.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync, lstatSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -443,6 +444,21 @@ export function buildAll() {
   return outputs;
 }
 
+// The first part of p, a path under the root such as evals/<case>/graders/lint-prompt.md, that is a
+// link, or null. git stores a link, not what it leads to, which can be outside the repository: a
+// build wrote a refreshed recording, or the lint graders, there through a linked history.jsonl or
+// graders/ folder, and validate.mjs (eval-cases.mjs) named the link only afterwards.
+function linkOn(p) {
+  const parts = p.split('/');
+  for (let i = 1; i <= parts.length; i++) {
+    const at = parts.slice(0, i).join('/');
+    let stat;
+    try { stat = lstatSync(join(root, at)); } catch { return null; }
+    if (stat.isSymbolicLink()) return at;
+  }
+  return null;
+}
+
 function main() {
   // Read strictly: any argument but --check meant "write", so a misspelled --check, --check=true or
   // a stray word rewrote the stale files and exited 0.
@@ -456,18 +472,29 @@ function main() {
   // A source the build can't render is a data error to fix, not a crash: one line, no stack.
   let outputs;
   try { outputs = buildAll(); } catch (e) { console.error(`build failed: ${e.message}`); process.exit(1); }
-  let stale = 0;
+  const stale = [];
   for (const [p, content] of Object.entries(outputs)) {
     const abs = join(root, p);
     const current = existsSync(abs) ? normalize(readFileSync(abs, 'utf8')) : null;
     if (current === content) continue;
-    if (check) { console.error(`stale: ${p}`); stale++; continue; }
+    if (check) console.error(`stale: ${p}`);
+    stale.push([p, content]);
+  }
+  if (check && stale.length) process.exit(1);
+  if (check) { console.log('generated files are up to date'); return; }
+  // Nothing is written through a link, and nothing at all while a file to write goes through one.
+  const links = [...new Set(stale.map(([p]) => linkOn(p)).filter((l) => l !== null))].sort();
+  if (links.length) {
+    const named = links.length === 1 ? `${links[0]} is a link` : `${links.slice(0, -1).join(', ')} and ${links.at(-1)} are links`;
+    console.error(`build failed: ${named}, and the build writes nothing through a link: git stores the link, not what it leads to, which can be outside the repository. Nothing was written; put the file or folder itself there`);
+    process.exit(1);
+  }
+  for (const [p, content] of stale) {
+    const abs = join(root, p);
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, content);
     console.log(`wrote ${p}`);
   }
-  if (check && stale) process.exit(1);
-  if (check) console.log('generated files are up to date');
 }
 
 // Whether a module is the entry point, so that importing it runs nothing (record-history.mjs
