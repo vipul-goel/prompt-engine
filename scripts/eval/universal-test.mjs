@@ -71,11 +71,12 @@ export const ONE_STAR = String.raw`(?!(?:(?!What next\?)[\s\S])*What next\?[^★
 export const MENU = new RegExp(String.raw`^${ONE_STAR}(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)${OPTION_STAR}`, 'i');
 // Whether placeholders other than secrets' are open, read from the start of the reply, as
 // (?=FILL_OPEN) or (?!FILL_OPEN): a Fill before running section, up to the next line that starts
-// with #, lists one; or the reply has no "#" Fill before running heading and its Full prompt holds
-// one, read from the first Full prompt heading to the next heading of the output (Short version,
-// What I added, Assumptions, Score or What next?). The method asks for that section whenever
-// placeholders remain, so a reply that leaves it out, or writes it as a bold or plain label,
-// doesn't hide the ones its Full prompt holds (step 1e). Such a label's own list isn't read,
+// with #, lists one; or the Full prompt holds one, read from the first Full prompt heading to the
+// next heading of the output (Short version, What I added, Assumptions, Score or What next?),
+// with or without that section. The method asks for the section, listing each placeholder,
+// whenever placeholders remain, so a reply that leaves it out, writes it as a bold or plain label,
+// or lists the placeholders without their brackets or not at all, doesn't hide the ones its Full
+// prompt holds (step 1e). Such a label's own list isn't read,
 // though: a placeholder it lists that the Full prompt holds only where it doesn't count (below),
 // or not at all, isn't seen as open, where a "#" heading's list would show it. Every Fill before
 // running section in the kept replies is a "#" heading (step 1e, B1.2.11). A placeholder is a
@@ -96,7 +97,7 @@ export const MENU = new RegExp(String.raw`^${ONE_STAR}(?:(?!What next\?)[\s\S])*
 const SECRET_PLACEHOLDER = String.raw`(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)`;
 const OUTPUT_HEADING = String.raw`[ \t]*#+[ \t]*(?:Short version|What I added|Assumptions|Score|What next)`;
 export const FILL_OPEN = String.raw`[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]` +
-  String.raw`|(?![\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running)(?:(?!(?<!#)#+[ \t]*Full prompt)[\s\S])*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?!${OUTPUT_HEADING})[^\n]*)*?\n(?!${OUTPUT_HEADING})[^\n]*?` +
+  String.raw`|(?:(?!(?<!#)#+[ \t]*Full prompt)[\s\S])*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?!${OUTPUT_HEADING})[^\n]*)*?\n(?!${OUTPUT_HEADING})[^\n]*?` +
   String.raw`(?<!(?:such as|e\.g\.,?|for example,?|like|write|leave(?: an?)?|insert|put)[ \t]+\x60?)(?<!\]\]\x60?(?:,|[ \t]+or)[ \t]+\x60?)(?<![\w\])])\[\[(?!placeholders?\]\])(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]`;
 const fillOpen = new RegExp(`^(?:${FILL_OPEN})`, 'i');
 const STARRED_NOT_FILL = new RegExp(String.raw`^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)${OPTION_STAR}`, 'i');

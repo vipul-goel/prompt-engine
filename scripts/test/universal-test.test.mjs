@@ -165,6 +165,12 @@ test('Fill placeholders ★ while placeholders are open: no starred Run it now, 
     withFill(['[[app name]]'], { prompt: inPrompt }).replace('### Fill before running', '**Fill before running**'),
   ]) assert.ok(!fill(t), t);
   assert.ok(fill(output({ prompt: inPrompt, menu: '1) Fill placeholders ★\n2) Refine' })));
+  // Under a "#" heading too, the Full prompt counts: a list with no open placeholder in [[ ]], such
+  // as items written without the brackets or only the secret's setup, doesn't hide one (step 1e).
+  for (const items of [['App name'], ['OPENAI_API_KEY']]) {
+    assert.ok(!fill(withFill(items, { prompt: inPrompt })), `${items}`);
+    assert.ok(fill(withFill(items, { prompt: inPrompt, menu: '1) Fill placeholders ★\n2) Refine' })), `${items}`);
+  }
   // There, the generic [[placeholder]], an example, a marker the prompt tells the model to write
   // and a secret's placeholder don't count.
   for (const prompt of [
@@ -227,6 +233,9 @@ test('Done ★, not Run it now: the Midjourney case wants a starred Done option,
   assert.deepEqual(failing(checks, signed('1) Done ★ (paste it into Midjourney)\n2) Refine')),
     ['Fill placeholders ★ while placeholders are open', 'Done ★ (Fill placeholders ★ while placeholders are open), not Run it now']);
   assert.deepEqual(failing(checks, signed('1) Fill placeholders ★ — reply with the sign text\n2) Refine')), []);
+  // And with a Fill before running heading whose items lack the brackets (step 1e).
+  const listed = signed('1) Done ★ (paste it into Midjourney)\n2) Refine').replace('### What I added', '### Fill before running\n- Sign text — the words on the sign.\n\n### What I added');
+  assert.deepEqual(failing(checks, listed), ['Fill placeholders ★ while placeholders are open', 'Done ★ (Fill placeholders ★ while placeholders are open), not Run it now']);
 });
 
 test('menu patterns: the Midjourney check is the media graders\' pattern, and writing 08 holds its open-placeholder condition', () => {
@@ -255,7 +264,7 @@ test('menu patterns: private-detail-redaction-quick 08 holds the same open-place
   const pattern = readFileSync(join(repo, 'evals', 'private-detail-redaction-quick', 'graders', '08-what-next-menu.md'), 'utf8').match(/^pattern: '([^']*)'\r?$/m)[1];
   // FILL_OPEN leaves out a secret's placeholder; the case's condition adds the words that name a phone number.
   const secret = '(?:\\b|_)api[ _-]?key(?:\\b|_)))';
-  // It does so twice: in the Fill before running section, and in the Full prompt when that section is missing.
+  // It does so twice: in the Fill before running section, and in the Full prompt.
   assert.equal(U.FILL_OPEN.split(secret).length, 3);
   const num = String.raw`phone|mobile|\bcell(?:phone)?\b|(?:conductor|\bher\b|personal|private|contact)[^\[\]\n]{0,40}?number|(?:conductor|\bher\b|personal|private)[^\[\]\n]{0,40}?contact`;
   const open = U.FILL_OPEN.replaceAll(secret, () => `(?:\\b|_)api[ _-]?key(?:\\b|_)|${num}))`);

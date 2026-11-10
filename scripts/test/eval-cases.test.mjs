@@ -1497,13 +1497,14 @@ test("coding-vague-asks-questions 08 judges only each ★ option's own text, and
 });
 
 // The menu graders' open-placeholder condition (D1, D5): placeholders other than secrets' are open
-// when Fill before running lists one, or when the reply has no "#" Fill before running heading and
-// its Full prompt holds one. The method asks for that section whenever placeholders remain, so a
-// reply that drops it, or writes it as a bold label, and stars Run it now or Done, fails while its
-// Full prompt holds an open placeholder (step 1e, B1.1.6); a bold label's own list isn't read
-// (B1.2.11). In the Full prompt, the generic [[placeholder]], an example after such as, e.g., for
-// example or like, a marker after write, leave, insert or put, and a secret's placeholder don't
-// count, so a prompt that holds only those may still star Run it now or Done.
+// when Fill before running lists one, or when the Full prompt holds one, with or without that
+// heading. The method asks for that section, listing each placeholder, whenever placeholders
+// remain, so a reply that drops it, writes it as a bold label or lists the placeholders without
+// their brackets, and stars Run it now or Done, fails while its Full prompt holds an open
+// placeholder (step 1e, B1.1.6); a bold label's own list isn't read (B1.2.11). In the Full prompt,
+// the generic [[placeholder]], an example after such as, e.g., for example or like, a marker after
+// write, leave, insert or put, and a secret's placeholder don't count, so a prompt that holds only
+// those may still star Run it now or Done.
 const MENU_SCORE = '| | Original | Enhanced |\n|---|---|---|\n| Clear goal | 1 | 3 |\n| Context | 0 | 3 |\n| Constraints | 0 | 3 |\n| Output format | 0 | 3 |\n| Edge cases | 0 | 3 |';
 const menuReply = ({ prompt, fill = '', menu }) => `I wrote the prompt in quick mode.
 
@@ -1543,7 +1544,7 @@ const CLOSED_TEXT = [
   // Code, not a placeholder: df[["a", "b"]] picks two columns.
   '# Goal\nFix the report script.\n\n# Code\nsummary = df[["region", "total"]].groupby("region").sum()',
 ];
-test('the text menu graders see open placeholders in the Full prompt when the reply has no Fill before running heading', () => {
+test('the text menu graders see open placeholders in the Full prompt, with or without a Fill before running heading', () => {
   const run = '1. Run it now ★\n2. Refine — change any assumption, or reply `deep` for more questions';
   const fillMenu = '1. Fill placeholders ★ — reply with the app name and the feature\n2. Refine — change any assumption';
   const pattern = graderOf('writing-quick-launch-email', '08-what-next-menu').pattern;
@@ -1554,14 +1555,18 @@ test('the text menu graders see open placeholders in the Full prompt when the re
       'Run it now ★, section dropped': menuReply({ prompt: OPEN_TEXT, menu: run }),
       'Run it now ★, section as a bold label': menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: run }).replace('### Fill before running', '**Fill before running**'),
       'Try it here ★, section dropped': menuReply({ prompt: OPEN_TEXT, menu: '1. Try it here ★ (results there may differ)\n2. Refine' }),
+      // A "#" heading whose list names no open placeholder in [[ ]] doesn't hide the Full prompt's.
+      'Run it now ★, section items without [[ ]]': menuReply({ prompt: OPEN_TEXT, fill: '- App name: what the app is called.\n- Key feature: the feature to lead with.', menu: run }),
+      'Run it now ★, section lists only the secret': menuReply({ prompt: OPEN_TEXT, fill: '- `[[OPENAI_API_KEY]]`: set it in your shell, never in the chat.', menu: run }),
     })) assert.equal(regexPasses(g, reply), false, `${g.name}: ${name}`);
+    assert.ok(regexPasses(g, menuReply({ prompt: CLOSED_TEXT[2], fill: '- `[[api key]]`: set it in your shell.', menu: run })), `${g.name}: Run it now ★, only secrets open`);
     assert.ok(regexPasses(g, menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: fillMenu })), `${g.name}: Fill placeholders ★, section listed`);
     assert.ok(regexPasses(g, menuReply({ prompt: OPEN_TEXT, menu: fillMenu })), `${g.name}: Fill placeholders ★, section dropped`);
     for (const prompt of CLOSED_TEXT) assert.ok(regexPasses(g, menuReply({ prompt, menu: run })), `${g.name}: ${prompt}`);
   }
 });
 
-test('the media menu graders see an open placeholder in the Full prompt when the reply has no Fill before running heading', () => {
+test('the media menu graders see an open placeholder in the Full prompt, with or without a Fill before running heading', () => {
   const done = '1. Done ★ — paste it into the tool\n2. Refine — change any assumption';
   const fillMenu = '1. Fill placeholders ★ — reply with the sign text\n2. Refine — change any assumption';
   const signed = 'A cozy cabin in the snow at night, a wooden sign reading [[sign text]] --ar 3:2';
@@ -1569,6 +1574,7 @@ test('the media menu graders see an open placeholder in the Full prompt when the
   const g = graderOf('image-midjourney-quick', '05-done-not-run');
   assert.equal(regexPasses(g, menuReply({ prompt: signed, menu: done })), false, 'Done ★, section dropped');
   assert.equal(regexPasses(g, menuReply({ prompt: signed, fill: '- `[[sign text]]` — the words on the sign.', menu: done })), false, 'Done ★, section listed');
+  assert.equal(regexPasses(g, menuReply({ prompt: signed, fill: '- Sign text — the words on the sign.', menu: done })), false, 'Done ★, section items without [[ ]]');
   assert.ok(regexPasses(g, menuReply({ prompt: signed, menu: fillMenu })), 'Fill placeholders ★, section dropped');
   assert.ok(regexPasses(g, menuReply({ prompt: 'A cozy cabin in the snow at night --ar 3:2', menu: done })), 'Done ★, nothing open');
   for (const prompt of CLOSED_TEXT) assert.ok(regexPasses(g, menuReply({ prompt, menu: done })), prompt);
@@ -1621,11 +1627,14 @@ test('the menu graders read a ★ after a note on the option\'s line, but not pa
   assert.equal(regexPasses(graderOf(PRIVATE, '08-what-next-menu'), privateReply({ menu: '1. Try it here 2. Refine ★' })), false);
 });
 
-test('private-detail-redaction-quick 08 reads the Full prompt too when Fill before running is missing', () => {
+test('private-detail-redaction-quick 08 reads the Full prompt too, with or without Fill before running', () => {
   const graders = gradersOf(PRIVATE);
   const members = { contact: "tell them to text [[conductor's mobile number]]. The choir has [[number of members]] members", fill: '' };
   assert.deepEqual(failingRegex(graders, privateReply({ ...members, menu: TRY_MENU })), ['08-what-next-menu']);
   assert.deepEqual(failingRegex(graders, privateReply({ ...members, menu: '1. Fill placeholders ★\n2. Refine' })), []);
+  // With the section too, when it lists only the number's placeholder, as D46 has it (step 1e).
+  assert.deepEqual(failingRegex(graders, privateReply({ contact: members.contact, menu: TRY_MENU })), ['08-what-next-menu']);
+  assert.deepEqual(failingRegex(graders, privateReply({ contact: members.contact, menu: '1. Fill placeholders ★\n2. Refine' })), []);
 });
 
 test('the menu graders\' open-placeholder condition stays fast on long runs of # or spaces, repeated headings and long prompts', () => {
