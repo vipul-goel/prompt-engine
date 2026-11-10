@@ -170,6 +170,6 @@ Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. A
 /prompt-engine write release notes for the changes since the last tag
 ```
 
-- [ ] Before the pick, Claude makes no Bash call, such as `git log` or `git tag`, and starts no subagent. Check with Ctrl+O, as for the coding prompt.
+- [ ] Until you press Esc, Claude makes no Bash call, such as `git log` or `git tag`, and starts no subagent. Check with Ctrl+O, as for the coding prompt.
 
 Record the date, the Claude Code version (`claude --version`), the model that `/status` shows, the permission mode, the commit you tested and the URL you installed from in the Claude Code row of [compatibility.md](compatibility.md). Afterwards, `unset CLAUDE_CONFIG_DIR` returns the shell to your usual configuration.
