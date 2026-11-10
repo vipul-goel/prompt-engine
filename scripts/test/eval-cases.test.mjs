@@ -1761,7 +1761,9 @@ test('the Midjourney aspect-ratio graders want the parameters at the end of the 
 // Without the template, as the no-skill arm writes, the aspect-ratio graders read the reply's first
 // fenced block: one whose prompt line is right passes, so 01 doesn't count the missing template
 // again, which the case's other graders score (step 1e). The four kept no-skill replies are bare
-// fences, under a bold label in Japanese.
+// fences, under a bold label in Japanese. The rule is the template's, so a no-skill reply that
+// passed before step 1e can fail now, as docs/compatibility.md says: a --no list with commas, an
+// /imagine line before the prompt line, or a right block after a wrong first one (B2.1.5).
 test('the Midjourney aspect-ratio graders read the first fenced block of a reply without the template', () => {
   const bare = (line, label = '') => `I don't have that skill here, so here is a Midjourney prompt.\n\n${label}\`\`\`\n${line}\n\`\`\`\n\n- **Aspect ratio:** use \`--ar 2:3\` for a portrait.`;
   for (const [c, headings, full] of MIDJOURNEY) {
@@ -1773,6 +1775,9 @@ test('the Midjourney aspect-ratio graders read the first fenced block of a reply
       '--ar mid-line': bare(midLine(full)),
       'the last phrase after the parameters': bare(lastPhraseAfter(full)),
       'a first fenced block that holds only a tip': `Tip:\n\`\`\`\n--ar 3:2\n\`\`\`\n\n${bare(full)}`,
+      'a --no list with commas': bare(full.replace(/--no .*$/, '--no people, text')),
+      'an /imagine line before the prompt line': bare(`/imagine prompt:\n${full}`),
+      'a right block after one whose --no list has commas': `${bare(full.replace(/--no .*$/, '--no people, text'))}\n\n\`\`\`\n${full}\n\`\`\``,
       // With the template, its Full prompt's block counts, and a right block later doesn't help.
       'the template with a wrong Full prompt, then a right bare fence': `${midjourneyReply(headings, midLine(full), null)}\n\n\`\`\`\n${full}\n\`\`\``,
     })) assert.equal(regexPasses(g, text), false, `${c}: ${name}`);
