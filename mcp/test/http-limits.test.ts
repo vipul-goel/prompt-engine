@@ -319,16 +319,19 @@ describe.concurrent('--http limits', () => {
 
   // Answers smaller than the socket's 64 KiB high-water mark: once the operating system's buffers
   // are full, the one being written waits in the socket's buffer below the mark, where Node never
-  // sets writableNeedDrain. How many answers those buffers take differs between systems (about 24
+  // sets writableNeedDrain. How many answers those buffers take differs between systems (about 11
   // of these on macOS), and each one they take gives its slot back, so stalled uploads take the
-  // slots the connection doesn't hold. The client writes an empty line every second, so it sees
-  // the close as a reset.
+  // slots the connection doesn't hold; those refused show that every slot was taken. The client
+  // writes an empty line every second, so it sees the close as a reset.
   it('closes a connection whose answers the client stops reading, however small they are, which frees their slots', { timeout: 90_000 }, async ({ expect }) => {
     const server = await startHttp();
     const host = { host: `127.0.0.1:${server.port}` };
     const held: Held[] = [];
     const admitted = () => held.filter((h) => /^HTTP\/1\.1 100 Continue\r\n\r\n$/.test(h.text)).length;
-    const body = JSON.stringify(CHECKLIST_CALL);
+    // Each answer is a batch of as many image-video checklists as fit in 56,000 bytes, so that the
+    // requests that fit in one read ask for more than the operating system's buffers hold.
+    const one = Buffer.byteLength((await send(server.port, host, { body: JSON.stringify(CHECKLIST_CALL) })).body);
+    const body = JSON.stringify(Array.from({ length: Math.max(1, Math.floor(56_000 / one)) }, (_, i) => ({ ...CHECKLIST_CALL, id: i + 1 })));
     expect(Buffer.byteLength((await send(server.port, host, { body })).body)).toBeLessThan(60_000);
     const sock = connect(server.port, '127.0.0.1');
     let closedAt: number | undefined;
@@ -348,9 +351,8 @@ describe.concurrent('--http limits', () => {
       await sleep(300);
       const left = 128 - admitted();
       expect(left, 'the operating system took every answer, so the connection holds no slot').toBeGreaterThan(0);
-      expect((await send(server.port, host)).status).toBe(503);
       // 15-20 s after the answer stopped moving. On macOS the operating system has been seen to take
-      // one more answer about 5 s in, which starts the 15 s again.
+      // one more of these answers 1-5 s in, which starts the 15 s again.
       await waitFor(() => closedAt !== undefined, () => `still open after ${(Date.now() - started) / 1000} s`, 30_000);
       const seconds = (closedAt! - started) / 1000;
       expect(seconds).toBeGreaterThanOrEqual(14);
