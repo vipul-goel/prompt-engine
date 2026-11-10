@@ -5,8 +5,9 @@ name: Release
 # No secrets: npm (trusted publishing) and the MCP Registry log in with GitHub OIDC.
 # Variables: NPM_OWNER, the npm account that owns prompt-engine-mcp, checked before a
 # release treats an existing npm version as already published.
-# Environment: the npm and MCP Registry jobs run in "release", whose rule in the
-# repository's settings lets only v* tags use it (docs/publishing.md, One-time setup).
+# Environment: the npm and MCP Registry jobs run in "release". Create it before the first
+# tag, with a rule that lets only v* tags use it (docs/publishing.md, One-time setup,
+# step 1): a run that names a missing environment creates it with no rules.
 # Each job gets only the permissions it needs, so the jobs that install and run
 # dependencies can only read the repository. The build job installs only what
 # mcp/package-lock.json pins; test:pack, which installs the packed package as npx
