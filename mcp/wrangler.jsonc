@@ -7,9 +7,10 @@
   "workers_dev": true,
   "observability": { "enabled": false },
   "vars": {
-    // Host header names to accept, comma-separated. Add your workers.dev hostname
-    // (for example "prompt-engine-mcp.<your-subdomain>.workers.dev") or custom domain
-    // before deploying; localhost covers `wrangler dev`.
+    // Host header names to accept, comma-separated in one string, not a JSON list.
+    // Add your workers.dev hostname (for example
+    // "prompt-engine-mcp.<your-subdomain>.workers.dev") or custom domain before
+    // deploying; localhost covers `wrangler dev`.
     "ALLOWED_HOSTS": "localhost,127.0.0.1"
   }
 }

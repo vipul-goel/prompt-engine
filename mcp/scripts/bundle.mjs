@@ -3,8 +3,9 @@
 // (Claude Desktop) bundle: mcpb/server/index.js. Claude Desktop runs it with its
 // own Node, so nothing is installed at runtime. The license texts of the bundled
 // third-party code go next to it in mcpb/server/THIRD_PARTY_NOTICES.txt
-// (scripts/notices.mjs). If a text is missing or empty, or the SDK doesn't match
-// what notices.mjs was reviewed for, it deletes mcpb/server/ and exits 1.
+// (scripts/notices.mjs). If a text is missing, empty or not the one notices.mjs pins,
+// or the SDK doesn't match what notices.mjs was reviewed for, it deletes mcpb/server/
+// and exits 1.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

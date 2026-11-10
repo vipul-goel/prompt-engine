@@ -42,8 +42,10 @@ try {
 
   // 1. The file list. The build writes no dot-files, and npm leaves some out of every package
   // (.DS_Store, and the ._* files macOS writes on some drives), so dot-files in dist/ aren't
-  // expected in the tarball.
-  const files = execFileSync('tar', ['-tzf', tgz], { encoding: 'utf8' }).split('\n').filter((f) => f && !f.endsWith('/')).map((f) => f.replace(/^package\//, '')).sort();
+  // expected in the tarball. tar gets the file name, run from its folder: GNU tar, which
+  // Git Bash puts on PATH on Windows, reads a name with a colon before its first slash
+  // (C:\...) as host:file, and the --force-local that stops it isn't in bsdtar.
+  const files = execFileSync('tar', ['-tzf', basename(tgz)], { cwd: dirname(tgz), encoding: 'utf8' }).split('\n').filter((f) => f && !f.endsWith('/')).map((f) => f.replace(/^package\//, '')).sort();
   const dist = join(pkg, 'dist');
   const built = existsSync(dist)
     ? readdirSync(dist, { recursive: true, withFileTypes: true }).filter((d) => d.isFile() && !d.name.startsWith('.')).map((d) => relative(pkg, join(d.parentPath, d.name)).split('\\').join('/'))

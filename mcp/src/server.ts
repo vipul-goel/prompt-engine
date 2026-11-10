@@ -36,6 +36,7 @@ import { PROMPT_MAX_CHARS, checkPrompt, formatReport, type CheckReport } from '.
 import { VERSION } from './generated/content.js';
 import {
   HEADER_MAX_CHARS,
+  INTRO_MAX_CHARS,
   MAX_OPTIONS,
   MAX_QUESTIONS,
   MIN_OPTIONS,
@@ -102,7 +103,7 @@ export const ASK_USER_MAX_CHARS = {
   label: 80,
   description: 160,
   why: 120,
-  intro: 200,
+  intro: INTRO_MAX_CHARS,
   notes_label: 80,
   notes_hint: 200,
 } as const;
@@ -311,6 +312,21 @@ function readResult(uri: URL, body: string) {
 export interface CreateServerOptions {
   /** JSON Schema validator for elicitation results; defaults to the SDK's runtime pick (Ajv on Node). */
   jsonSchemaValidator?: jsonSchemaValidator;
+  /**
+   * Receives the errors this instance and its transport report. The HTTP entry's 2025-era leg
+   * reports its transport's errors only here, so without it they are dropped.
+   */
+  onerror?: ((error: Error) => void) | undefined;
+  /**
+   * The instance serves one HTTP request, as createMcpHandler's factory makes it, so it ignores
+   * notifications/cancelled, as the protocol allows. Such a cancel can only name a request in the
+   * same body, a 2025-era batch, and every handler here answers at once. The MCP SDK sends no
+   * answer for a request it has cancelled, and its 2025-era transport ends a batch's answer only
+   * once every request in the batch has one, so the answer would never end and would hold its
+   * --http request slot for as long as the client kept the connection. Over stdio the cancel
+   * stays: a form can keep a request waiting there.
+   */
+  perRequest?: boolean;
 }
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
@@ -341,6 +357,8 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
       ...(options.jsonSchemaValidator ? { jsonSchemaValidator: options.jsonSchemaValidator } : {}),
     },
   );
+  if (options.onerror) server.server.onerror = options.onerror;
+  if (options.perRequest) server.server.setNotificationHandler('notifications/cancelled', () => {});
 
   server.registerTool(
     'enhance_prompt',

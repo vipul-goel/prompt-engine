@@ -78,11 +78,11 @@ export function send(
 }
 
 /**
- * Sends a POST head that announces a body of `contentLength` bytes, then only
- * its first kilobyte; resolves with the response head, or 'no response' if the
- * server is still waiting for the body after 5 s.
+ * Sends a POST head that announces a body of `contentLength` bytes, or a chunked
+ * body, then only its first kilobyte; resolves with the response head, or
+ * 'no response' if the server is still waiting for the body after 5 s.
  */
-export function startUpload(port: number, host: string, contentLength: number, headers: Record<string, string> = {}): Promise<string> {
+export function startUpload(port: number, host: string, contentLength: number | 'chunked', headers: Record<string, string> = {}): Promise<string> {
   return new Promise((resolve) => {
     const sock = connect(port, '127.0.0.1');
     let text = '';
@@ -97,6 +97,49 @@ export function startUpload(port: number, host: string, contentLength: number, h
       if (text.includes('\r\n\r\n')) done(text.slice(0, text.indexOf('\r\n\r\n')));
     });
     sock.on('error', () => done(text || 'socket error'));
+    const extra = Object.entries(headers).map(([name, value]) => `${name}: ${value}\r\n`).join('');
+    const kilobyte = 'a'.repeat(1024);
+    const [length, body] = contentLength === 'chunked' ? ['Transfer-Encoding: chunked', `400\r\n${kilobyte}\r\n`] : [`Content-Length: ${contentLength}`, kilobyte];
+    sock.write(
+      `POST /mcp HTTP/1.1\r\nHost: ${host}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
+        `MCP-Protocol-Version: 2025-11-25\r\n${extra}${length}\r\n\r\n${body}`,
+    );
+  });
+}
+
+/**
+ * Like startUpload, but the client goes on sending after the answer arrives, as one still
+ * uploading its body does: once the response head is in, it writes 64 KB twice, 100 ms apart,
+ * then ends its side. Its socket is half-open (allowHalfOpen), so it can still write after the
+ * server has closed its side. Resolves once the connection closes, with the response head and
+ * the first error the socket saw: EPIPE or ECONNRESET means the server reset the connection.
+ */
+export function keepSending(
+  port: number,
+  host: string,
+  contentLength: number,
+  headers: Record<string, string> = {},
+): Promise<{ head: string; error: string | undefined }> {
+  return new Promise((resolve) => {
+    const sock = connect({ port, host: '127.0.0.1', allowHalfOpen: true });
+    let text = '';
+    let error: string | undefined;
+    let answered = false;
+    const timer = setTimeout(() => sock.destroy(), 5_000);
+    sock.on('data', (d) => {
+      text += d;
+      if (answered || !text.includes('\r\n\r\n')) return;
+      answered = true;
+      const piece = 'a'.repeat(64 * 1024);
+      setTimeout(() => sock.write(piece, () => {}), 100);
+      setTimeout(() => sock.write(piece, () => {}), 200);
+      setTimeout(() => sock.end(), 300);
+    });
+    sock.on('error', (e: NodeJS.ErrnoException) => (error ??= e.code ?? e.message));
+    sock.on('close', () => {
+      clearTimeout(timer);
+      resolve({ head: text.slice(0, Math.max(0, text.indexOf('\r\n\r\n'))), error });
+    });
     const extra = Object.entries(headers).map(([name, value]) => `${name}: ${value}\r\n`).join('');
     sock.write(
       `POST /mcp HTTP/1.1\r\nHost: ${host}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +

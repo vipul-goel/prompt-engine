@@ -2,6 +2,8 @@
 // stateless HTTP entry) in both protocol eras, plus serveStdio over an in-memory
 // pipe for the stateful-connection paths.
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ElicitResult } from '@modelcontextprotocol/client';
 import { CLIENT_CAPABILITIES_META_KEY, createMcpHandler } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -9,9 +11,10 @@ import { DOMAINS, REFERENCE_RESOURCES, buildBrief, buildChecklist, buildReferenc
 import { PROMPT_MAX_CHARS } from '../src/check.js';
 import { VERSION } from '../src/generated/content.js';
 import { DEFAULT_INTRO, HEADER_MAX_CHARS, MAX_OPTIONS, MAX_QUESTIONS, NOTES_MAX_CHARS } from '../src/questions.js';
-import { ASK_USER_MAX_CHARS, FORM_WAIT_MS, INSTRUCTIONS, TOOL_NAMES, createServer } from '../src/server.js';
+import { ASK_USER_MAX_CHARS, FORM_WAIT_MS, INSTRUCTIONS, TOOL_NAMES, createServer, type CreateServerOptions } from '../src/server.js';
 import {
   ERAS,
+  PKG,
   SAMPLE_QUESTIONS,
   connectHttp,
   connectStdioInProcess,
@@ -280,6 +283,31 @@ describe.each(ERAS)('%s era over stateless HTTP', (era: Era) => {
   });
 });
 
+describe("mcp/README.md's tools table", () => {
+  it("states each structured result as the tool's outputSchema: every field, with ? on the optional ones", async () => {
+    const rows = readFileSync(join(PKG, 'README.md'), 'utf8').split('\n');
+    const conn = await connectHttp('modern');
+    try {
+      const { tools } = await conn.client.listTools();
+      for (const tool of tools) {
+        const row = rows.find((line) => line.startsWith(`| \`${tool.name}\` |`));
+        expect(row, tool.name).toBeDefined();
+        const stated = /Structured `\{([^}]*)\}`/.exec(row!)?.[1];
+        if (!tool.outputSchema) {
+          expect(stated, tool.name).toBeUndefined();
+          continue;
+        }
+        const schema = tool.outputSchema as { properties?: Record<string, unknown>; required?: string[] };
+        const required = new Set(schema.required ?? []);
+        const fields = Object.keys(schema.properties ?? {}).map((field) => (required.has(field) ? field : `${field}?`));
+        expect(stated?.split(',').map((field) => field.trim()).sort(), tool.name).toEqual(fields.sort());
+      }
+    } finally {
+      await conn.close();
+    }
+  });
+});
+
 describe('tool result size', () => {
   // Hosts cap tool results (8,000 tokens is a common budget). At a conservative
   // 3 characters per token, every result has to stay under 24,000 characters,
@@ -338,6 +366,10 @@ describe('tool result size', () => {
     return lines.join('\n');
   };
   const longestLine = (n: number, unit: string) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
+  // Targets at the schema's limit, which counts code points: "a" and 99 characters outside the BMP
+  // are 199 UTF-16 units, so a cut at 100 units would split the last pair it keeps, and an unpaired
+  // surrogate, like each of the 100 lone ones, would reach the result as a 6-character escape.
+  const TARGETS = { x: 'x'.repeat(100), 'characters outside the BMP': `a${'\u{1F600}'.repeat(99)}`, 'lone surrogates': '\u{D800}'.repeat(100) };
 
   it('stays under the budget for the largest inputs of every tool', async () => {
     const conn = await connectHttp('modern');
@@ -350,7 +382,10 @@ describe('tool result size', () => {
         'past every cap, with quotes': pastEveryCap('"'),
       };
       const calls: Array<{ label: string; name: string; arguments: Record<string, unknown> }> = [
-        { label: 'enhance_prompt', name: 'enhance_prompt', arguments: { mode: 'standard', target: 'x'.repeat(100) } },
+        ...Object.entries(TARGETS).flatMap(([label, target]) => [
+          { label: `enhance_prompt, target of ${label}`, name: 'enhance_prompt', arguments: { mode: 'standard', target } },
+          { label: `check_prompt, target of ${label}`, name: 'check_prompt', arguments: { prompt: 'Write a haiku about rain.', target } },
+        ]),
         ...DOMAINS.map((domain) => ({ label: `get_checklist ${domain}`, name: 'get_checklist', arguments: { domain } })),
         ...Object.entries(prompts).map(([label, prompt]) => ({ label: `check_prompt: ${label}`, name: 'check_prompt', arguments: { prompt, target: 'x'.repeat(100) } })),
         ...Object.entries(FILLS).map(([label, fill]) => ({ label: `ask_user in text mode, ${label}`, name: 'ask_user', arguments: largestAsk(fill) })),
@@ -730,6 +765,73 @@ describe('ask_user with a client that supports form elicitation', () => {
       expect(textOf(result)).toMatch(/timed out/);
     } finally {
       vi.useRealTimers();
+      await conn.close();
+    }
+  });
+
+  // A client that stops a tool call sends notifications/cancelled for it, as the SDK's client does
+  // when the call's signal aborts. On a 2025-era stdio connection the server is then waiting for the
+  // form's answer, for up to FORM_WAIT_MS, so it has to cancel the form's elicitation/create too,
+  // and the host can then close the form. A server made with perRequest, as HTTP serving makes them,
+  // ignores that notification, so cli.ts must not pass it for stdio. The second test shows that such
+  // a server leaves the form open, so the first one tells the two apart.
+  async function stopCallWithFormOpen(server: CreateServerOptions) {
+    let opened: (signal: AbortSignal) => void = () => {};
+    const formOpen = new Promise<AbortSignal>((resolve) => (opened = resolve));
+    const conn = await connectStdioInProcess(
+      'legacy',
+      {
+        elicit: (_form, signal) => {
+          opened(signal);
+          // No answer until the server cancels the form's request.
+          return new Promise<ElicitResult>((resolve) => signal.addEventListener('abort', () => resolve({ action: 'cancel' }), { once: true }));
+        },
+      },
+      server,
+    );
+    try {
+      const stop = new AbortController();
+      const call = conn.client.callTool(ask, { signal: stop.signal });
+      const form = await formOpen;
+      const stopped = expect(call).rejects.toThrow('the user stopped the call');
+      stop.abort('the user stopped the call');
+      await stopped;
+      return { conn, form };
+    } catch (error) {
+      await conn.close();
+      throw error;
+    }
+  }
+
+  /** Whether the signal has aborted, or aborts within ms. */
+  const abortsWithin = (signal: AbortSignal, ms: number) =>
+    signal.aborted
+      ? Promise.resolve(true)
+      : new Promise<boolean>((resolve) => {
+          const timer = setTimeout(() => resolve(false), ms);
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            resolve(true);
+          }, { once: true });
+        });
+
+  it('legacy shim on stdio: stopping the call cancels its open form, and the connection goes on serving', async () => {
+    const { conn, form } = await stopCallWithFormOpen({});
+    try {
+      expect(await abortsWithin(form, 5_000), 'the form was still open 5 s after the call was stopped').toBe(true);
+      expect((await conn.client.listTools()).tools).toHaveLength(TOOL_NAMES.length);
+    } finally {
+      await conn.close();
+    }
+  });
+
+  it('a server made with perRequest, as HTTP serving makes them, leaves that form open', async () => {
+    const { conn, form } = await stopCallWithFormOpen({ perRequest: true });
+    try {
+      // Once a request sent after the cancel is answered, the server has read the cancel.
+      expect((await conn.client.listTools()).tools).toHaveLength(TOOL_NAMES.length);
+      expect(await abortsWithin(form, 200)).toBe(false);
+    } finally {
       await conn.close();
     }
   });

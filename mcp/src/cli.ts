@@ -4,7 +4,8 @@
 // the start-up line, warnings, and one line per error, which never quotes a
 // request (see log.ts).
 
-import { createServer as createHttpServer, type IncomingMessage } from 'node:http';
+import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { Socket } from 'node:net';
 import { parseArgs } from 'node:util';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import {
@@ -21,6 +22,7 @@ import { VERSION } from './generated/content.js';
 import { canonicalHostname, parseAllowedHosts, portsIgnoredWarning, unusableWarning } from './hosts.js';
 import { describeError } from './log.js';
 import { createServer } from './server.js';
+import { stalledSockets, type StallRecord } from './stall.js';
 
 const NAME = 'prompt-engine-mcp';
 const DEFAULT_HOST = '127.0.0.1';
@@ -31,19 +33,62 @@ const MCP_PATH = '/mcp';
 // 1.2 MB for 100,000. Bodies are capped at that plus 300 KB, 1.5 MB in all
 // (the SDK's default is 4 MiB).
 const MAX_BODY_BYTES = PROMPT_MAX_CHARS * 12 + 300_000;
-// The SDK reads each request's body, up to MAX_BODY_BYTES, into memory before
-// it answers, so at most this many requests are passed to it at once. Past
-// that, a request gets 503 before its body is read. A connection that hasn't
-// sent a request, or whose request was refused, takes no slot. Stalled uploads
-// still hold their slots until the 30 s request timeout, so a client that
-// keeps 128 of them open can shut out every other client.
+// At most this many requests are passed to the SDK at once, and only while the
+// bodies they declare add up to BODY_BUDGET_BYTES or less; past either, a
+// request gets 503 before its body is read. A connection that hasn't sent a
+// request, or whose request was refused, takes no slot. Stalled uploads still
+// hold their slots until the 30 s request timeout, answers a client doesn't
+// read until the stall check below closes the connection, and large answers a
+// client reads slowly for as long as it reads them, so a client that keeps
+// enough of these going can shut out every other client.
 const MAX_REQUESTS = 128;
+// The SDK can keep a request's parsed body in memory until its answer has been
+// sent (it does for a batch), and parsed JSON is much larger than its text: a
+// 1.5 MB batch of deeply nested arrays held about 40 MiB of heap (28 bytes for
+// each byte, in Node 24), so 128 of them would need about 5 GiB. So the bodies
+// in flight are capped at 8,000,000 bytes, five of the largest, which keeps
+// that to about 210 MiB.
+const BODY_BUDGET_BYTES = 8_000_000;
+// Node's header and request timeouts end once a request has arrived, and a
+// socket has no idle timeout, so an answer a client doesn't read would wait in
+// the socket's buffer, holding its request's slot and those of the requests
+// behind it, for as long as the connection stays open. Every 5 s, each
+// connection with a request in flight is checked (stall.ts): once bytes, however
+// few, have waited in the socket's buffer for 15 s while it handed no more to
+// the operating system, the connection is closed, which ends every request on
+// it. The count of bytes handed on is compared, not the length of the socket's
+// buffer, which the next write can refill to the same length. The operating
+// system takes the bytes in bursts, as the client's reads free its buffers,
+// which can hold hundreds of kilobytes, so a client reading a large answer
+// slowly can go 15 s without a burst: on macOS, a client reading a 2.2 MB batch
+// answer at 30 KB/s got all of it, and one at 25 KB/s was closed.
+const STALL_CHECK_MS = 5_000;
+const STALL_LIMIT_MS = 15_000;
 // A backstop on open sockets: connections past it are closed at once.
 // Connections that send nothing count until the header timeout closes them,
-// 10 to 15 s later, so a client that keeps this many open shuts out every
-// other client. A network deployment needs a proxy that limits connections
-// per client.
+// 10 to 15 s later, and one kept open after an answer counts for as long as its
+// client sends bytes that start no request, such as an empty line every few
+// seconds: they start no timeout, and each one resets Node's keep-alive timer.
+// So a client that keeps this many open shuts out every other client. A network
+// deployment needs a proxy that limits connections per client.
 const MAX_CONNECTIONS = 1024;
+// Once it has written an answer with Connection: close (the refusals below, the MCP SDK's 413
+// or an answer to a client that asked to close), Node closes the socket at once. Bytes that a
+// client still sending its body sends after that reach a closed socket, which answers with a
+// TCP reset, and a client that gets the reset before it has read the answer sees ECONNRESET or
+// EPIPE instead. So such a connection is closed in stages, as RFC 9112, section 9.6, describes:
+// the server closes its side, keeps reading and discarding what the client sends, and closes
+// the connection once the client closes its side or has sent nothing for LINGER_MS, and
+// LINGER_LIMIT_MS after the answer at the latest, even if the client is still sending. Without
+// that limit, bytes that start no request, such as empty lines, would keep it open: they start
+// none of Node's timeouts, and each one resets the idle timer. A request sent after the answer
+// closes the connection at once. A request the client sent before the answer, behind the
+// request it answers, may already have been admitted; its answer can never be sent, so then the
+// connection is closed at once, as Node would, which frees its slot. After the SDK's 413 for a
+// chunked body, Node has stopped reading the socket, so that connection is closed LINGER_MS
+// after the answer.
+const LINGER_MS = 2_000;
+const LINGER_LIMIT_MS = 30_000;
 // The methods the SDK answers itself: POST, and 405 for GET, DELETE and
 // OPTIONS. Any other gets 405 here, since the SDK's fetch Request throws for
 // some of them, such as TRACE.
@@ -137,9 +182,45 @@ function refusal(req: IncomingMessage, allowedHosts: string[]): { status: number
   return undefined;
 }
 
+/**
+ * The body size a request counts against BODY_BUDGET_BYTES: its Content-Length, up to
+ * MAX_BODY_BYTES, since the SDK refuses a larger body before reading it; 0 without a body;
+ * MAX_BODY_BYTES for a chunked body or a length that isn't a number.
+ */
+function declaredBodyBytes(req: IncomingMessage): number {
+  const { 'content-length': length, 'transfer-encoding': chunked } = req.headers;
+  if (length === undefined) return chunked === undefined ? 0 : MAX_BODY_BYTES;
+  const bytes = Number(length);
+  return Number.isFinite(bytes) && bytes >= 0 ? Math.min(bytes, MAX_BODY_BYTES) : MAX_BODY_BYTES;
+}
+
+/**
+ * Stands in for socket.destroySoon(), which Node's HTTP server calls on a connection once it
+ * has written an answer with Connection: close. See LINGER_MS. `unanswerable` says whether a
+ * request admitted on the connection is still waiting for its answer.
+ */
+function closeInStages(socket: Socket, unanswerable: boolean): void {
+  if (!socket.readable || unanswerable) {
+    Socket.prototype.destroySoon.call(socket);
+    return;
+  }
+  if (socket.writable) socket.end();
+  socket.setTimeout(LINGER_MS, () => socket.destroy());
+  const limit = setTimeout(() => socket.destroy(), LINGER_LIMIT_MS).unref();
+  socket.once('close', () => clearTimeout(limit));
+}
+
 function serveOverHttp(host: string, port: number, allowedHosts: string[]): void {
   const onerror = (error: Error) => log(describeError(error));
-  const mcp = createMcpHandler(() => createServer(), { onerror, maxRequestBodySize: MAX_BODY_BYTES });
+  // On the 2025-era leg, the SDK reports its transport's errors to the per-request server, not
+  // to the handler's onerror: a resources/read URI over its 1,000,000-character limit, which it
+  // answers 500, or a batch of more than 100 messages. A body that isn't JSON is reported there
+  // too; like a stdio line that isn't JSON, it isn't logged.
+  const serverOnerror = (error: Error) => {
+    if (!(error instanceof SyntaxError)) onerror(error);
+  };
+  // Each request gets a server of its own, which ignores notifications/cancelled (see perRequest in server.ts).
+  const mcp = createMcpHandler(() => createServer({ onerror: serverOnerror, perRequest: true }), { onerror, maxRequestBodySize: MAX_BODY_BYTES });
   // createMcpHandler validates neither Host nor Origin. The request listener
   // checks both (DNS rebinding protection), and so does this, in case a
   // request ever reaches the handler another way. A request without an Origin
@@ -149,34 +230,75 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
       hostHeaderValidationResponse(request, allowedHosts) ?? originValidationResponse(request, allowedHosts) ?? mcp.fetch(request),
   };
   const nodeHandler = toNodeHandler(guarded, { onerror, maxRequestBodySize: MAX_BODY_BYTES });
-  let inFlight = 0;
+  const inFlight = new Set<ServerResponse>();
+  let inFlightBytes = 0;
+
+  // See STALL_LIMIT_MS; stall.ts holds the rule.
+  const stalls = new WeakMap<Socket, StallRecord>();
+  const stallCheck = setInterval(() => {
+    for (const socket of stalledSockets(inFlight, stalls, Date.now(), STALL_LIMIT_MS)) socket.destroy();
+  }, STALL_CHECK_MS);
+  stallCheck.unref();
 
   // Slow or stalled uploads are cut off: the headers must arrive within 10 s
   // and the whole request within 30 s (Node's defaults are 60 s and 300 s),
   // checked every 5 s (Node's default is every 30 s).
   const timeouts = { headersTimeout: 10_000, requestTimeout: 30_000, connectionsCheckingInterval: 5_000 };
   const httpServer = createHttpServer(timeouts, (req, res) => {
+    // A request sent after an answer that closed the connection (see LINGER_MS) can't be
+    // answered, so it isn't served: that would keep it in flight, holding a slot.
+    if (!req.socket.writable) {
+      req.socket.destroy();
+      return;
+    }
     const path = (req.url ?? '/').split('?')[0];
     if (path !== MCP_PATH) {
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: `Not found. The MCP endpoint is ${MCP_PATH}.` }));
       return;
     }
-    // Answered in the SDK guard's format, without a log line, and the
-    // connection is closed rather than the rest of the body read.
-    const refused = refusal(req, allowedHosts) ?? (inFlight >= MAX_REQUESTS ? { status: 503, message: 'Server busy. Try again shortly.' } : undefined);
+    // Answered in the SDK guard's format, without a log line, before the body
+    // is read. The answer closes the connection (see LINGER_MS).
+    const bytes = declaredBodyBytes(req);
+    const busy = inFlight.size >= MAX_REQUESTS || inFlightBytes + bytes > BODY_BUDGET_BYTES;
+    const refused = refusal(req, allowedHosts) ?? (busy ? { status: 503, message: 'Server busy. Try again shortly.' } : undefined);
     if (refused) {
       const extra = refused.status === 405 ? { allow: 'POST' } : refused.status === 503 ? { 'retry-after': '1' } : {};
       res.writeHead(refused.status, { 'content-type': 'application/json', connection: 'close', ...extra });
       res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: refused.message }, id: null }));
       return;
     }
-    // 'close' follows both a finished response and a dropped connection.
-    inFlight++;
-    res.once('close', () => inFlight--);
+    // 'close' follows both a finished response and a dropped connection. On a response that waits
+    // behind another, the 'connection' listener below emits it where Node doesn't.
+    inFlight.add(res);
+    inFlightBytes += bytes;
+    res.once('close', () => {
+      inFlight.delete(res);
+      inFlightBytes -= bytes;
+    });
     void nodeHandler(req, res);
   });
   httpServer.maxConnections = MAX_CONNECTIONS;
+  httpServer.on('connection', (socket: Socket) => {
+    // When a connection closes, Node 24.16 and later 24.x, and 26.1 and later, close every response
+    // on it (nodejs/node#62534). Every 22.x and 25.x, and 26.0, never emit 'close' on a response
+    // that waits behind another, so its slot would stay taken for good, and so would the memory of
+    // an answer over 64 KiB: once that much waits, the MCP SDK writes no more until 'drain' or
+    // 'close', and neither comes. So once Node has closed the responses it will, those still in
+    // flight on the connection are closed here, as the newer versions do.
+    socket.once('close', () =>
+      setImmediate(() => {
+        for (const res of inFlight) {
+          if (res.req.socket !== socket) continue;
+          res.destroy();
+          res.emit('close');
+        }
+      }),
+    );
+    // By the time Node calls this, the answer that closes the connection has been written, so an
+    // admitted request on it whose answer hasn't been is one sent behind that answer's request.
+    socket.destroySoon = () => closeInStages(socket, [...inFlight].some((res) => res.req.socket === socket && !res.writableFinished));
+  });
   httpServer.on('error', (error) => {
     log(`cannot listen on ${host}:${port}: ${describeError(error)}`);
     process.exit(1);
@@ -193,6 +315,7 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
   });
 
   const stop = () => {
+    clearInterval(stallCheck);
     httpServer.close();
     void mcp.close().finally(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
@@ -220,8 +343,11 @@ function main(): void {
   }
   // Accept IPv6 written either way (::1 or [::1]); listen() wants it bare.
   const host = args.host?.trim().replace(/^\[(.*)\]$/, '$1') || DEFAULT_HOST;
-  const port = args.port === undefined ? DEFAULT_PORT : Number(args.port);
-  if (!Number.isInteger(port) || port < 0 || port > 65535) fail(`--port must be an integer from 0 to 65535 (got ${args.port})`);
+  // Digits only: Number() would read '' and ' ' (an unset $PORT) as 0, a random port, and
+  // take 0x1F90 or 8e3 too.
+  const portText = args.port?.trim();
+  const port = portText === undefined ? DEFAULT_PORT : /^\d+$/.test(portText) ? Number(portText) : NaN;
+  if (!Number.isInteger(port) || port < 0 || port > 65535) fail(`--port must be an integer from 0 to 65535 (got ${JSON.stringify(args.port)})`);
   const fromFlag = args['allowed-hosts'] !== undefined;
   const setting = fromFlag ? '--allowed-hosts' : 'PROMPT_ENGINE_ALLOWED_HOSTS';
   const { hosts, portsIgnored, unusable } = parseAllowedHosts(fromFlag ? args['allowed-hosts'] : process.env.PROMPT_ENGINE_ALLOWED_HOSTS);

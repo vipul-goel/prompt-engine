@@ -6,7 +6,7 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createServer } from '../src/server.js';
+import { createServer, type CreateServerOptions } from '../src/server.js';
 
 export type Era = 'legacy' | 'modern';
 export const ERAS: Era[] = ['legacy', 'modern'];
@@ -20,8 +20,11 @@ export interface ElicitCall {
 }
 
 export interface ConnectOptions {
-  /** Answers form elicitations; when set, the client declares elicitation.form. */
-  elicit?: (params: ElicitCall) => ElicitResult | Promise<ElicitResult>;
+  /**
+   * Answers form elicitations; when set, the client declares elicitation.form. The signal aborts
+   * when the server cancels the form's request.
+   */
+  elicit?: (params: ElicitCall, signal: AbortSignal) => ElicitResult | Promise<ElicitResult>;
 }
 
 export interface Connected {
@@ -39,10 +42,10 @@ function makeClient(era: Era, options: ConnectOptions) {
   const elicitCalls: ElicitCall[] = [];
   const { elicit } = options;
   if (elicit) {
-    client.setRequestHandler('elicitation/create', async (request) => {
+    client.setRequestHandler('elicitation/create', async (request, ctx) => {
       const params = request.params as unknown as ElicitCall;
       elicitCalls.push(params);
-      return elicit(params);
+      return elicit(params, ctx.mcpReq.signal);
     });
   }
   return { client, elicitCalls };
@@ -50,7 +53,7 @@ function makeClient(era: Era, options: ConnectOptions) {
 
 /** A client talking to createMcpHandler in-process (stateless HTTP serving, as a deployment would). */
 export async function connectHttp(era: Era, options: ConnectOptions = {}): Promise<Connected> {
-  const handler = createMcpHandler(() => createServer());
+  const handler = createMcpHandler(() => createServer({ perRequest: true }));
   const { client, elicitCalls } = makeClient(era, options);
   const transport = new StreamableHTTPClientTransport(new URL('http://test.local/mcp'), {
     fetch: (url, init) => handler.fetch(new Request(url, init)),
@@ -67,10 +70,13 @@ export async function connectHttp(era: Era, options: ConnectOptions = {}): Promi
   };
 }
 
-/** A client talking to serveStdio over an in-memory pipe (a stateful connection, like stdio). */
-export async function connectStdioInProcess(era: Era, options: ConnectOptions = {}): Promise<Connected> {
+/**
+ * A client talking to serveStdio over an in-memory pipe (a stateful connection, like stdio). The
+ * server takes no options, as cli.ts makes it for stdio, unless a test passes some.
+ */
+export async function connectStdioInProcess(era: Era, options: ConnectOptions = {}, server: CreateServerOptions = {}): Promise<Connected> {
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  const handle = serveStdio(() => createServer(), { transport: serverSide });
+  const handle = serveStdio(() => createServer(server), { transport: serverSide });
   const { client, elicitCalls } = makeClient(era, options);
   await client.connect(clientSide);
   if (client.getProtocolEra() !== era) throw new Error(`expected the ${era} era, got ${client.getProtocolEra()}`);

@@ -14,8 +14,11 @@ import { parseAllowedHosts, portsIgnoredWarning, unusableWarning } from './hosts
 import { createServer } from './server.js';
 
 export interface Env {
-  /** Comma-separated Host header names to accept, without ports, for example "prompt-engine.example.workers.dev". */
-  ALLOWED_HOSTS?: string;
+  /**
+   * Comma-separated Host header names to accept, without ports, for example "prompt-engine.example.workers.dev".
+   * Wrangler's vars can also hold JSON values, so it can arrive as a list or another value.
+   */
+  ALLOWED_HOSTS?: unknown;
 }
 
 const MCP_PATH = '/mcp';
@@ -27,7 +30,8 @@ const MAX_BODY_BYTES = PROMPT_MAX_CHARS * 12 + 300_000;
 preloadSchemas();
 
 const jsonSchemaValidator = new CfWorkerJsonSchemaValidator();
-const mcp = createMcpHandler(() => createServer({ jsonSchemaValidator }), { maxRequestBodySize: MAX_BODY_BYTES });
+// Each request gets a server of its own, which ignores notifications/cancelled (see perRequest in server.ts).
+const mcp = createMcpHandler(() => createServer({ jsonSchemaValidator, perRequest: true }), { maxRequestBodySize: MAX_BODY_BYTES });
 
 // ALLOWED_HOSTS doesn't change within an isolate, so parse it (and warn about its entries) once.
 let parsed: { value: string | undefined; hosts: string[] } | undefined;
@@ -44,12 +48,21 @@ function allowedHosts(value: string | undefined): string[] {
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+/** What kind of JSON value a setting that isn't a string is. */
+const jsonKind = (value: unknown) => (Array.isArray(value) ? 'list' : typeof value === 'object' ? 'object' : typeof value);
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (new URL(request.url).pathname !== MCP_PATH) return json(404, { error: `Not found. The MCP endpoint is ${MCP_PATH}.` });
-    const hosts = allowedHosts(env.ALLOWED_HOSTS);
+    const setting = env.ALLOWED_HOSTS;
+    if (setting !== undefined && setting !== null && typeof setting !== 'string') {
+      const error = `ALLOWED_HOSTS is a JSON ${jsonKind(setting)}, not a string. Set it to the hostnames clients use as one comma-separated string, such as "mcp.example.com,localhost".`;
+      return json(500, { error });
+    }
+    const value = typeof setting === 'string' ? setting : undefined;
+    const hosts = allowedHosts(value);
     if (!hosts.length) {
-      const problem = env.ALLOWED_HOSTS?.trim() ? 'names no usable hostname' : 'is not set';
+      const problem = value?.trim() ? 'names no usable hostname' : 'is not set';
       return json(500, { error: `ALLOWED_HOSTS ${problem}. Set it to the hostnames clients use, such as your workers.dev name.` });
     }
     // createMcpHandler validates neither Host nor Origin; a request without an Origin header passes.

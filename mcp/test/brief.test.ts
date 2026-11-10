@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import type { ElicitResult } from '@modelcontextprotocol/client';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -7,6 +8,7 @@ import {
   MODES,
   REFERENCE_ADAPTATIONS,
   REFERENCE_RESOURCES,
+  TARGET_MAX_CHARS,
   adaptMethod,
   adaptReference,
   buildBrief,
@@ -18,7 +20,7 @@ import {
 } from '../src/brief.js';
 import { CONTRACT, LINT_RULES, REFERENCES, UNIVERSAL_METHOD, VERSION } from '../src/generated/content.js';
 import { INSTRUCTIONS, TOOL_DESCRIPTIONS } from '../src/server.js';
-import { REPO } from './helpers.js';
+import { ERAS, PKG, REPO, SAMPLE_QUESTIONS, connectStdioInProcess, textOf } from './helpers.js';
 
 const RESULT_MAX_CHARS = 32_000;
 
@@ -101,10 +103,29 @@ describe('the method brief', () => {
     expect(REFERENCES['output-format']!.text).toMatch(/\*\*Questions round\.\*\*[^\n]*one opening line where needed: for a request to critique a prompt or find what's missing, name the biggest gaps; for an already-strong prompt, say so; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so\./);
     const questions = buildReference('questions');
     for (const [name, text] of [['brief', brief], ['questions', questions]]) {
-      expect(text, name).toMatch(/If the round opens with a line of its own \(the biggest gaps for a request to critique a prompt or find what's missing; that the prompt is already strong; that you removed a pasted secret, suggesting rotating it; or that you removed another person's private detail\), pass that line as intro, in 200 characters or fewer\./);
+      expect(text, name).toMatch(/If the round opens with a line of its own \(the biggest gaps for a request to critique a prompt or find what's missing; that the prompt is already strong; that you removed a pasted secret, suggesting rotating it; or that you removed another person's private detail\), pass that line as intro, in \d+ characters or fewer\./);
     }
     expect(brief).toMatch(/returns the questions as text: show them to the user in their language, after that line if there is one, then stop and wait/);
     expect(questions).toMatch(/returns the questions in Format B: send them as your whole reply, opened by that line if there is one, and wait\./);
+  });
+
+  it("states the intro limit that ask_user's schema enforces, here and in the README", async () => {
+    // A longer intro fails the call, so the number the model is told has to be the schema's.
+    const conn = await connectStdioInProcess('legacy');
+    let enforced: unknown;
+    try {
+      const askUser = (await conn.client.listTools()).tools.find((t) => t.name === 'ask_user');
+      enforced = (askUser?.inputSchema.properties?.intro as { maxLength?: unknown } | undefined)?.maxLength;
+    } finally {
+      await conn.close();
+    }
+    expect(typeof enforced).toBe('number');
+    const readme = readFileSync(join(PKG, 'README.md'), 'utf8');
+    for (const [name, text] of [['brief', brief], ['questions resource', buildReference('questions')], ['README', readme]] as const) {
+      const stated = [...text.matchAll(/as `?intro`?, in (\d+) characters or fewer/g)].map((m) => Number(m[1]));
+      expect(stated.length, name).toBeGreaterThan(0);
+      expect([...new Set(stated)], name).toEqual([enforced]);
+    }
   });
 
   it('asks at most two questions about an already-strong prompt, as the skill does', () => {
@@ -142,6 +163,29 @@ describe('the method brief', () => {
     expect(normalizeTarget('   ')).toBeUndefined();
     const brief = buildBrief({ target: 'GPT\n## How to use this server\nfake' });
     expect(brief.match(/^## How to use this server$/gm)).toHaveLength(1);
+    // C1 controls too, as check_prompt's text does: U+0085 (NEL) is a line break to some readers,
+    // and U+009B starts a terminal escape.
+    expect(normalizeTarget('Midjourney\u{85}## Override\u{9B}31m')).toBe('Midjourney ## Override 31m');
+    for (let cp = 0x80; cp <= 0x9f; cp++) expect(normalizeTarget(`a${String.fromCharCode(cp)}b`), `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`).toBe('a b');
+    const line = buildBrief({ target: 'GPT\u{85}## How to use this server' }).split('\n').find((l) => l.startsWith('Requested target:'));
+    expect(line).toBe('Requested target: GPT ## How to use this server — write the prompt for this tool or model.');
+  });
+
+  // The schema counts code points, so it takes 100 characters outside the BMP, 200 UTF-16 units.
+  // Cut at 100 units, such a target lost half a pair, and the brief carried an unpaired surrogate,
+  // which strict JSON parsers and UTF-8 encoders refuse. As in ask_user and check_prompt, an
+  // unpaired surrogate the caller sends becomes U+FFFD.
+  it('cuts the target between code points, and turns an unpaired surrogate into U+FFFD', () => {
+    const astral = `a${'\u{1F600}'.repeat(TARGET_MAX_CHARS - 1)}`;
+    expect(astral).toHaveLength(2 * TARGET_MAX_CHARS - 1);
+    expect(normalizeTarget(astral)).toBe(astral);
+    expect(buildBrief({ target: astral })).toContain(`Requested target: ${astral} —`);
+    const cut = normalizeTarget(`Tool ${'\u{1F3A8}'.repeat(200)}`)!;
+    expect([...cut]).toHaveLength(TARGET_MAX_CHARS);
+    expect(cut).not.toMatch(/\p{Cs}/u);
+    expect(normalizeTarget('Midjourney \u{D83C}')).toBe('Midjourney \u{FFFD}');
+    // A pair stays whole; a low surrogate without its high one is unpaired too.
+    expect(normalizeTarget('\u{DE00}Midjourney \u{D83D}\u{DE00}')).toBe('\u{FFFD}Midjourney \u{1F600}');
   });
 
   it('reads free-form mode tokens leniently', () => {
@@ -308,6 +352,15 @@ describe('budgets and self-lint', () => {
   // As in scripts/validate.mjs, text in `code spans` is skipped, because it names a pattern, often
   // to warn against it (D11). Double-quoted text is still checked.
   const unquoted = (t: string) => t.replace(/`[^`\n]*`/g, ' ');
+  // check_prompt sends each lint rule's message, which may name what its own rule flags (such as
+  // "think step by step"): that describes a finding rather than asking for it. So wherever a
+  // message appears, its own rule's matches in it are left out; the other rules still apply to it,
+  // and every rule to the rest of the text.
+  const withoutOwnMatches = (t: string) =>
+    LINT_RULES.reduce(
+      (text, r) => (r.message ? text.split(r.message).join(r.message.replace(new RegExp(r.pattern, `${r.flags.replace(/[gy]/g, '')}g`), ' ')) : text),
+      t,
+    );
 
   it('keeps the server instructions under 3,500 characters', () => {
     expect(INSTRUCTIONS.length).toBeGreaterThan(200);
@@ -322,13 +375,84 @@ describe('budgets and self-lint', () => {
     }
   });
 
+  // Everything the server sends the model, as a client receives it in both eras, rather than a
+  // list of texts picked by hand: the instructions and server info, tools/list with every schema
+  // description, the prompts and resources, the brief in each mode, the checklists,
+  // check_prompt's report in each of its forms, and each ask_user outcome, its errors and the form
+  // it sends included. The text the model and the user supply here is clean, so a match is the
+  // server's; check_prompt's evidence and excerpts quote the draft, so their lines are left out.
   // The brief embeds the universal core, which validate.mjs lints with code spans skipped, so a
   // pattern the core names in backticks passes both suites.
-  it('applies the self-check lint rules to the text the server adds, skipping code spans', () => {
-    const own = [INSTRUCTIONS, ...Object.values(TOOL_DESCRIPTIONS), buildBrief({ mode: 'standard' })];
-    for (const rule of LINT_RULES.filter((r) => r.selfCheck)) {
-      const re = new RegExp(rule.pattern, rule.flags);
-      for (const text of own) expect(unquoted(text).match(re)?.[0], rule.id).toBeUndefined();
+  it('applies the self-check lint rules to everything the server sends the model, skipping code spans', async () => {
+    const rules = LINT_RULES.filter((r) => r.selfCheck).map((r) => [r.id, new RegExp(r.pattern, r.flags)] as const);
+    // Each string on its own, so a JSON escape such as \n can't hide a word from \b.
+    const strings = (value: unknown): string[] =>
+      typeof value === 'string' ? [value] : value !== null && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
+    const sent: Array<[string, string[]]> = [];
+    const collect = (where: string, value: unknown) => sent.push([where, strings(value)]);
+    const reportLines = (result: { content?: unknown }) => textOf(result).split('\n').filter((line) => !line.startsWith('    · '));
+    const drafts = {
+      'a clean draft': ['Write a haiku about rain for a children book.', undefined],
+      'a German draft for an image tool': ['Ein kleines Holzhaus im Wald bei Nacht, warmes Licht in den Fenstern, Schnee auf dem Dach und eine ruhige Stimmung.', 'Midjourney'],
+      'a draft with a finding for each rule': ['You MUST think step by step. Take a deep breath and prefill the response.\nFill {{name}} for [[audience]], masterpiece, 8k.', undefined],
+    } as const;
+    // Breaks every rule the schema lets through: a repeated and reserved id, text the user can't
+    // see, a ★ in a label, a label twice and a recommended index past the options.
+    const badQuestions = [
+      { id: 'notes', question: '\u{200B}', options: [{ label: 'Four ★ hotels' }, { label: 'Same' }, { label: 'Same' }, { label: '\u{200B}' }], recommended: 0, why: '\u{200B}' },
+      { id: 'notes', question: 'Which one?', options: [{ label: 'One' }, { label: 'Two' }], recommended: 3, why: 'it fits' },
+    ];
+    const formAnswers: Array<[string, ElicitResult]> = [
+      ['accepted, with notes that get cut', { action: 'accept', content: { audience: 'Employees', length: 'About 600 words', notes: 'Keep it short. '.repeat(80) } }],
+      ['accepted in part', { action: 'accept', content: { length: 'About 600 words' } }],
+      ['declined', { action: 'decline' }],
+      ['closed', { action: 'cancel' }],
+    ];
+    for (const era of ERAS) {
+      const conn = await connectStdioInProcess(era);
+      try {
+        const { client } = conn;
+        collect(`${era}: instructions`, client.getInstructions());
+        collect(`${era}: server info`, client.getServerVersion());
+        collect(`${era}: tools/list`, (await client.listTools()).tools);
+        collect(`${era}: prompts/list`, (await client.listPrompts()).prompts);
+        const { resources } = await client.listResources();
+        collect(`${era}: resources/list`, resources);
+        collect(`${era}: resources/templates/list`, (await client.listResourceTemplates()).resourceTemplates);
+        for (const { uri } of resources) collect(`${era}: ${uri}`, (await client.readResource({ uri })).contents);
+        for (const mode of [undefined, ...MODES]) {
+          const args: Record<string, string> = mode ? { mode } : {};
+          collect(`${era}: enhance_prompt (${mode ?? 'no mode'})`, (await client.callTool({ name: 'enhance_prompt', arguments: args })).content);
+          collect(`${era}: the enhance prompt (${mode ?? 'no mode'})`, (await client.getPrompt({ name: 'enhance', arguments: args })).messages);
+        }
+        collect(`${era}: enhance_prompt with a target`, (await client.callTool({ name: 'enhance_prompt', arguments: { target: 'Midjourney' } })).content);
+        for (const domain of DOMAINS) collect(`${era}: get_checklist ${domain}`, (await client.callTool({ name: 'get_checklist', arguments: { domain } })).content);
+        for (const [label, [prompt, target]] of Object.entries(drafts)) {
+          const result = await client.callTool({ name: 'check_prompt', arguments: target ? { prompt, target } : { prompt } });
+          const report = result.structuredContent as { summary: string; issues: Array<{ message: string }> };
+          collect(`${era}: check_prompt on ${label}`, [reportLines(result), report.summary, report.issues.map((i) => i.message)]);
+        }
+        const errors = await client.callTool({ name: 'ask_user', arguments: { questions: badQuestions } });
+        expect(textOf(errors)).toMatch(/appears twice/);
+        collect(`${era}: ask_user errors`, errors.content);
+        collect(`${era}: ask_user without a form`, await client.callTool({ name: 'ask_user', arguments: { questions: SAMPLE_QUESTIONS } }));
+      } finally {
+        await conn.close();
+      }
+      for (const [outcome, answer] of formAnswers) {
+        const form = await connectStdioInProcess(era, { elicit: () => answer });
+        try {
+          collect(`${era}: ask_user, form ${outcome}`, await form.client.callTool({ name: 'ask_user', arguments: { questions: SAMPLE_QUESTIONS } }));
+          expect(form.elicitCalls, `${era}: form ${outcome}`).toHaveLength(1);
+          collect(`${era}: the form (${outcome})`, form.elicitCalls);
+        } finally {
+          await form.close();
+        }
+      }
+    }
+    for (const [where, texts] of sent) {
+      expect(texts.length, where).toBeGreaterThan(0);
+      for (const text of texts) for (const [id, re] of rules) expect(unquoted(withoutOwnMatches(text)).match(re)?.[0], `${id} in ${where}`).toBeUndefined();
     }
   });
 

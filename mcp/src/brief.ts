@@ -3,6 +3,7 @@
 // Pure and SDK-free.
 
 import { REFERENCES, UNIVERSAL_METHOD, VERSION } from './generated/content.js';
+import { INTRO_MAX_CHARS } from './questions.js';
 
 export const MODES = ['quick', 'standard', 'deep'] as const;
 export type Mode = (typeof MODES)[number];
@@ -41,11 +42,16 @@ export function normalizeMode(value: unknown): Mode | undefined {
   return isMode(token) ? token : undefined;
 }
 
-/** One line, no control characters, bounded, so a target can't reshape the brief. */
+/**
+ * One line, no control characters (C0, DEL and C1, as check_prompt's text has none), bounded, so
+ * a target can't reshape the brief. The bound counts code points, as the schema does, so a cut
+ * never splits a surrogate pair, and an unpaired surrogate becomes U+FFFD, as in ask_user and
+ * check_prompt: the brief stays text that JSON carries without an escape and UTF-8 can encode.
+ */
 export function normalizeTarget(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  const flat = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return flat ? flat.slice(0, TARGET_MAX_CHARS) : undefined;
+  const flat = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/\p{Cs}/gu, '\u{FFFD}').replace(/\s+/g, ' ').trim();
+  return flat ? [...flat].slice(0, TARGET_MAX_CHARS).join('') : undefined;
 }
 
 /** Points `references/x.md` mentions at this server's resources instead of files the host can't see. */
@@ -67,7 +73,7 @@ export function adaptMethod(method: string = UNIVERSAL_METHOD): string {
 // plain text at the end of the reply, as in the brief.
 const FORMAT_A = `## Format A — the ask_user tool (this server)
 
-Call ask_user for every round: 1–8 questions per call, each with 2–4 options, the 0-based index of the recommended option, why (its reason, 12 words or fewer) and an optional header of up to 12 characters. If the user's language isn't English, also pass intro, notes_label and notes_hint in it. If the round opens with a line of its own (the biggest gaps for a request to critique a prompt or find what's missing; that the prompt is already strong; that you removed a pasted secret, suggesting rotating it; or that you removed another person's private detail), pass that line as intro, in 200 characters or fewer. Where the app supports forms, the user answers one form with the recommended answers preselected and a notes field, and ask_user returns the answers. If the app can't show forms, or the user closes the form without answering, ask_user returns the questions in Format B: send them as your whole reply, opened by that line if there is one, and wait. If the user declines the form, it returns the recommended answers; list them under Assumptions. If the call fails, fall back to Format B in your next message. Never guess the answers.
+Call ask_user for every round: 1–8 questions per call, each with 2–4 options, the 0-based index of the recommended option, why (its reason, 12 words or fewer) and an optional header of up to 12 characters. If the user's language isn't English, also pass intro, notes_label and notes_hint in it. If the round opens with a line of its own (the biggest gaps for a request to critique a prompt or find what's missing; that the prompt is already strong; that you removed a pasted secret, suggesting rotating it; or that you removed another person's private detail), pass that line as intro, in ${INTRO_MAX_CHARS} characters or fewer. Where the app supports forms, the user answers one form with the recommended answers preselected and a notes field, and ask_user returns the answers. If the app can't show forms, or the user closes the form without answering, ask_user returns the questions in Format B: send them as your whole reply, opened by that line if there is one, and wait. If the user declines the form, it returns the recommended answers; list them under Assumptions. If the call fails, fall back to Format B in your next message. Never guess the answers.
 
 `;
 const MENU_SENTENCE = 'End the same message with the menu as a numbered list, because some apps show only your final message. Use ask_user for clarifying questions only.';
@@ -110,7 +116,7 @@ export function adaptReference(name: ReferenceResource, text: string): string {
 const SERVER_SECTION = `## How to use this server
 These steps replace the instruction above to send the questions in your own message.
 1. Call get_checklist with the domain (coding, writing, research, image-video or general) for its full checklist and ★ defaults. Use two domains if the prompt spans them.
-2. Standard and deep modes: call ask_user with the questions that matter, written in the user's language: 1–8 questions (at most 2 if the prompt is already strong), each with 2–4 options, the 0-based index of the recommended option, why (a reason of 12 words or fewer), and a header of up to 12 characters. If the user's language isn't English, also pass intro, notes_label and notes_hint in it. If the round opens with a line of its own (the biggest gaps for a request to critique a prompt or find what's missing; that the prompt is already strong; that you removed a pasted secret, suggesting rotating it; or that you removed another person's private detail), pass that line as intro, in 200 characters or fewer. Where the app supports forms, the user answers in a form and ask_user returns the answers. If the app can't show forms, or the user closes the form without answering, it returns the questions as text: show them to the user in their language, after that line if there is one, then stop and wait for the reply. If the user declines the form, it returns the ★ answers: list them under Assumptions. Deep mode can call ask_user again for later rounds. Skip this step in quick mode.
+2. Standard and deep modes: call ask_user with the questions that matter, written in the user's language: 1–8 questions (at most 2 if the prompt is already strong), each with 2–4 options, the 0-based index of the recommended option, why (a reason of 12 words or fewer), and a header of up to 12 characters. If the user's language isn't English, also pass intro, notes_label and notes_hint in it. If the round opens with a line of its own (the biggest gaps for a request to critique a prompt or find what's missing; that the prompt is already strong; that you removed a pasted secret, suggesting rotating it; or that you removed another person's private detail), pass that line as intro, in ${INTRO_MAX_CHARS} characters or fewer. Where the app supports forms, the user answers in a form and ask_user returns the answers. If the app can't show forms, or the user closes the form without answering, it returns the questions as text: show them to the user in their language, after that line if there is one, then stop and wait for the reply. If the user declines the form, it returns the ★ answers: list them under Assumptions. Deep mode can call ask_user again for later rounds. Skip this step in quick mode.
 3. With the answers in hand, write the enhanced prompt yourself and present it in exactly the format of section 5. Answers with source "chosen" are [your answer]; answers with source "recommended" that the user never confirmed go under Assumptions, and so do the defaults you chose without asking.
 4. Optionally call check_prompt on your draft full prompt and consider what it flags before presenting it. Its findings are English keyword heuristics, so score with the anchors above, not with the tool.
 This server never calls a model and doesn't receive the user's prompt unless you pass a draft to check_prompt.`;

@@ -10,7 +10,12 @@
 //   inlines (scripts/notices.mjs);
 // - its server, started as manifest.json's mcp_config describes
 //   (node ${__dirname}/server/index.js), lists exactly the manifest's tools, and no
-//   prompt the manifest doesn't cover.
+//   prompt the manifest doesn't cover, answers a call to each tool, answers the
+//   enhance prompt and completions of its mode and of a checklist's domain, lists the
+//   resources, and reads prompt-engine://method, prompt-engine://questions and
+//   prompt-engine://checklists/coding; started twice more, it answers ask_user through
+//   a form for a client on the 2025-era protocol and for one on 2026-07-28
+//   (scripts/check-server.mjs).
 // Claude Desktop is reported to run some Node extensions in its own host instead
 // (anthropics/claude-code#35175); that isn't checked here. If a check fails, the
 // bundle is deleted.
@@ -22,6 +27,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { checkServer } from './check-server.mjs';
 import { SDK_INLINED, bundledPackages, noticeHeadings } from './notices.mjs';
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -93,24 +99,14 @@ try {
   ];
   if (unnamed.length) throw new Error(`server/THIRD_PARTY_NOTICES.txt doesn't name: ${unnamed.join(', ')}`);
 
-  // Start the packed server as manifest.json's mcp_config describes (node ${__dirname}/server/index.js).
+  // Start the packed server as manifest.json's mcp_config describes (node ${__dirname}/server/index.js),
+  // once for each client the check connects.
   const args = packed.server.mcp_config.args.map((a) => a.replace('${__dirname}', unpacked));
+  const open = () => new StdioClientTransport({ command: process.execPath, args, cwd: unpacked, stderr: 'inherit' });
   const client = new Client({ name: 'mcpb-check', version: '0.0.0' });
-  await client.connect(new StdioClientTransport({ command: process.execPath, args, cwd: unpacked, stderr: 'inherit' }));
+  await client.connect(open());
   try {
-    const { tools } = await client.listTools();
-    const names = tools.map((t) => t.name).sort().join(', ');
-    const declared = manifest.tools.map((t) => t.name).sort().join(', ');
-    if (names !== declared) throw new Error(`the packed server lists tools ${names}; manifest.json declares ${declared}`);
-    // MCPB reads a missing prompts_generated as false: the bundle has no prompts beyond
-    // manifest.prompts. Claude Desktop is reported to refuse a prompt the manifest doesn't
-    // declare ("attempted undeclared prompt"); that hasn't been checked here.
-    const { prompts } = await client.listPrompts();
-    const undeclared = prompts.map((p) => p.name).filter((n) => !(manifest.prompts ?? []).some((p) => p.name === n));
-    if (undeclared.length && manifest.prompts_generated !== true) {
-      throw new Error(`the packed server lists prompts manifest.json doesn't declare: ${undeclared.join(', ')} (set prompts_generated, or declare them)`);
-    }
-    console.log(`the packed server starts and lists: ${names}; prompts: ${prompts.map((p) => p.name).join(', ') || 'none'}`);
+    console.log(await checkServer(client, manifest, open));
   } finally {
     await client.close();
   }

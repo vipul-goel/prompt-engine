@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..');
 const [major, minor] = process.versions.node.split('.').map(Number);
@@ -18,6 +18,13 @@ if (major < 22 || (major === 22 && minor < 19)) {
   console.error(`The MCP Inspector CLI needs Node >= 22.19 (this is ${process.versions.node}).`);
   process.exit(1);
 }
+
+// What resources/list must return, from the lists that build it (test:inspector builds dist/ first),
+// so a new domain or reference resource needs no change here.
+const { DOMAINS, REFERENCE_RESOURCES } = await import(pathToFileURL(join(pkg, 'dist', 'brief.js')).href);
+const RESOURCES = ['prompt-engine://method', ...REFERENCE_RESOURCES.map((name) => `prompt-engine://${name}`), ...DOMAINS.map((domain) => `prompt-engine://checklists/${domain}`)]
+  .sort()
+  .join(',');
 
 const launcher = join(dirname(createRequire(import.meta.url).resolve('@modelcontextprotocol/inspector/package.json')), 'clients', 'launcher', 'build', 'index.js');
 const server = ['node', join(pkg, 'dist', 'cli.js')];
@@ -80,7 +87,12 @@ try {
     check(stamped === (era === 'modern'), `the ${era} era was negotiated (serverInfo is ${era === 'modern' ? '' : 'not '}stamped on results)`);
 
     const resources = inspect(era, ['--method', 'resources/list']);
-    check(resources.code === 0 && resources.result?.resources?.length === 10, 'resources/list returns 5 references and 5 checklists', resources.stdout.slice(0, 300));
+    const listed = (resources.result?.resources ?? []).map((r) => r.uri).sort().join(',');
+    check(
+      resources.code === 0 && listed === RESOURCES,
+      `resources/list returns the method, ${REFERENCE_RESOURCES.length} references and ${DOMAINS.length} checklists`,
+      listed || resources.stdout.slice(0, 300),
+    );
     const templates = inspect(era, ['--method', 'resources/templates/list']);
     check(templates.result?.resourceTemplates?.[0]?.uriTemplate === 'prompt-engine://checklists/{domain}', 'resources/templates/list returns the checklist template');
     const method = inspect(era, ['--method', 'resources/read', '--uri', 'prompt-engine://method']);

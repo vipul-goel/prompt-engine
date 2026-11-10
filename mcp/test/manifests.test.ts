@@ -3,13 +3,14 @@
 // the MCPB bundle's third-party notices cover what it bundles.
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build, type Metafile } from 'esbuild';
 import { describe, expect, it } from 'vitest';
+import { DOMAINS } from '../src/brief.js';
 import { VERSION } from '../src/generated/content.js';
 import { TOOL_NAMES } from '../src/server.js';
 import { PKG, REPO, schemaErrors } from './helpers.js';
@@ -18,6 +19,7 @@ const readJson = (path: string) => JSON.parse(readFileSync(path, 'utf8'));
 const pkg = readJson(join(PKG, 'package.json'));
 const manifest = readJson(join(PKG, 'manifest.json'));
 const server = readJson(join(PKG, 'server.json'));
+const lock = readJson(join(PKG, 'package-lock.json'));
 const pluginPath = join(REPO, '.claude-plugin', 'plugin.json');
 
 describe('versions', () => {
@@ -26,6 +28,8 @@ describe('versions', () => {
     expect(manifest.version).toBe(VERSION);
     expect(server.version).toBe(VERSION);
     expect(server.packages.map((p: { version: string }) => p.version)).toEqual([VERSION]);
+    // scripts/version.mjs writes both of the lockfile's; npm ci reads neither.
+    expect([lock.version, lock.packages[''].version]).toEqual([VERSION, VERSION]);
     if (existsSync(pluginPath)) expect(readJson(pluginPath).version).toBe(VERSION);
   });
 });
@@ -47,16 +51,19 @@ describe('package.json', () => {
     expect(pkg.scripts['test:pack']).toBe('node scripts/smoke-pack.mjs');
   });
 
-  it('copies the root LICENSE in for npm pack, keeps a hand-placed one, and fails when there is none', () => {
-    // A copy of scripts/license.mjs in a temporary tree, so the real LICENSE files stay put.
+  // A copy of scripts/license.mjs in a temporary tree, so the real LICENSE files stay put.
+  const licenseTree = () => {
     const root = mkdtempSync(join(tmpdir(), 'prompt-engine-license-'));
-    try {
-      const script = join(root, 'mcp', 'scripts', 'license.mjs');
-      mkdirSync(dirname(script), { recursive: true });
-      cpSync(join(PKG, 'scripts', 'license.mjs'), script);
-      const run = (action: string) => spawnSync(process.execPath, [script, action], { encoding: 'utf8' });
-      const copy = join(root, 'mcp', 'LICENSE');
+    const script = join(root, 'mcp', 'scripts', 'license.mjs');
+    mkdirSync(dirname(script), { recursive: true });
+    cpSync(join(PKG, 'scripts', 'license.mjs'), script);
+    const run = (action: string) => spawnSync(process.execPath, [script, action], { encoding: 'utf8' });
+    return { root, run, copy: join(root, 'mcp', 'LICENSE') };
+  };
 
+  it('copies the root LICENSE in for npm pack, keeps a hand-placed one, and fails when there is none', () => {
+    const { root, run, copy } = licenseTree();
+    try {
       // No LICENSE in either place: prepack fails, so npm pack and npm publish stop.
       const none = run('copy');
       expect(none.status).toBe(1);
@@ -86,6 +93,55 @@ describe('package.json', () => {
     }
   });
 
+  // A pack that fails between prepack and postpack, such as one given a --pack-destination
+  // that doesn't exist, leaves the copy and its marker behind.
+  it('keeps a LICENSE written over a copy that a failed pack left behind', () => {
+    const { root, run, copy } = licenseTree();
+    try {
+      writeFileSync(join(root, 'LICENSE'), 'root license\n');
+      expect(run('copy').status).toBe(0);
+      writeFileSync(copy, 'hand-placed\n');
+      expect(run('copy').status).toBe(0);
+      expect(readFileSync(copy, 'utf8')).toBe('hand-placed\n');
+      expect(run('remove').status).toBe(0);
+      expect(existsSync(copy) ? readFileSync(copy, 'utf8') : 'deleted').toBe('hand-placed\n');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('replaces a copy that a failed pack left behind with the root LICENSE as it is now, and removes it after the pack', () => {
+    const { root, run, copy } = licenseTree();
+    try {
+      writeFileSync(join(root, 'LICENSE'), 'root license\n');
+      expect(run('copy').status).toBe(0);
+      writeFileSync(join(root, 'LICENSE'), 'root license, updated\n');
+      expect(run('copy').status).toBe(0);
+      expect(readFileSync(copy, 'utf8')).toBe('root license, updated\n');
+      expect(run('remove').status).toBe(0);
+      expect(existsSync(copy)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // npm ci, the first step of the MCP checks, deletes node_modules and installs it again.
+  it('still knows a left-over copy for its own after node_modules is installed again', () => {
+    const { root, run, copy } = licenseTree();
+    try {
+      writeFileSync(join(root, 'LICENSE'), 'root license\n');
+      expect(run('copy').status).toBe(0);
+      rmSync(join(root, 'mcp', 'node_modules'), { recursive: true, force: true });
+      writeFileSync(join(root, 'LICENSE'), 'root license, updated\n');
+      expect(run('copy').status).toBe(0);
+      expect(readFileSync(copy, 'utf8')).toBe('root license, updated\n');
+      expect(run('remove').status).toBe(0);
+      expect(existsSync(copy)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('packs the built server without the Cloudflare Worker entry', () => {
     // npm sets npm_execpath when it runs the tests; fall back to npm on PATH.
     const npm = process.env.npm_execpath?.endsWith('.js') ? [process.execPath, process.env.npm_execpath] : ['npm'];
@@ -95,7 +151,17 @@ describe('package.json', () => {
     expect(files).toContain('dist/cli.js');
     expect(files).toContain('dist/generated/content.js');
     expect(files).not.toContain('dist/worker.js');
-    expect(files.filter((f) => !f.startsWith('dist/')).sort()).toEqual(['README.md', 'package.json']);
+    // A LICENSE is listed only when one is in mcp/: put there by hand, which license.mjs keeps, or
+    // left by a pack that failed. npm run test:pack checks that the packed tarball carries one.
+    expect(files.filter((f) => !f.startsWith('dist/') && f !== 'LICENSE').sort()).toEqual(['README.md', 'package.json']);
+  });
+
+  it("agrees with the lockfile's root entry, which npm ci doesn't compare", () => {
+    // npm ci accepts a lockfile whose root version, engines, license or bin differ from
+    // package.json and leaves them as they are; `npm install` in mcp/ writes them again.
+    const root = lock.packages[''];
+    expect(lock.name).toBe(pkg.name);
+    for (const key of ['name', 'version', 'license', 'bin', 'engines']) expect(root[key], key).toEqual(pkg[key]);
   });
 
   it('pins every dependency exactly', () => {
@@ -175,6 +241,19 @@ describe('manifest.json (MCPB)', () => {
     expect(floor(manifest.compatibility.runtimes.node)).toBe(floor(pkg.engines.node));
   });
 
+  // These tool descriptions ship in the .mcpb and are written apart from the server's own, the ones
+  // the model reads, which brief.test.ts and integration.test.ts check.
+  const toolDescription = (name: string): string => manifest.tools.find((t: { name: string }) => t.name === name)?.description ?? '';
+
+  it('says ask_user shows a form only where the app supports one', () => {
+    // In an app without forms it returns the questions as text (finding 69).
+    expect(toolDescription('ask_user')).toMatch(/\bin a form where the app supports one\b.*\botherwise as a numbered list\b/);
+  });
+
+  it('names every domain get_checklist takes, in order', () => {
+    expect(toolDescription('get_checklist')).toContain(`a domain: ${DOMAINS.slice(0, -1).join(', ')} or ${DOMAINS.at(-1)}.`);
+  });
+
   it('covers the prompts the server lists', () => {
     // MCPB reads a missing prompts_generated as false: no prompts beyond manifest.prompts, and
     // Claude Desktop is reported to refuse an undeclared one. The server lists `enhance`
@@ -237,6 +316,32 @@ describe('third-party notices (MCPB bundle)', () => {
     } finally {
       rmSync(thirdParty, { recursive: true, force: true });
     }
+  });
+
+  it('fails, naming the package, when a vendored license text is not the one pinned for it', async () => {
+    const { VENDORED_LICENSE_SHA256, collectNotices } = await notices();
+    const { metafile } = await bundle();
+    const thirdParty = temp();
+    try {
+      cpSync(join(PKG, 'third-party'), thirdParty, { recursive: true });
+      // Another license's header and copyright holder: a long text, but not fast-uri's.
+      const file = join(thirdParty, 'fast-uri@3.1.8', 'LICENSE');
+      writeFileSync(file, readFileSync(file, 'utf8').replace(/^Copyright[^\n]*\n/, 'The MIT License (MIT)\n\nCopyright (c) 2015-2021 Someone Else\n'));
+      expect(() => collectNotices(metafile, { thirdParty })).toThrow(
+        /fast-uri@3\.1\.8 \(inlined in @modelcontextprotocol\/server\): third-party\/fast-uri@3\.1\.8\/LICENSE has SHA-256 [0-9a-f]{64}, not the b010b0df[0-9a-f]{56} pinned in scripts\/notices\.mjs/,
+      );
+      // An inlined package with no pin stops the bundle too.
+      const unpinned = Object.fromEntries(Object.entries(VENDORED_LICENSE_SHA256).filter(([spec]) => spec !== 'fast-uri@3.1.8'));
+      expect(() => collectNotices(metafile, { licenseSha256: unpinned })).toThrow(/fast-uri@3\.1\.8 \(inlined in @modelcontextprotocol\/server\): no SHA-256 pinned/);
+    } finally {
+      rmSync(thirdParty, { recursive: true, force: true });
+    }
+  });
+
+  it('pins a text for each package SDK_INLINED lists, and third-party/ holds only those', async () => {
+    const { SDK_INLINED, VENDORED_LICENSE_SHA256 } = await notices();
+    expect(Object.keys(VENDORED_LICENSE_SHA256).sort()).toEqual([...SDK_INLINED].sort());
+    expect(readdirSync(join(PKG, 'third-party')).sort()).toEqual([...SDK_INLINED].sort());
   });
 
   it('fails when the SDK is not the version its inlined list was reviewed for, or inlines another set', async () => {
