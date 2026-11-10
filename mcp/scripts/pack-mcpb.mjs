@@ -13,7 +13,9 @@
 //   prompt the manifest doesn't cover, answers a call to each tool, answers the
 //   enhance prompt and completions of its mode and of a checklist's domain, lists the
 //   resources, and reads prompt-engine://method, prompt-engine://questions and
-//   prompt-engine://checklists/coding (scripts/check-server.mjs).
+//   prompt-engine://checklists/coding; started twice more, it answers ask_user through
+//   a form for a client on the 2025-era protocol and for one on 2026-07-28
+//   (scripts/check-server.mjs).
 // Claude Desktop is reported to run some Node extensions in its own host instead
 // (anthropics/claude-code#35175); that isn't checked here. If a check fails, the
 // bundle is deleted.
@@ -97,12 +99,14 @@ try {
   ];
   if (unnamed.length) throw new Error(`server/THIRD_PARTY_NOTICES.txt doesn't name: ${unnamed.join(', ')}`);
 
-  // Start the packed server as manifest.json's mcp_config describes (node ${__dirname}/server/index.js).
+  // Start the packed server as manifest.json's mcp_config describes (node ${__dirname}/server/index.js),
+  // once for each client the check connects.
   const args = packed.server.mcp_config.args.map((a) => a.replace('${__dirname}', unpacked));
+  const open = () => new StdioClientTransport({ command: process.execPath, args, cwd: unpacked, stderr: 'inherit' });
   const client = new Client({ name: 'mcpb-check', version: '0.0.0' });
-  await client.connect(new StdioClientTransport({ command: process.execPath, args, cwd: unpacked, stderr: 'inherit' }));
+  await client.connect(open());
   try {
-    console.log(await checkServer(client, manifest));
+    console.log(await checkServer(client, manifest, open));
   } finally {
     await client.close();
   }

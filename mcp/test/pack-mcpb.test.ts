@@ -8,26 +8,60 @@ import { pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { completable, InMemoryTransport, McpServer, ResourceTemplate } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createServer } from '../src/server.js';
 import { PKG } from './helpers.js';
 
+// A switch that makes the form message ask_user builds throw, as a bundling fault could.
+const faults = vi.hoisted(() => ({ form: false }));
+vi.mock('../src/questions.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/questions.js')>();
+  return {
+    ...actual,
+    buildFormMessage: (...args: Parameters<typeof actual.buildFormMessage>) => {
+      if (faults.form) throw new Error('bundle-only fault in the form');
+      return actual.buildFormMessage(...args);
+    },
+  };
+});
+
 const manifest = JSON.parse(readFileSync(join(PKG, 'manifest.json'), 'utf8'));
 // Plain JavaScript with no type declarations, so import it untyped.
-const checkServer = async (client: Client): Promise<string> =>
-  (await import(pathToFileURL(join(PKG, 'scripts', 'check-server.mjs')).href)).checkServer(client, manifest);
+const checkServer = async (client: Client, open: () => InMemoryTransport): Promise<string> =>
+  (await import(pathToFileURL(join(PKG, 'scripts', 'check-server.mjs')).href)).checkServer(client, manifest, open);
 
-async function check(factory: () => McpServer): Promise<string> {
-  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  const handle = serveStdio(factory, { transport: serverSide });
+/**
+ * A transport whose server answers server/discover with "Method not found", as a server that
+ * serves only the 2025 era does, so a client set to negotiate falls back to initialize.
+ */
+function onlyThe2025Era(transport: InMemoryTransport): InMemoryTransport {
+  const send = transport.send.bind(transport);
+  transport.send = async (message, options) => {
+    if ('method' in message && message.method === 'server/discover' && 'id' in message) {
+      queueMicrotask(() => transport.onmessage?.({ jsonrpc: '2.0', id: message.id, error: { code: -32601, message: 'Method not found' } }));
+      return;
+    }
+    return send(message, options);
+  };
+  return transport;
+}
+
+/** Runs the check on servers from `factory`: one for its first client, and one for each client it opens. */
+async function check(factory: () => McpServer, { legacyOnly = false } = {}): Promise<string> {
+  const handles: Array<{ close: () => Promise<void> }> = [];
+  const open = () => {
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    handles.push(serveStdio(factory, { transport: serverSide }));
+    return legacyOnly ? onlyThe2025Era(clientSide) : clientSide;
+  };
   const client = new Client({ name: 'pack-mcpb-test', version: '0.0.0' });
-  await client.connect(clientSide);
+  await client.connect(open());
   try {
-    return await checkServer(client);
+    return await checkServer(client, open);
   } finally {
     await client.close();
-    await handle.close();
+    for (const handle of handles) await handle.close();
   }
 }
 
@@ -106,12 +140,26 @@ const answering: Record<string, Handler> = {
 };
 
 describe("pack-mcpb.mjs's check of the packed server", () => {
-  it('passes this server, and says it called every tool, fetched the prompt, asked for completions, listed the resources and read three', async () => {
+  it('passes this server, and says it called every tool, fetched the prompt, asked for completions, listed the resources, read three and asked through a form in both eras', async () => {
     expect(await check(() => createServer())).toMatch(
-      /and answers get_checklist, check_prompt, enhance_prompt and ask_user, the enhance prompt, completions of its mode and of a checklist's domain, resources\/list, and reads of prompt-engine:\/\/method, prompt-engine:\/\/questions and prompt-engine:\/\/checklists\/coding$/,
+      /and answers get_checklist, check_prompt, enhance_prompt and ask_user, the enhance prompt, completions of its mode and of a checklist's domain, resources\/list, reads of prompt-engine:\/\/method, prompt-engine:\/\/questions and prompt-engine:\/\/checklists\/coding, and ask_user through a form, in the 2025-era and 2026-07-28 protocols$/,
     );
-    // So does a stand-in that answers each of these as this server does.
-    await expect(check(() => standIn(answering))).resolves.toMatch(/the enhance prompt/);
+    // A stand-in that answers each of these as this server does, but has no form, gets past
+    // every other part: only the form check stops it.
+    await expect(check(() => standIn(answering))).rejects.toThrow(/ask_user with a form \(2025 era\) returned/);
+  });
+
+  // The form path (the form message and schema, the SDK's elicitation/create on 2025-era stdio or
+  // its input_required round on 2026-07-28, and the answers read from the form) and the 2026-07-28
+  // era run in no other gate on the bundle. A client that shows forms takes that path.
+  it('fails a server whose ask_user form path throws, or that serves only the 2025 era', async () => {
+    faults.form = true;
+    try {
+      await expect(check(() => createServer())).rejects.toThrow(/ask_user with a form \(2025 era\) returned .*bundle-only fault in the form/);
+    } finally {
+      faults.form = false;
+    }
+    await expect(check(() => createServer(), { legacyOnly: true })).rejects.toThrow(/serves a client that negotiates the protocol in the 2025 era, not 2026-07-28/);
   });
 
   // The bundle's prompt handler, the completions (the prompt's needs its completable() wrapper),
