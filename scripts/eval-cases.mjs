@@ -835,13 +835,24 @@ const headingRe = (h) => new RegExp(`(?<!#)#+[ \\t]*${esc(h)}`);
 // had no closing line, which took quadratic time on a run of such headings, and on a long run of
 // backticks with no line break after it. Here the fence lines are found in one pass, and each length
 // is looked for once: a length with no closing line after one heading has none after a later one. A
-// heading later on the same line has the same block.
+// heading later on the same line has the same block, so the search for the next heading starts on
+// the next line, and the opening fence is tried once for each line, sticky. A pattern that read the
+// heading together with the rest of its line was tried to the line's end from each heading on it,
+// which took quadratic time on a line of headings with no fence after it.
 const fencedAfter = (text, h) => {
-  const heading = new RegExp(`(?<!#)#+[ \\t]*${esc(h)}[^\\n]*\\n\\s*(?=(\`{3,}))\\1[^\\n]*\\n`, 'g');
+  const heading = new RegExp(`(?<!#)#+[ \\t]*${esc(h)}`, 'g');
+  const opener = /\s*(?=(`{3,}))\1[^\n]*\n/y;
   let fences = null; // backticks in a fence line -> where the line break before each such line is
   const passed = new Map(); // backticks -> how many of those lines come before the block looked at
-  for (let m; (m = heading.exec(text)); heading.lastIndex = text.indexOf('\n', m.index) + 1) {
-    const start = m.index + m[0].length;
+  for (let m; (m = heading.exec(text));) {
+    // The line after the heading's; with none, no block follows this heading or a later one.
+    const next = text.indexOf('\n', m.index + m[0].length) + 1;
+    if (next === 0) return null;
+    heading.lastIndex = next;
+    opener.lastIndex = next;
+    const open = opener.exec(text);
+    if (open === null) continue;
+    const start = opener.lastIndex;
     if (fences === null) {
       fences = new Map();
       for (const f of text.matchAll(/\n(`{3,})[ \t]*(?=\n|$)/g)) {
@@ -850,7 +861,7 @@ const fencedAfter = (text, h) => {
         else fences.set(f[1].length, [f.index]);
       }
     }
-    for (let n = m[1].length; n >= 3; n--) {
+    for (let n = open[1].length; n >= 3; n--) {
       const at = fences.get(n) ?? [];
       let i = passed.get(n) ?? 0;
       while (i < at.length && at[i] < start) i++;

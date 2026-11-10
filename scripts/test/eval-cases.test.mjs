@@ -1471,6 +1471,11 @@ const FAST = [
   ['a Full prompt heading and a fence repeated, never closed, in a recorded output', () => histories(recordedCase('fences', [userRow('write the notes'), assistantRow(`${'### Full prompt\n```x\n'.repeat(2 * RUN / 21)}\n### What next?\n3. Save to file: \`out/notes.md\``)], '3', {
     '01-saved.md': savedFile('Goal'),
   }))],
+  // Headings on one line with no fence after it, before the real ones: the rest of the line was
+  // read from each of them.
+  ['a Full prompt and a Short version heading, each repeated on one line, in a recorded output', () => histories(recordedCase('one-line', [userRow('write the notes'), assistantRow(`${'### Full prompt '.repeat(RUN / 16)}\n${'### Short version '.repeat(RUN / 18)}\n### Full prompt\n\`\`\`text\nGoal\n\`\`\`\n\n### What next?\n3. Save to file: \`out/notes.md\``)], '3', {
+    '01-saved.md': savedFile('Goal'),
+  }))],
   ['"What next?" repeated with no Save to file after it, in a recorded output', () => histories(recordedCase('menu', [userRow('write the notes'), assistantRow(`### Full prompt\n\`\`\`text\nWrite the notes.\n\`\`\`\n\n${'What next? '.repeat(2 * RUN / 11)}`)], '3', {
     '01-x.md': REGEX,
   }))],
