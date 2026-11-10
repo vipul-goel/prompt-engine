@@ -40,7 +40,7 @@ Read the reference files you need now, in this first turn, because some apps ask
 - always `references/output-format.md`, `references/blueprint.md` and `references/questions.md`;
 - the domain pack that fits, or two if the prompt spans them: `references/coding.md` (code, agents, tool instructions), `references/writing.md` (copy, marketing, emails, posts, stories), `references/research.md` (research, analysis, comparisons, data), `references/image-video.md` together with `references/media-targets.md` (image or video generation), or `references/general.md` (anything else, including prompts that are themselves system prompts or custom-assistant instructions).
 
-Go through the pack's checklist and mark each item explicit, inferable or missing. Look things up before asking, without shell commands: in a code workspace, read the files that matter (README, manifests, the code the prompt mentions); in a chat, use earlier messages and attachments. Asking the user for something you could find wastes their time.
+Go through the pack's checklist and mark each item explicit, inferable or missing. Look things up before asking, without shell commands or subagents: in a code workspace, read the files that matter (README, manifests, the code the prompt mentions); in a chat, use earlier messages and attachments. Asking for what you could find wastes the user's time.
 
 For each missing item decide: **ask** it, **assume** the recommended default (it goes under Assumptions), or **skip** it because it would not change the result. Use the priority rule in `references/questions.md`: ask only when different answers would lead to materially different prompts.
 
