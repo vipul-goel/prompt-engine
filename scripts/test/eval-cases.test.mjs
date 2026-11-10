@@ -1285,6 +1285,14 @@ const FAST = [
   ['a Full prompt heading and a fence repeated, never closed, in a recorded output', () => histories(recordedCase('fences', [userRow('write the notes'), assistantRow(`${'### Full prompt\n```x\n'.repeat(2 * RUN / 21)}\n### What next?\n3. Save to file: \`out/notes.md\``)], '3', {
     '01-saved.md': savedFile('Goal'),
   }))],
+  ['"What next?" repeated with no Save to file after it, in a recorded output', () => histories(recordedCase('menu', [userRow('write the notes'), assistantRow(`### Full prompt\n\`\`\`text\nWrite the notes.\n\`\`\`\n\n${'What next? '.repeat(2 * RUN / 11)}`)], '3', {
+    '01-x.md': REGEX,
+  }))],
+  // A quote of one space occurs at each space of the run, and the end of the request was looked
+  // for from each: 50,000 spaces took more than 10 seconds.
+  ['a request quoted as one space, and a run of spaces in what the user typed', () => histories(recordedCase('space', [userRow(`write${' '.repeat(RUN / 4)}a post`), assistantRow(roundWith('Managers'))], 'ok', {
+    '01-request.md': judge('The user\'s whole request was " ".'),
+  }))],
 ];
 for (const [name, fn] of FAST) {
   test(`eval-cases.mjs finishes fast on ${name}`, () => {

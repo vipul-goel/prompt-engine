@@ -792,12 +792,18 @@ function roundOptions(round) {
   }
   return options;
 }
-// The save path the recorded menu offers: on the line with the Save to file entry, the first
-// backticked token that looks like a file path (it has a / or \, or a file extension), so a reply
-// keyword such as `3` before it doesn't count.
-const savePathOf = (text, lineRe) => {
-  const line = text?.match(lineRe)?.[1];
-  return line === undefined ? undefined : [...line.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).find((t) => /[\\/]/.test(t) || /\.[A-Za-z0-9]+$/.test(t));
+// The save path the recorded menu offers: on the line of the first Save to file after the What
+// next? heading, the first backticked token that looks like a file path (it has a / or \, or a file
+// extension), so a reply keyword such as `3` before it doesn't count. Found with indexOf: a lazy
+// pattern tried the rest of the text from each What next? that no Save to file followed, which took
+// quadratic time on a run of them; with none after the first, there is none after a later one.
+const savePathOf = (text) => {
+  const next = text?.indexOf(NEXT) ?? -1;
+  const at = next < 0 ? -1 : text.indexOf(SAVE, next + NEXT.length);
+  if (at < 0) return undefined;
+  const end = text.indexOf('\n', at);
+  const line = text.slice(at + SAVE.length, end < 0 ? text.length : end);
+  return [...line.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).find((t) => /[\\/]/.test(t) || /\.[A-Za-z0-9]+$/.test(t));
 };
 // A relative path in one form, so ./prompts/x.md, prompts//x.md and prompts\x.md name one file.
 const samePath = (a, b) => posix.normalize(a.replace(/\\/g, '/')) === posix.normalize(b.replace(/\\/g, '/'));
@@ -892,13 +898,16 @@ const answerKey = (text) => normalizeQuote(text.replace(/★[\s\S]*$/u, '')).rep
 // after it, and undefined when it doesn't occur. What comes before a quote that starts a word isn't
 // checked, so a lead-in such as "Use prompt-engine (quick mode) to" can stay out of it; a request
 // that grows at its start therefore isn't caught, which would need the rubrics to quote their
-// lead-ins too.
-const REQUEST_END = /\s*$|<\/command-args>/y;
+// lead-ins too. Only white space follows an occurrence that ends where the text's trailing white
+// space starts, or later: found once for the text, since /\s*$/, tried at the end of each occurrence
+// of a quote such as a space, ran to the end of a long run of spaces each time, which took
+// quadratic time. trimEnd drops the characters that \s matches.
 const placeQuote = (text, quote) => {
+  const tail = text.trimEnd().length;
   let place;
   for (let i = text.indexOf(quote); i >= 0; i = text.indexOf(quote, i + 1)) {
-    REQUEST_END.lastIndex = i + quote.length;
-    if (!REQUEST_END.test(text)) place ??= 'short';
+    const end = i + quote.length;
+    if (end < tail && !text.startsWith('</command-args>', end)) place ??= 'short';
     else if (/^[\p{L}\p{M}\p{N}_]/u.test(quote) && /[\p{L}\p{M}\p{N}_]$/u.test(text.slice(Math.max(0, i - 2), i))) place = 'mid-word';
     else return 'whole';
   }
@@ -924,7 +933,6 @@ export function checkConversations(root, cases, { err, contract }) {
   if (missing.length) err(`data/contract.json: required lacks ${missing.join(', ')}, which the history checks in scripts/eval-cases.mjs look for; change the two together`);
   const full = headingRe(FULL);
   const next = headingRe(NEXT);
-  const saveLineRe = new RegExp(`${esc(NEXT)}[\\s\\S]*?${esc(SAVE)}([^\\n]*)`);
   for (const c of cases) {
     if (unread(root, c)) continue;
     const s = settings(c);
@@ -1024,7 +1032,7 @@ export function checkConversations(root, cases, { err, contract }) {
     // the menu's path are skipped, since the scaffold can put other text there. Graders on other
     // paths are skipped too, compared in samePath's form.
     const output = rec.assistantTexts.findLast((t) => full.test(t));
-    const savePath = savePathOf(output, saveLineRe);
+    const savePath = savePathOf(output);
     const checked = s.scaffold == null ? savePath : savePath?.replace(/(\.[^./\\]*)?$/, '-2$1');
     const fileGraders = c.graders.filter((g) => g.data.type === 'regex' && isMapping(g.data.target) && g.data.target.source === 'file');
     // A scaffold case's file graders can read files that the scaffold wrote, with no save at all.
