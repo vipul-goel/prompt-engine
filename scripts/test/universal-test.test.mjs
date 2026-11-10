@@ -195,6 +195,10 @@ test('Done ★, not Run it now: the Midjourney case wants a starred Done option,
   assert.ok(!done(image('1) Fill placeholders ★\n2) Refine', ['[[api key]]'])));
   assert.ok(!done(image('1) Fill placeholders ★\n2) Run it now\n3) Refine', ['[[sign text]]'])));
   assert.deepEqual(failing(checks, image("1) Done ★ (paste it into Midjourney)\n2) Refine\n3) Save to file")), ['no Save to file (tools disabled)']);
+  // The turn checks the Short version heading too, as the other output turns do (step 1e, B1.1.11).
+  const noShort = image('1) Done ★ (paste it into Midjourney)\n2) Refine').replace(/### Short version\n```text\n[^`]*```\n\n/, '');
+  assert.ok(!noShort.includes('Short version'));
+  assert.deepEqual(failing(checks, noShort), ['short version heading']);
   // With no Fill before running heading, an open placeholder in the Full prompt counts too (step 1e).
   const signed = (menu) => output({ menu, prompt: 'A cozy cabin in the snow at night, a wooden sign reading [[sign text]] --ar 3:2' });
   assert.deepEqual(failing(checks, signed('1) Done ★ (paste it into Midjourney)\n2) Refine')),

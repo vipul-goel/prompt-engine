@@ -1626,3 +1626,88 @@ test('the Midjourney aspect-ratio graders want the parameters at the end of the 
     }
   }
 });
+
+// The media cases want a Short version too (SKILL.md, Present: "3. Short version in a fenced
+// block"; image-video.md: "The same blocks serve both versions"). The English cases check its
+// heading, as writing-quick-launch-email's 02 does; the Japanese case, whose headings D3
+// translates, checks that the reply's second heading, after the Full prompt's block, is followed
+// by a fence (step 1e, B1.1.11). The replies below pass every regex grader of their case.
+const mediaScore = (h) => `| | ${h.orig} | ${h.enh} |\n|---|---|---|\n| ${h.rows[0]} | 2 | 3 |\n| ${h.rows[1]} | 1 | 3 |\n| ${h.rows[2]} | 0 | 3 |\n| ${h.rows[3]} | 0 | 3 |\n| ${h.rows[4]} | 0 | 2 |`;
+const MEDIA_EN = { full: 'Full prompt', short: 'Short version', added: 'What I added & why', assumptions: 'Assumptions', score: 'Score', next: 'What next?', orig: 'Original', enh: 'Enhanced', rows: ['Clear goal', 'Context', 'Constraints', 'Output format', 'Edge cases'], caveat: 'Self-assessed coverage of five areas, not a prediction of output quality.' };
+const MEDIA_JA = { full: 'プロンプト全文', short: '短縮版', added: '追加した内容とその理由', assumptions: '仮定', score: 'スコア', next: '次のステップ', orig: '元のプロンプト', enh: '改善後', rows: ['目的の明確さ', '背景・文脈', '制約', '出力形式', 'エッジケース'], caveat: '5つの観点を自己評価したもので、出力品質を予測するものではありません。' };
+const mediaReply = ({ ja = false, short = true, shortBlock } = {}) => {
+  const h = ja ? MEDIA_JA : MEDIA_EN;
+  const full = ja ? '夜の雪山の斜面に建つ小さな木造の山小屋、窓から漏れる暖かいオレンジ色の灯り、写真のようなリアルな風景写真 --ar 3:2 --no 人 文字 透かし'
+    : 'cozy log cabin in deep snow at night, two warm amber lit windows, snow-laden pine trees, photorealistic --ar 3:2 --no people text watermark';
+  const shortLine = ja ? '夜の雪山にある小さな木造の山小屋、窓の暖かい灯り、リアルな風景写真 --ar 3:2 --no 人 文字 透かし' : 'cozy log cabin in deep snow at night, warm windows, photorealistic --ar 3:2 --no people text watermark';
+  const note = ja ? '全文版は細部まで指定したいとき、短縮版は手早く試したいときに使ってください。' : 'Full version: more control. Short version: quick tries.';
+  const shortPart = short ? `### ${h.short}\n${shortBlock ?? `\`\`\`text\n${shortLine}\n\`\`\``}\n${note}\n\n` : '';
+  const added = ja ? '- **夜・雪山・小さな山小屋** [you] — ご指定の要素をそのまま残しました。\n- **パラメータを末尾に** [best practice] — Midjourneyの書式です。'
+    : "- **Cozy, cabin, snow, night** [you] — your words, kept.\n- **Parameters at the end** [best practice] — this is Midjourney's syntax.";
+  const assume = ja ? '1. 小屋は木造。\n2. `--ar 3:2`。\n3. `--no 人 文字 透かし`。\n\n「変更 2: …」のように返信すると調整できます。'
+    : '1. Scene details: a log cabin with two lit windows and pine trees.\n2. Aspect ratio: `--ar 3:2`.\n3. Exclusions: `--no people text watermark`.\n\nReply "change 2: …" to adjust any of these.';
+  const menu = ja ? '1. 完了 ★ — Midjourneyに貼り付けてください。\n2. 調整 — 仮定を変更できます。\n3. ファイルに保存 — `prompts/cabin.md`'
+    : "1. Done ★ — paste it into Midjourney (I can't generate images here)\n2. Refine — change any assumption, or reply `deep` for more questions\n3. Save to file — `prompts/cozy-snow-cabin.md`";
+  const first = ja ? 'Midjourney用のクイックモードのプロンプトを作りました。' : 'Here is a Midjourney prompt for a cozy cabin in the snow at night, in quick mode.';
+  return `${first}\n\n### ${h.full}\n\`\`\`text\n${full}\n\`\`\`\n\n${shortPart}### ${h.added}\n${added}\n\n### ${h.assumptions}\n${assume}\n\n### ${h.score}\n${mediaScore(h)}\n\n${h.caveat}\n\n### ${h.next}\n${menu}`;
+};
+const veoReply = ({ short = true } = {}) => `Here's an 8-second Veo prompt of a barista making latte art, in quick mode.
+
+### Full prompt
+\`\`\`text
+One continuous close-up shot with a slow push-in. A barista pours steamed milk into a white cup of espresso and forms a rosetta. Soft window light, photorealistic. SFX: milk pouring.
+\`\`\`
+
+Negative prompt
+\`\`\`text
+watermark, subtitles, on-screen text
+\`\`\`
+
+Settings
+\`\`\`text
+Aspect ratio: 16:9
+Duration: 8 seconds
+\`\`\`
+${short ? `
+### Short version
+\`\`\`text
+One continuous close-up, slow push-in: a barista pours milk into an espresso cup and forms a rosetta. Soft window light. SFX: milk pouring.
+\`\`\`
+Full version: the most control. Short version: quick tries. Both use the same Negative prompt and Settings blocks.
+` : ''}
+### What I added & why
+- **Barista making latte art** [you] — kept.
+- **One shot, one camera move** [best practice] — Veo handles one action better.
+
+### Assumptions
+1. Framing: a close-up with a slow push-in.
+2. Settings: 16:9 and 8 seconds.
+3. Exclusions: watermark, subtitles and on-screen text.
+
+Reply "change 1: …" to adjust any of these.
+
+### Score
+${mediaScore(MEDIA_EN)}
+
+${MEDIA_EN.caveat}
+
+### What next?
+1. Done ★ — paste the prompt into Veo and set 16:9 and 8 seconds. I can't generate video here.
+2. Refine — change any assumption, or reply \`deep\` for more questions.
+3. Save to file — \`prompts/barista-latte-art.md\``;
+test('the media cases fail a reply without its Short version', () => {
+  for (const [c, reply, grader] of [
+    ['image-midjourney-quick', (short) => mediaReply({ short }), '09-short-version-heading'],
+    ['japanese-midjourney-quick', (short) => mediaReply({ ja: true, short }), '11-short-version-fenced'],
+    ['video-veo-quick', (short) => veoReply({ short }), '08-short-version-heading'],
+  ]) {
+    const graders = gradersOf(c);
+    assert.deepEqual(failingRegex(graders, reply(true)), [], c);
+    assert.deepEqual(failingRegex(graders, reply(false)), [grader], c);
+  }
+  // In Japanese, the second heading must hold a fenced block; a note under the Full prompt's block
+  // may come first.
+  const ja = graderOf('japanese-midjourney-quick', '11-short-version-fenced');
+  assert.equal(regexPasses(ja, mediaReply({ ja: true, shortBlock: '夜の雪山にある小さな木造の山小屋 --ar 3:2' })), false);
+  assert.ok(regexPasses(ja, mediaReply({ ja: true }).replace('```\n\n### 短縮版', '```\n全文版は細部まで指定したいときに。\n\n### 短縮版')));
+});
