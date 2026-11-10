@@ -189,8 +189,17 @@ function block(lines, style, chomp, where) {
   return chomp === '+' ? `${value}\n${trailing}` : `${value}\n`;
 }
 
+// A line that ends in CR CR LF, as in a file converted to CRLF twice, is two line breaks to YAML,
+// which reads a lone CR as one, and Bun.YAML, which claude plugin eval uses, adds a blank line to a
+// block scalar for each; normalize() reads one. Refused in the raw text, before normalize() runs.
+const refuseCrCrLf = (text, file, firstLine = 1) => {
+  const i = text.indexOf('\r\r\n');
+  if (i >= 0) throw new Error(`${file}:${firstLine + text.slice(0, i).split('\n').length - 1}: the line ends in CR CR LF, which YAML reads as two line breaks (a file converted to CRLF twice); save it with LF or CRLF line endings`);
+};
+
 // Parses text in the subset. firstLine is the file line that the text starts on, for messages.
 export function parseYaml(text, file, firstLine = 1) {
+  refuseCrCrLf(text, file, firstLine);
   const lines = normalize(text).split('\n');
   const at = (i) => `${file}:${firstLine + i}`;
   if (lines.at(-1) === '') lines.pop();
@@ -253,6 +262,7 @@ export function parseYaml(text, file, firstLine = 1) {
 // with data null when the text has no front matter, and body as the CLI reads it (trimmed).
 const FRONT = /^---\s*\n([\s\S]*?)---\s*\n?/;
 export function frontmatter(text, file) {
+  refuseCrCrLf(text, file);
   const t = normalize(text);
   const m = t.match(FRONT);
   if (!m) {
@@ -424,12 +434,13 @@ export function checkEvalCases(root, err, warn = () => {}) {
     let caseParsed = !hasCase;
     if (hasCase) {
       const file = `${dir}/case.yaml`;
-      const text = normalize(readFileSync(join(abs, 'case.yaml'), 'utf8'));
+      const raw = readFileSync(join(abs, 'case.yaml'), 'utf8');
+      const text = normalize(raw);
       // Named before parsing, since the subset can't read a list of mappings.
       const graders = text.match(/^graders:/m);
       if (graders) err(`${file}:${text.slice(0, graders.index).split('\n').length}: graders: write each grader as graders/<name>.md, which validate.mjs checks (repo rule)`);
       else {
-        try { c.caseYaml = parseYaml(text, file); caseParsed = true; } catch (e) { err(e.message); }
+        try { c.caseYaml = parseYaml(raw, file); caseParsed = true; } catch (e) { err(e.message); }
       }
     }
     if (hasPrompt) {

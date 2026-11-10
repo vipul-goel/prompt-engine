@@ -921,6 +921,11 @@ const ROWS = [
     for (const f of [SKILL, `${REF}/media-targets.md`, CORE, 'data/contract.json']) edit(d, f, (t) => t.replace(/\n/g, '\r\n'));
   }, /validate: OK/, 0],
   // claude plugin eval removes a BOM before it reads a grader's front matter.
+  // A file converted to CRLF twice ends its lines in CR CR LF, which YAML, Bun.YAML in claude plugin
+  // eval included, reads as two line breaks, so a block scalar holds a blank line more for each.
+  ['refuses eval files whose lines end in CR CR LF, naming each', (d) => {
+    for (const f of ['case.yaml', 'prompt.md', 'graders/02-no-invention.md']) edit(d, `${SPANISH}/${f}`, (t) => t.replace(/\n/g, '\r\r\n'));
+  }, [...['case.yaml', 'prompt.md', 'graders/02-no-invention.md'].map((f) => new RegExp(`^error: ${reEsc(`${SPANISH}/${f}`)}:1: the line ends in CR CR LF`, 'm')), /^3 error\(s\)$/m], 1, NO_STACK],
   ['passes with CRLF eval files and a BOM before a grader\'s front matter', (d) => {
     crlfEvalFiles(d);
     edit(d, `${VEO}/01-negative-prompt-block.md`, (t) => `\u{FEFF}${t}`);

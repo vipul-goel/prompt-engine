@@ -52,6 +52,8 @@ const REFUSES = [
   ['a tab inside a quoted value', 'a: "x\ty"\n', 'f.yaml:1: a tab'],
   ['a control character', 'a: 1\nb: x\u{7}y\n', 'f.yaml:2: control character U+0007'],
   ['a lone carriage return', 'a: x\ry: z\n', 'f.yaml:1: control character U+000D'],
+  // A file converted to CRLF twice: YAML reads CR CR LF as two line breaks, normalize() as one.
+  ['a line that ends in CR CR LF', 'a: 1\r\nb: |\r\r\n  x\r\r\n', 'f.yaml:2: the line ends in CR CR LF'],
   ['a line separator', 'a: x\u{2028}y\n', 'f.yaml:1: control character U+2028'],
   ['a control character inside a block', 'a: |\n  x\u{85}\n', 'f.yaml:2: control character U+0085'],
   ['four spaces of indentation', 'a:\n    b: 1\n', 'f.yaml:2: unsupported indentation'],
@@ -127,6 +129,11 @@ test('frontmatter returns null data for a file without it, and the body trimmed'
 test('frontmatter reads the block after a BOM and CRLF, and trims the body', () => {
   assert.deepEqual(frontmatter('\u{FEFF}---\r\ntype: llm\r\nweight: 1\r\n---\r\n\r\nPASS if fine.\r\n', 'g.md'), { data: { type: 'llm', weight: 1 }, body: 'PASS if fine.' });
   assert.deepEqual(frontmatter('---\n---\nbody\n', 'g.md'), { data: {}, body: 'body' });
+});
+
+test('frontmatter refuses a file whose lines end in CR CR LF, naming the line', () => {
+  assert.throws(() => frontmatter('---\r\ntype: regex\r\npattern: |\r\r\n  a\r\r\n---\r\nbody\r\n', 'g.md'), { message: /^g\.md:3: the line ends in CR CR LF/ });
+  assert.throws(() => frontmatter('---\ntype: llm\n---\nPASS if fine.\r\r\n', 'g.md'), { message: /^g\.md:4: the line ends in CR CR LF/ });
 });
 
 test('frontmatter ends at the first "---", as claude plugin eval does', () => {
