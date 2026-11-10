@@ -615,6 +615,24 @@ test('refuses a line that does not parse or is not a JSON object, and names its 
   assert.throws(() => refreshHistory(`${start}{"type":`, 'BODY', files({})), { message: /^line 3: [^\n]*JSON[^\n]*; re-record it$/ });
 });
 
+// A row that is an object can still hold content that Claude Code never writes: a part that isn't
+// an object, or a text part without text. Each stopped the build with JavaScript's own message,
+// which named neither the line nor what to do, or passed without a word.
+test('refuses a row whose content holds a part that is not an object, or a text part without text, and names its line', () => {
+  const start = `${jsonl(readUse({ file_path: `/plugin/${REL}` }))}\n\n`;
+  const row = (role, content) => JSON.stringify({ type: role, message: { role, content } });
+  for (const part of [null, 1, 'x', true, []]) {
+    for (const role of ['user', 'assistant']) {
+      assert.throws(() => refreshHistory(`${start}${row(role, [{ type: 'text', text: 'hi' }, part])}\n`, 'BODY', files({})),
+        { message: 'line 3: a content part is not an object; re-record it' }, `${role}: ${JSON.stringify(part)}`);
+    }
+  }
+  for (const text of [undefined, null, 5, ['x']]) {
+    assert.throws(() => refreshHistory(`${start}${row('assistant', [{ type: 'text', text }])}\n`, 'BODY', files({})),
+      { message: 'line 3: a text part whose text is not a string; re-record it' }, JSON.stringify(text));
+  }
+});
+
 // media-targets.md is generated and copied into recorded Reads in the same run, so the Reads get
 // the new render rather than the file still on disk, and one build settles. No committed recording
 // reads it yet, so the copy's save-to-file recording reads it in place of writing.md.

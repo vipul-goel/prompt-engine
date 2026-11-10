@@ -902,6 +902,10 @@ const ROWS = [
   ['names a history line that is not a JSON object, such as a deeply nested list', (d) => edit(d, `${SAVE_CASE}/history.jsonl`,
     (t) => `${t}${'['.repeat(200_000)}${']'.repeat(200_000)}\n`),
     /^error: build failed: evals\/save-to-file\/history\.jsonl: line \d+ is not a JSON object; re-record it\n\n1 error\(s\)$/m, 1, NO_STACK],
+  ['names a history line whose content holds a part that is not an object', (d) => editRows(d, `${SAVE_CASE}/history.jsonl`, (rows) => {
+    rows.find((r) => Array.isArray(r.message?.content)).message.content.push(null);
+    return rows;
+  }), /^error: build failed: evals\/save-to-file\/history\.jsonl: line \d+: a content part is not an object; re-record it\n\n1 error\(s\)$/m, 1, NO_STACK],
   // ---- text that must make no difference
   ['passes with CRLF line endings', (d) => {
     for (const f of [SKILL, `${REF}/media-targets.md`, CORE, 'data/contract.json']) edit(d, f, (t) => t.replace(/\n/g, '\r\n'));
