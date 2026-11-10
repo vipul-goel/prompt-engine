@@ -103,7 +103,7 @@ Fix anything that fails:
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
-- No capitalized pressure words, generic personas, magic phrases (`take a deep breath`), requests for visible reasoning (`think step by step`, `show your reasoning`), prefill instructions or API settings. That includes a step-by-step line in the user's own prompt: take it out, and say so in one [best practice] bullet under What I added & why.
+- No capitalized pressure words, generic personas, magic phrases (`take a deep breath`), requests for visible reasoning (`think step by step`, `show your reasoning`), prefill instructions or API settings. That includes a line in the user's own prompt that asks the model to `think step by step` or reason that way: take it out, and say so in one [best practice] bullet under What I added & why. Step-by-step instructions or explanations that the prompt asks for, and the reasoning of someone the model guides, such as a student, are content: keep them.
 - Scope is explicit, and the output format and length are stated.
 - Every placeholder is listed under "Fill before running", and no template leftovers remain (such as an empty `{{variable}}`).
 - The full prompt is as long as the task needs and no longer, and the short version fits its budget.
