@@ -45,7 +45,7 @@ Full version: agents, long or important tasks. Short version: quick chats.
 - **Audience: team managers** [your answer] — sets vocabulary and depth.
 
 ### Assumptions
-1. Length about 1,200 words — typical for an in-depth blog post.
+1. US English spelling — you didn't name a locale.
 2. Friendly, practical tone — suits a professional but informal audience.
 
 Reply "change 2: …" to adjust any of these.
