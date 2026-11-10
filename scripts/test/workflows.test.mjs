@@ -209,6 +209,38 @@ test('no run: script holds a ${{ }} expression; values reach scripts through env
   }
 });
 
+// The tests below look for each safeguard's lines, which stay in place when the safeguard is switched
+// off where it stands. A step with continue-on-error lets its job pass when it fails, and a job with
+// it lets the run pass; GitHub runs a run: script with bash -e, which `|| true`, `set +e` or a shell
+// of the step's own can undo. So none of these appear in the four workflows (the Windows job names
+// bash, which GitHub runs with -e and pipefail).
+test('no job or step lets a failure through: no continue-on-error, no || true or set +e, no shell but bash', () => {
+  for (const f of FILES) {
+    assert.equal(wf[f].defaults, undefined, `${f}: defaults for the whole workflow`);
+    for (const [name, j] of jobs(wf[f])) {
+      assert.equal(j['continue-on-error'], undefined, `${f}, job ${name}`);
+      assert.ok([undefined, 'bash'].includes(j.defaults?.run?.shell), `${f}, job ${name}: shell ${j.defaults?.run?.shell}`);
+    }
+    for (const s of steps(wf[f])) {
+      assert.equal(s['continue-on-error'], undefined, `${f}, ${label(s)}`);
+      assert.ok([undefined, 'bash'].includes(s.shell), `${f}, ${label(s)}: shell ${s.shell}`);
+      assert.doesNotMatch(s.run ?? '', /\|\|\s*(?:true|:)(?=[\s;)&|#]|$)/m, `${f}, ${label(s)}: a command whose failure is ignored`);
+      assert.doesNotMatch(s.run ?? '', /^\s*set\s+(?:\+[a-z]*e|\+o\s+errexit)/m, `${f}, ${label(s)}: set +e`);
+    }
+  }
+});
+
+// GitHub skips a job or step whose if: is false, and reports a skipped job as a success, which a
+// required check accepts (docs.github.com, "Control jobs with conditions"). So these are the only
+// conditions; the release and data-check jobs' repository guards are tested further down.
+test('the only if: conditions are the Node 22 steps in ci.yml and the evals.yml steps that run after a failure', () => {
+  const allowed = { 'ci.yml': ['matrix.node == 22'], 'evals.yml': ['${{ !cancelled() }}', 'always()'], 'release.yml': [], 'verify-data.yml': [] };
+  for (const f of FILES) {
+    for (const s of steps(wf[f])) if (s.if !== undefined) assert.ok(allowed[f].includes(s.if), `${f}, ${label(s)}: if: ${s.if}`);
+  }
+  for (const f of ['ci.yml', 'evals.yml']) for (const [name, j] of jobs(wf[f])) assert.equal(j.if, undefined, `${f}, job ${name}`);
+});
+
 // A tag such as actions/checkout@v7 is moved by the action's publisher with each release, so what
 // runs with the release's OIDC token or write permission could change with no commit here.
 test('every action is pinned to a full commit SHA, with its version in a comment, the same in every workflow', () => {
@@ -275,11 +307,24 @@ test('release.yml: every checkout drops the token it was given (finding 27)', ()
   for (const s of checkouts) assert.equal(s.with?.['persist-credentials'], 'false', label(s));
 });
 
-test('release.yml: the build job first stops unless the tagged commit is on main, and every other job waits for it (finding 32, D16)', () => {
+test('release.yml: the build job first stops unless the tagged commit is on main, and every other job waits for it (finding 32, D16)', { skip: NO_BASH }, () => {
   const [first] = release.jobs.build.steps;
   assert.match(first.run ?? '', /gh api "repos\/\$\{GITHUB_REPOSITORY\}\/compare\/main\.\.\.\$\{GITHUB_SHA\}" --jq \.status/, 'the first step compares the commit with main');
-  assert.match(first.run, /^ *identical\|behind\) ;;$/m, 'a commit on main goes on');
-  assert.match(first.run, /^ *\*\) .*exit 1;;$/m, 'anything else stops the run');
+  // The stand-in gh answers the compare call with COMPARE_STATUS, or fails when COMPARE_FAILS is set.
+  const gh = `[ "$1 $2" = "api repos/example/repo/compare/main...0123abc" ] || exit 64
+[ -z "$COMPARE_FAILS" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
+printf '%s\\n' "$COMPARE_STATUS"`;
+  const go = (env) => runStep(first.run, { stubs: { gh }, env: { GITHUB_REPOSITORY: 'example/repo', GITHUB_SHA: '0123abc', GITHUB_REF_NAME: 'v0.1.0', ...env } });
+  for (const COMPARE_STATUS of ['identical', 'behind']) {
+    const r = go({ COMPARE_STATUS });
+    assert.equal(r.code, 0, `${COMPARE_STATUS}: a commit on main goes on: ${r.out}`);
+  }
+  for (const COMPARE_STATUS of ['ahead', 'diverged', '']) {
+    const r = go({ COMPARE_STATUS });
+    assert.equal(r.code, 1, `${COMPARE_STATUS || 'no status'} stops the run: ${r.out}`);
+    assert.match(r.out, /^::error::v0\.1\.0 \(0123abc\) is not on main/m);
+  }
+  assert.notEqual(go({ COMPARE_FAILS: '1' }).code, 0, 'a failed compare stops the run');
   for (const [name] of jobs(release)) if (name !== 'build') assert.ok(after(release, name).has('build'), `${name} waits for build`);
 });
 
@@ -312,9 +357,35 @@ test("release.yml stops unless CHANGELOG.md has a dated heading for the tag's ve
 });
 
 // test:pack installs the packed package as npx does, so its dependencies' own dependencies come
-// fresh from the registry, outside mcp/package-lock.json. Code that nothing pins must not run
-// where it could change the files that the publishing jobs take.
-const UNPINNED = /\bnpm run test:pack\b|\bnpm (?:install|i|add|exec|x)\b|\bnpx\b/;
+// fresh from the registry, outside mcp/package-lock.json, as npm install, update or exec would. Code
+// that nothing pins must not run where it could change the files that the publishing jobs take, or
+// in a job that can request an OIDC token. So outside the pack-check job, npm runs only the commands
+// below, which install nothing or only what the lockfile pins. A command is the word after npm where
+// a command starts (a line, or after if, then, !, ;, &, | or $( ), with run's script name; npm also
+// takes any unambiguous start of a command's name, so a list of what's barred would miss some.
+const PINNED_NPM = ['ci', 'run build', 'test', 'pack', 'view', 'publish'];
+function npmCommands(run) {
+  const code = run.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  return [...code.matchAll(/(?:^|[;&|(!]|\b(?:if|then|do|else)\b)[ \t]*npm[ \t]+(\S+)(?:[ \t]+(\S+))?/gm)]
+    .map((m) => (m[1] === 'run' || m[1] === 'run-script' ? `run ${m[2]}` : m[1]));
+}
+
+test('release.yml: outside the pack-check job, npm runs only commands that install what the lockfile pins or nothing, and nothing runs npx or smoke-pack or downloads code', () => {
+  assert.deepEqual(npmCommands('npm ci\nif npm view x version; then\n  # npm install x\n  a="$(npm run test:pack -- y)"\nfi\nnpm -g i z\n'), ['ci', 'view', 'run test:pack', '-g']);
+  for (const [name, j] of jobs(release)) {
+    if (name === 'pack-check') continue;
+    for (const [i, s] of j.steps.entries()) {
+      const what = label({ ...s, job: name, i });
+      const code = (s.run ?? '').replace(/^\s*#.*$/gm, '');
+      for (const c of npmCommands(code)) assert.ok(PINNED_NPM.includes(c), `${what}: npm ${c}`);
+      assert.doesNotMatch(code, /\bnpx\b|smoke-pack|\bwget\b/, what);
+      // The registry job's two curl calls, the lookup and the download that its checksum checks, are
+      // tested with that job below.
+      const curls = code.split('\n').filter((l) => /\bcurl\b/.test(l)).length;
+      assert.equal(curls, name === 'registry' && s.name === 'Publish to the MCP Registry' ? 2 : 0, `${what}: curl calls`);
+    }
+  }
+});
 
 test('release.yml: the packed npm package is installed and started in a read-only job of its own, and nothing is published before it passes (finding 79)', () => {
   const check = steps(release).find(runs(/^npm run test:pack -- "\.\.\/dist\/prompt-engine-mcp-\$\{GITHUB_REF_NAME#v\}\.tgz"$/m));
@@ -329,13 +400,12 @@ test('release.yml: the packed npm package is installed and started in a read-onl
   for (const name of ['github-release', 'npm']) assert.ok([].concat(release.jobs[name].needs).includes(check.job), `${name} waits for job ${check.job}`);
 });
 
-test('release.yml: the build job, which uploads the release files, runs only what mcp/package-lock.json pins', () => {
+test('release.yml: only the build job uploads the release files, as its last step', () => {
   const uploading = jobs(release).filter(([, j]) => j.steps.some((s) => uses(s, 'actions/upload-artifact'))).map(([n]) => n);
   assert.deepEqual(uploading, ['build'], 'one job uploads the release files');
   const all = release.jobs.build.steps;
   const upload = all.findIndex((s) => uses(s, 'actions/upload-artifact'));
   assert.equal(upload, all.length - 1, 'the upload is the build job\'s last step');
-  assert.deepEqual(all.filter(runs(UNPINNED)).map((s) => s.name ?? s.run), [], 'steps that install or run packages the lockfile does not pin');
 });
 
 test("release.yml: every job takes the release files by the ID the build job's upload returned, not by name", () => {
@@ -438,7 +508,7 @@ test('release.yml: the GitHub release is made only for a tag that still exists, 
   const s = step(release, 'github-release', runs(/gh release create/), 'that creates the release');
   const gh = `case "$1 $2" in
   "api repos/"*) [ -n "$PUBLISHED" ] && exit 0; echo "HTTP 404: Not Found" >&2; exit 1;;
-  "release create") exit 0;;
+  "release create") [ -z "$CREATE_FAILS" ] || { echo "tag v0.1.0 doesn't exist in the repo example/repo, aborting due to --verify-tag flag" >&2; exit 1; }; exit 0;;
   *) exit 64;;
 esac`;
   const go = (env) => runStep(s.run, { stubs: { gh }, env: { GITHUB_REPOSITORY: 'example/repo', ...env } });
@@ -450,19 +520,38 @@ esac`;
   r = go({ GITHUB_REF_NAME: 'v0.1.0', PUBLISHED: '1' });
   assert.equal(r.code, 0, r.out);
   assert.ok(!r.calls.some((c) => c.startsWith('gh [release] [create]')), 'a published release is left alone');
+  // A failed create fails the job, with no second try: one without --verify-tag would make the tag.
+  r = go({ GITHUB_REF_NAME: 'v0.1.0', CREATE_FAILS: '1' });
+  assert.notEqual(r.code, 0, r.out);
+  assert.equal(r.calls.filter((c) => c.startsWith('gh [release]')).length, 1, `one release call: ${r.calls.join('\n')}`);
+  assert.match(r.calls.at(-1), /^gh \[release\] \[create\] \[v0\.1\.0\] \[--verify-tag\]/, 'and nothing after it');
 });
+
+// The lines of a run: script after its one checksum line, trimmed. After the check, a script that
+// downloads a tool may only unpack the archive and run the tool, so nothing fetches or swaps it again.
+function afterCheck(run, check) {
+  const lines = run.trimEnd().split('\n').map((l) => l.trim());
+  assert.equal(lines.filter((l) => l === check).length, 1, `one line is exactly: ${check}`);
+  return lines.slice(lines.indexOf(check) + 1);
+}
 
 test('release.yml: mcp-publisher is checked against its pinned SHA-256 before it is unpacked or run (finding 28, D17)', () => {
   const { env } = release.jobs.registry;
   assert.match(env?.MCP_PUBLISHER_VERSION ?? '', /^v\d+\.\d+\.\d+$/);
   assert.match(env?.MCP_PUBLISHER_SHA256 ?? '', /^[0-9a-f]{64}$/);
-  inOrder(step(release, 'registry', 'Publish to the MCP Registry').run, [
+  const { run } = step(release, 'registry', 'Publish to the MCP Registry');
+  inOrder(run, [
     'curl -fsSL -o "${archive}" "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/',
     'echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum -c -',
     'tar xzf "${archive}"',
     '"${RUNNER_TEMP}/mcp-publisher" login github-oidc',
     '"${RUNNER_TEMP}/mcp-publisher" publish',
   ], 'the registry job');
+  assert.deepEqual(afterCheck(run, 'echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum -c -'), [
+    'tar xzf "${archive}" -C "${RUNNER_TEMP}" mcp-publisher',
+    '"${RUNNER_TEMP}/mcp-publisher" login github-oidc',
+    '"${RUNNER_TEMP}/mcp-publisher" publish',
+  ], 'after the check, the job only unpacks the archive and runs mcp-publisher');
   assert.deepEqual([].concat(release.jobs.registry.needs), ['npm'], 'the registry checks the npm package, so npm goes first');
 });
 
@@ -641,4 +730,8 @@ test('ci.yml lints the workflow files with actionlint and shellcheck, at a pinne
     'tar xzf "${archive}"',
     '"${RUNNER_TEMP}/actionlint" -shellcheck "${shellcheck}" .github/workflows/*.yml',
   ], 'the actionlint step');
+  assert.deepEqual(afterCheck(s.run, 'echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c -'), [
+    'tar xzf "${archive}" -C "${RUNNER_TEMP}" actionlint',
+    '"${RUNNER_TEMP}/actionlint" -shellcheck "${shellcheck}" .github/workflows/*.yml',
+  ], 'after the check, the step only unpacks the archive and runs actionlint');
 });
