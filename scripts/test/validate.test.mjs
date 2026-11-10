@@ -1228,6 +1228,8 @@ const SLOW_INPUTS = [
   ['two runs of spaces inside a plain case.yaml value', (d) => edit(d, `${SPANISH}/case.yaml`, (t) => `${t}description: a${' '.repeat(LONG / 2)}b${' '.repeat(LONG / 2)}c\n`)],
   // eval-cases.mjs: whether the reply picks an option that a rubric quotes, such as "4b".
   ['a question number and a run of spaces in a history case\'s reply', (d) => edit(d, `${PARTIAL_CASE}/prompt.md`, (t) => t.replace('\n---\n\n2c', `\n---\n\n4${' '.repeat(LONG)}x\n2c`))],
+  // build.mjs's normalize(), which every script reads its files through: a run of CRs that no LF follows.
+  ['a run of CRs that no LF follows in a rubric', (d) => edit(d, `${SPANISH}/graders/02-no-invention.md`, (t) => `${t}\n${'\r'.repeat(LONG)}x\n`)],
 ];
 for (const [name, mutate] of SLOW_INPUTS) {
   test(`validate.mjs finishes in seconds on ${name}`, () => {

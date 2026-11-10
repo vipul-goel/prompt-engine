@@ -21,8 +21,10 @@ export const root = process.env.PE_ROOT || join(dirname(fileURLToPath(import.met
 // so a CRLF checkout (Git for Windows' default) or a BOM an editor added changes nothing. A run
 // of CRs before a LF is one line break (a file converted to CRLF twice ends its lines in CR CR
 // LF), so a second pass changes nothing: the build compares what it generates with a read of
-// what it wrote, and one pass of CR LF to LF left a CR LF that the next read dropped.
-export const normalize = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s).replace(/\r+\n/g, '\n');
+// what it wrote, and one pass of CR LF to LF left a CR LF that the next read dropped. A match
+// starts only at the first CR of a run: /\r+\n/ tried the rest of a run that no LF follows from
+// each of its CRs, which took quadratic time.
+export const normalize = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s).replace(/(?<!\r)\r+\n/g, '\n');
 const read = (p) => normalize(readFileSync(join(root, p), 'utf8'));
 // A JSON file under the root, parsed. JSON.parse's own message doesn't name the file, so a merge-
 // conflict marker or a trailing comma left the build's one line, and validate.mjs, without it.

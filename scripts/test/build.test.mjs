@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { KNOWLEDGE_ORDER, isEntryPoint, normalize, refreshHistory, renderKnowledge, renderMediaTargets, splitFrontmatter } from '../build.mjs';
 
@@ -157,6 +157,20 @@ test('normalize() reads a run of CRs before a LF as one line break, so a second 
   for (const s of ['a\r\r\nb', 'a\r\r\r\n', '\u{FEFF}a\r\r\nb', 'a\rb\r\n\r', '\r\r\n\r\n']) {
     assert.equal(normalize(normalize(s)), normalize(s), JSON.stringify(s));
   }
+});
+
+// A run of CRs that no LF follows stays as it is, in time in step with the run: /\r+\n/ tried the
+// rest of the run from each of its CRs, which took about a minute at 200,000 CRs, and every script
+// reads its files through normalize(). In a child process, so that a slow pattern stops at the limit.
+test('normalize() keeps a long run of CRs that no LF follows, in time in step with the run', () => {
+  const build = pathToFileURL(join(repo, 'scripts', 'build.mjs')).href;
+  const code = `const { normalize } = await import(${JSON.stringify(build)});
+const run = '\\r'.repeat(200_000);
+process.stdout.write(String(normalize(\`a\${run}b\${run}\\nc\`) === \`a\${run}b\\nc\`));`;
+  const t0 = performance.now();
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 10_000 });
+  assert.equal(r.signal, null, `stopped after ${Math.round(performance.now() - t0)} ms`);
+  assert.equal(r.stdout, 'true', r.stderr);
 });
 
 test('one build settles a reference line that ends in CR CR LF, and a data value that holds a written-out CR LF', () => {
