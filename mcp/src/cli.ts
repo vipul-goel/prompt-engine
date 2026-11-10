@@ -57,9 +57,11 @@ const STALL_CHECK_MS = 5_000;
 const STALL_LIMIT_MS = 15_000;
 // A backstop on open sockets: connections past it are closed at once.
 // Connections that send nothing count until the header timeout closes them,
-// 10 to 15 s later, so a client that keeps this many open shuts out every
-// other client. A network deployment needs a proxy that limits connections
-// per client.
+// 10 to 15 s later, and one kept open after an answer counts for as long as its
+// client sends bytes that start no request, such as an empty line every few
+// seconds: they start no timeout, and each one resets Node's keep-alive timer.
+// So a client that keeps this many open shuts out every other client. A network
+// deployment needs a proxy that limits connections per client.
 const MAX_CONNECTIONS = 1024;
 // Once it has written an answer with Connection: close (the refusals below, the MCP SDK's 413
 // or an answer to a client that asked to close), Node closes the socket at once. Bytes that a
@@ -67,14 +69,17 @@ const MAX_CONNECTIONS = 1024;
 // TCP reset, and a client that gets the reset before it has read the answer sees ECONNRESET or
 // EPIPE instead. So such a connection is closed in stages, as RFC 9112, section 9.6, describes:
 // the server closes its side, keeps reading and discarding what the client sends, and closes
-// the connection once the client closes its side or has sent nothing for LINGER_MS. A body
-// still arriving is cut off by the request timeout, and a request sent after the answer closes
-// the connection at once. A request the client sent before the answer, behind the request it
-// answers, may already have been admitted; its answer can never be sent, so then the connection
-// is closed at once, as Node would, which frees its slot. After the SDK's 413 for a chunked
-// body, Node has stopped reading the socket, so that connection is closed LINGER_MS after the
-// answer.
+// the connection once the client closes its side or has sent nothing for LINGER_MS, and
+// LINGER_LIMIT_MS after the answer at the latest, even if the client is still sending. Without
+// that limit, bytes that start no request, such as empty lines, would keep it open: they start
+// none of Node's timeouts, and each one resets the idle timer. A request sent after the answer
+// closes the connection at once. A request the client sent before the answer, behind the
+// request it answers, may already have been admitted; its answer can never be sent, so then the
+// connection is closed at once, as Node would, which frees its slot. After the SDK's 413 for a
+// chunked body, Node has stopped reading the socket, so that connection is closed LINGER_MS
+// after the answer.
 const LINGER_MS = 2_000;
+const LINGER_LIMIT_MS = 30_000;
 // The methods the SDK answers itself: POST, and 405 for GET, DELETE and
 // OPTIONS. Any other gets 405 here, since the SDK's fetch Request throws for
 // some of them, such as TRACE.
@@ -192,6 +197,8 @@ function closeInStages(socket: Socket, unanswerable: boolean): void {
   }
   if (socket.writable) socket.end();
   socket.setTimeout(LINGER_MS, () => socket.destroy());
+  const limit = setTimeout(() => socket.destroy(), LINGER_LIMIT_MS).unref();
+  socket.once('close', () => clearTimeout(limit));
 }
 
 function serveOverHttp(host: string, port: number, allowedHosts: string[]): void {

@@ -194,6 +194,35 @@ describe.concurrent('--http limits', () => {
     }
   });
 
+  // The idle timer alone would keep it open for good: llhttp skips empty lines between requests,
+  // so they start no header or request timeout, and each one resets the timer. The client only
+  // sees the close when its next empty line gets a reset, up to a second later.
+  it('closes a refused connection about 30 s after the answer while the client keeps sending empty lines', { timeout: 90_000 }, async ({ expect }) => {
+    const server = await startHttp();
+    const sock = connect({ port: server.port, host: '127.0.0.1', allowHalfOpen: true });
+    let text = '';
+    let closedAt: number | undefined;
+    sock.on('data', (d) => (text += d));
+    sock.on('error', () => {});
+    sock.on('close', () => (closedAt = Date.now()));
+    const crlf = setInterval(() => sock.writable && sock.write('\r\n'), 1_000);
+    try {
+      await new Promise((resolve) => sock.once('connect', resolve));
+      sock.write(post(server.port, TOOLS_LIST, 'Origin: http://evil.example.com\r\n'));
+      await waitFor(() => text.includes('\r\n\r\n'), () => text, 5_000);
+      const answered = Date.now();
+      expect(text).toMatch(/^HTTP\/1\.1 403 /);
+      await waitFor(() => closedAt !== undefined, () => `still open after ${(Date.now() - answered) / 1000} s`, 40_000);
+      const seconds = (closedAt! - answered) / 1000;
+      expect(seconds).toBeGreaterThanOrEqual(29.5);
+      expect(seconds).toBeLessThan(35);
+    } finally {
+      clearInterval(crlf);
+      sock.destroy();
+      server.proc.kill('SIGTERM');
+    }
+  });
+
   it('closes a connection once a refusal is written, when requests admitted behind it can never be answered', async ({ expect }) => {
     const server = await startHttp();
     const held: Held[] = [];
