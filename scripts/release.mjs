@@ -48,8 +48,22 @@ const run = (cmd, cmdArgs, opts = {}) => {
 };
 const dist = join(root, 'dist');
 
-// normalize(), as validate.mjs reads it: a byte-order mark would make JSON.parse throw here.
-const version = JSON.parse(normalize(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8'))).version;
+// plugin.json's version, for the tag check (which stops a run before validate.mjs) and the last
+// line. normalize(), as validate.mjs reads it: a byte-order mark would make JSON.parse throw here.
+// A plugin.json that doesn't parse or is missing ends the run with one line that names it by its
+// path in the checkout, as a command that fails does: the throw printed a stack trace with the
+// checkout's absolute path. Control characters in the message, such as the line breaks of the
+// text that JSON.parse's message quotes, are written as escapes (\n). JSON that holds no object
+// has no version: no tag matches it, and without a tag validate.mjs names it.
+const pluginJson = join(root, '.claude-plugin', 'plugin.json');
+let version;
+try {
+  version = JSON.parse(normalize(readFileSync(pluginJson, 'utf8')))?.version;
+} catch (e) {
+  const why = e.code === 'ENOENT' ? 'missing' : e.message.replaceAll(pluginJson, '.claude-plugin/plugin.json').replace(/[\x00-\x1f]/g, (c) => JSON.stringify(c).slice(1, -1));
+  console.error(`release.mjs stopped: .claude-plugin/plugin.json: ${why}`);
+  process.exit(1);
+}
 if (tag !== undefined && tag !== `v${version}`) {
   console.error(`tag ${tag} does not match plugin version v${version}; bump .claude-plugin/plugin.json (and the versions it is synced with) first`);
   process.exit(1);

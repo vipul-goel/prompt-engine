@@ -147,16 +147,18 @@ test('release.mjs --zip reads a plugin.json that starts with a byte-order mark',
 // command line or the tag check, so none needs zip, unzip or npm, and each passes --zip too, so
 // that a release.mjs that misreads its arguments still stops before npm.
 const VERSION = JSON.parse(readFileSync(join(repo, '.claude-plugin', 'plugin.json'), 'utf8')).version;
-// Runs release.mjs on one copy with each list of arguments: check(code, output, the arguments as
-// JSON) judges the run, and each run must stop before validate.mjs, without a stack trace or dist/.
-function withArgs(argLists, check) {
+// Runs release.mjs on one copy, which setup can change first, with each list of arguments:
+// check(code, output, the arguments as JSON, the copy's folder) judges the run, and each run must
+// stop before validate.mjs, without a stack trace or dist/.
+function withArgs(argLists, check, setup = () => {}) {
   const dir = copyRepo();
   try {
+    setup(dir);
     for (const args of argLists) {
       assert.ok(args.includes('--zip'), JSON.stringify(args));
       const r = spawnSync(process.execPath, [join(dir, 'scripts', 'release.mjs'), ...args], { env: { ...process.env, PE_ROOT: dir }, encoding: 'utf8' });
       const out = r.stdout + r.stderr;
-      check(r.status, out, JSON.stringify(args));
+      check(r.status, out, JSON.stringify(args), dir);
       assert.doesNotMatch(out, /^\s+at |validate: OK/m, `${JSON.stringify(args)}: no stack trace, and stopped before validate.mjs`);
       assert.ok(!existsSync(join(dir, 'dist')), `${JSON.stringify(args)}: nothing was built`);
     }
@@ -181,6 +183,30 @@ test('release.mjs stops with its usage on an argument it doesn\'t know, or a --t
     assert.equal(code, 2, `${args}: ${out}`);
     assert.match(out, /^usage: node scripts\/release\.mjs \[--zip\] \[--tag v<version>\]$/m, args);
   });
+});
+
+// The tag check reads plugin.json's version before validate.mjs runs. A plugin.json that didn't
+// parse, was missing or held null stopped the run there with a stack trace and the checkout's
+// absolute path, outside the one line that run() prints for a command that fails.
+test('release.mjs stops with one line that names plugin.json when it doesn\'t parse or is missing', () => {
+  const file = (dir) => join(dir, '.claude-plugin', 'plugin.json');
+  for (const [what, damage, reason] of [
+    ['a trailing comma', (dir) => writeFileSync(file(dir), readFileSync(file(dir), 'utf8').replace(/\s*\}\s*$/, ',\n}\n')), '.+'],
+    ['no file', (dir) => rmSync(file(dir)), 'missing'],
+    // JSON.parse's message can quote the text around the error, line breaks included.
+    ['a conflict marker after a key', (dir) => writeFileSync(file(dir), '{\n  "version":\n<<<<<<< HEAD\n  "0.1.0"\n=======\n  "0.2.0"\n>>>>>>> other\n}\n'), '.+'],
+  ]) {
+    withArgs([['--zip', '--tag', `v${VERSION}`], ['--zip']], (code, out, args, dir) => {
+      assert.equal(code, 1, `${what}, ${args}: ${out}`);
+      assert.match(out, new RegExp(`^release\\.mjs stopped: \\.claude-plugin/plugin\\.json: ${reason}\\n$`), `${what}, ${args}: ${out}`);
+      assert.ok(!out.includes(dir), `${what}, ${args}: no absolute path of the checkout`);
+    }, damage);
+  }
+  // JSON that holds no object has no version, so no tag matches it.
+  withArgs([['--zip', '--tag', `v${VERSION}`]], (code, out, args) => {
+    assert.equal(code, 1, `null, ${args}: ${out}`);
+    assert.match(out, new RegExp(`^tag v${VERSION.replaceAll('.', '\\.')} does not match plugin version `), `null, ${args}: ${out}`);
+  }, (dir) => writeFileSync(file(dir), 'null\n'));
 });
 
 test('release.mjs --zip with the matching tag, in either form, builds the zip', { skip: NO_ZIP }, () => {
