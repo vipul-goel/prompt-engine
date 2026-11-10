@@ -82,7 +82,7 @@ Use the structure in `references/output-format.md`, with every label in the user
 5. **What I added & why** — at most 6 bullets, each tagged [you], [your answer] (including ★ answers the user accepted) or [best practice]; to fit, merge related ones rather than move an answer to Assumptions. Specific values you picked yourself go under Assumptions, not [best practice].
 6. **Assumptions** — only the defaults you chose without asking, numbered; "change 2: …" edits one.
 7. **Score** — original vs enhanced, 0–5 on Clear goal, Context, Constraints, Output format and Edge cases, then the caveat line "Self-assessed coverage of five areas, not a prediction of output quality." in the user's language. A dimension that rests only on unconfirmed defaults, or has an open placeholder, scores at most 3.
-8. **What next?** — Run it now ★ · Refine · Save to file.
+8. **What next?** — Run it now ★ · Refine · Save to file (only when you have a tool that saves files on the user's computer).
 
 Show "What next?" with AskUserQuestion (header "Next step") when that tool is among your tools. Otherwise end the same message with the menu as a numbered list, because some apps show only your final message.
 

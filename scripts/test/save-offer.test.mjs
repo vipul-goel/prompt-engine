@@ -39,6 +39,8 @@ const lineWith = (text, start) => text.split('\n').find((l) => l.startsWith(star
 test('each format offers Save to file only with a tool that saves files on the user\'s computer', () => {
   const condition = "tool that saves files on the user's computer";
   assert.ok(lineWith(read(SKILL), '- **Save to file** — ').includes(condition), `${SKILL}'s Save to file bullet doesn't key the offer on such a tool`);
+  // Also where SKILL.md lists the reply's parts, since section 6 is headed "only after the user picks".
+  assert.ok(lineWith(read(SKILL), '8. **What next?** — ').includes(condition), `${SKILL}'s list of the reply's parts offers Save to file without the condition`);
   const format = read(FORMAT);
   assert.ok(lineWith(format, '| You have no ').includes(condition) && lineWith(format, '| You have no ').endsWith('| Drop "Save to file" |'), `${FORMAT}'s menu table doesn't drop Save to file by that tool test`);
   assert.ok(format.includes(`Drop "Save to file" from any of them when you have no ${condition}.`), `${FORMAT}'s rule under the table doesn't use the same test`);
@@ -51,6 +53,7 @@ test('each format offers Save to file only with a tool that saves files on the u
 // CRLF checkout matches too.
 const MUTATIONS = [
   ['SKILL.md keys the offer on the product again', SKILL, [
+    ["Save to file (only when you have a tool that saves files on the user's computer).", 'Save to file.'],
     ["only when you have a tool that saves files on the user's computer (Write in Claude Code)",
       'only where you can write files (Claude Code and other local coding agents)']]],
   ['output-format.md keys the menu on chat apps again', FORMAT, [
