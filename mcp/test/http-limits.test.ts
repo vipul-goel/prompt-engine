@@ -38,6 +38,8 @@ interface Held {
  * Starts a tools/list POST that announces a body of `length` bytes and sends
  * 1 KB of it. It asks for 100 Continue, which Node writes just before it hands
  * the request to the server's handler, so once that arrives the handler has seen it.
+ * It resolves for a refused upload too, whose 503 follows the 100 Continue: to
+ * know which were admitted, check what else each one's text holds.
  */
 function holdUpload(port: number, held: Held[], length = 50_000): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -247,8 +249,10 @@ describe.concurrent('--http limits', () => {
       sock.resume();
       await waitFor(() => closed, () => `still open; answers: ${text.match(/^HTTP\/1\.1 \d+/gm)?.join(', ')}`, 5_000);
       expect(text.match(/^HTTP\/1\.1 \d+/gm)).toEqual(['HTTP/1.1 200', 'HTTP/1.1 403']);
-      // Every slot is free again.
+      // Every slot is free again: 128 uploads are all still waiting for their bodies.
       for (let i = 0; i < 128; i++) await holdUpload(server.port, held);
+      await sleep(100);
+      expect(held.filter((h) => h.sock.destroyed || !/^HTTP\/1\.1 100 Continue\r\n\r\n$/.test(h.text)).length).toBe(0);
     } finally {
       clearInterval(crlf);
       sock.destroy();
