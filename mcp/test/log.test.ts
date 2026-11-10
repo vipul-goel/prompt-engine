@@ -55,7 +55,11 @@ describe('describeError', () => {
       ['Invalid Request: Batch must not exceed 100 messages', 'rejected a request (batch-too-large)'],
       ['Invalid Request: Only one initialization request is allowed', 'rejected a request (invalid-request)'],
       ['Response for request ID LEAK-2 is undeliverable: per-request stream is disconnected and no eventStore is configured', 'dropped a response (client-disconnected)'],
-      ['No connection established for request ID: LEAK-3', 'dropped a response (client-disconnected)'],
+      ['No connection established for request ID: LEAK-3', 'dropped a response (unknown-or-duplicate-request-id)'],
+      // The protocol layer wraps the transport's errors when it sends an answer.
+      ['Failed to send response: Error: No connection established for request ID: LEAK-5', 'dropped a response (unknown-or-duplicate-request-id)'],
+      ['Failed to send an error response: Error: No connection established for request ID: LEAK-6', 'dropped a response (unknown-or-duplicate-request-id)'],
+      ['Failed to send response: Error: Response for request ID LEAK-7 is undeliverable: per-request stream is disconnected', 'dropped a response (client-disconnected)'],
       ['Received a response for an unknown message ID: {"jsonrpc":"2.0","id":987654321,"result":{"LEAK":987654321}}', 'ignored a response (unknown-request-id)'],
       ['Received a response for an unknown request id: LEAK-4', 'ignored a response (unknown-request-id)'],
       ['Received a progress notification for an unknown token: {"method":"notifications/progress","params":{"progressToken":987654321}}', 'ignored a notification (unknown-progress-token)'],
@@ -78,6 +82,7 @@ describe('describeError', () => {
 
   it('keeps other errors readable but drops quoted text and caps the length', () => {
     expect(describeError(new Error('listen EADDRINUSE: address already in use 127.0.0.1:8787'))).toBe('Error: listen EADDRINUSE: address already in use 127.0.0.1:8787');
+    expect(describeError(new Error('Failed to send response: Error: write EPIPE'))).toBe('Error: Failed to send response: Error: write EPIPE');
     expect(describeError(new TypeError('bad "LEAK-1" and \'LEAK-2\' here'))).toBe('TypeError: bad … and … here');
     expect(describeError(new Error('unclosed "LEAK-3 and more'))).toBe('Error: unclosed …');
     expect(describeError(new Error(`x${' y'.repeat(500)}`)).length).toBeLessThanOrEqual(207);

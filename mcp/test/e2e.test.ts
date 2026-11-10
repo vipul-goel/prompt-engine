@@ -378,7 +378,12 @@ describe('Streamable HTTP (--http)', () => {
     expect(long.line).toBe('[prompt-engine-mcp] Error: URI exceeds maximum length of 1000000 characters (got 1000001)\n');
     // The SDK's messages for these quote a header value, a request id or the message as JSON.
     const ping = JSON.stringify({ jsonrpc: '2.0', id: 'LEAK-1', method: 'ping' });
+    // In a batch whose requests share an id, the answer to the second can't be sent, and the
+    // message quotes the id: once for a result, once for an error.
+    const twice = (message: object) => JSON.stringify([message, message]);
     for (const [headers, body, line] of [
+      [{}, twice({ jsonrpc: '2.0', id: 'LEAK-3 \u{202E}', method: 'ping' }), 'dropped a response (unknown-or-duplicate-request-id)'],
+      [{}, twice({ jsonrpc: '2.0', id: 'LEAK-4 \u{202E}', method: 'no/such/method' }), 'dropped a response (unknown-or-duplicate-request-id)'],
       [{ 'mcp-protocol-version': '1999-01-01' }, ping, 'rejected a request (unsupported-protocol-version)'],
       [{ accept: 'application/json' }, ping, 'rejected a request (not-acceptable)'],
       [{}, JSON.stringify(Array.from({ length: 101 }, (_, i) => ({ jsonrpc: '2.0', id: `LEAK-${i}`, method: 'ping' }))), 'rejected a request (batch-too-large)'],
