@@ -713,6 +713,21 @@ function readRecording(file) {
   };
 }
 
+// Whether a regex grader's pattern spells out the words of the Full prompt heading with something
+// else than one space between them, such as \s+, [ ] or \x20, and finds the heading: its text holds
+// both words, in any letter case, and it matches a reply that starts with the heading (a # to ####
+// heading, a bold label or a label with a colon) and its block, but not the same reply with either
+// word of the heading changed, so "Full|prompt" doesn't count. Only such patterns run here, on these
+// short replies. Each test makes a new RegExp, as claude plugin eval does; a pattern or flags that
+// don't compile find nothing here (checkGrader names them).
+const FULL_PROMPT_REPLIES = [...['# ', '## ', '### ', '#### '].map((h) => `${h}Full prompt`), '**Full prompt**', 'Full prompt:']
+  .map((heading) => `${heading}\n\`\`\`text\nWrite the notes.\n\`\`\`\n`);
+function findsFullPrompt(pattern, flags) {
+  if (!/full/i.test(pattern) || !/prompt/i.test(pattern)) return false;
+  const test = (text) => { try { return new RegExp(pattern, typeof flags === 'string' ? flags : '').test(text); } catch { return false; } };
+  return FULL_PROMPT_REPLIES.some((r) => test(r) && !test(r.replace('Full prompt', 'Rough prompt')) && !test(r.replace('Full prompt', 'Full notes')));
+}
+
 // This repo's rules for how the cases run and score, which claude plugin eval doesn't require.
 // cases is checkEvalCases's result; a case with a file that didn't read is skipped.
 export function checkSuiteRules(root, cases, err) {
@@ -765,14 +780,17 @@ export function checkSuiteRules(root, cases, err) {
     }
     // A case that LINT_GRADER_CASES leaves out gets neither its lint graders nor the rule above, so
     // an output case is also known by its graders: a regex grader on the reply (claude plugin eval's
-    // default target) whose pattern spells out "Full prompt", with match contains or count:N. Not
-    // caught: a case whose graders find the heading without spelling it out, as the translated cases
-    // and followup-fill-placeholders do, or only through llm graders.
+    // default target), with match contains or count:N, whose pattern spells out the words Full
+    // prompt: as that text, or with something else between them that finds the heading, as
+    // Full\s+prompt does (findsFullPrompt). Not caught: a case whose graders find the heading without
+    // spelling it out, as the translated cases do, or only along with other text, as
+    // followup-fill-placeholders' does, or only through llm graders.
     const lookup = c.graders.find((g) => {
       const d = g.data;
       const p = d.pattern ?? (g.body !== '' ? g.body : undefined);
       return d.type === 'regex' && (d.target === undefined || d.target === 'last_message')
-        && (d.match === undefined || d.match === 'contains' || /^count:[1-9]/.test(d.match)) && typeof p === 'string' && /full prompt/i.test(p);
+        && (d.match === undefined || d.match === 'contains' || /^count:[1-9]/.test(d.match)) && typeof p === 'string'
+        && (/full prompt/i.test(p) || findsFullPrompt(p, d.flags));
     });
     if (lookup && !Object.hasOwn(LINT_GRADER_CASES, c.name)) err(`${c.dir}: graders/${lookup.name}.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts/build.mjs, so that the build writes its lint graders and validate.mjs requires a no-invention judge (repo rule)`);
     // A tool_used grader with min: 0, such as a max: 0 check, passes with zero calls, which is

@@ -1003,6 +1003,35 @@ test('checkSuiteRules names a case whose graders look for a Full prompt heading,
   assert.deepEqual(errors, [NAMED('counted'), NAMED('in-body'), NAMED('newsletter')]);
 });
 
+// A pattern that writes \s+, [ ] or \x20 between the words spells them out too, and finds the same
+// heading. One with both words counts when it matches a reply with a Full prompt heading and its
+// block, and not the same reply with either word of the heading changed, so "Full|prompt" doesn't;
+// nor does a pattern without both words, such as "x", "prompt" or F\w+ p\w+.
+test('checkSuiteRules names an output case whatever its heading pattern writes between the words', () => {
+  const NAMED = (name) => `evals/${name}: graders/01-x.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts/build.mjs, so that the build writes its lint graders and validate.mjs requires a no-invention judge (repo rule)`;
+  const one = (name, pattern, flags = 'i') => ({ [`evals/${name}/prompt.md`]: promptMd(), [`evals/${name}/graders/01-x.md`]: `---\ntype: regex\npattern: '${pattern}'\nflags: ${flags}\n---\n` });
+  const { schema, errors } = rules({
+    ...one('spaces', '#+\\s*Full\\s+prompt'),
+    ...one('class', '#+\\s*Full[ ]prompt'),
+    ...one('hex', '#+\\s*Full\\x20prompt'),
+    ...one('bold', '\\*\\*FULL\\W+PROMPT\\*\\*'),
+    ...one('fenced', '#+\\s*Full\\s+prompt\\s*\\n```text', 'm'),
+    // Not output cases: patterns that a reply without the heading matches too, ones that don't spell
+    // out both words or that the heading doesn't satisfy, and one that doesn't compile.
+    ...one('any', 'x'),
+    ...one('word', 'prompt'),
+    ...one('either', 'Full|prompt'),
+    ...one('without-full', '(?:Full\\s+)?prompt'),
+    ...one('without-prompt', '#+\\s*Full(?:\\s+prompt)?'),
+    ...one('letters', '#+\\s*F\\w+\\s+p\\w+'),
+    ...one('asks', 'What next\\?'),
+    ...one('short', '#+\\s*Short\\s+version'),
+    ...one('broken', 'Full\\s+prompt('),
+  });
+  assert.deepEqual(schema, ["evals/broken/graders/01-x.md: pattern: Invalid regular expression: /Full\\s+prompt(/i: Unterminated group"]);
+  assert.deepEqual(errors, [NAMED('bold'), NAMED('class'), NAMED('fenced'), NAMED('hex'), NAMED('spaces')]);
+});
+
 // ---------- checkConversations: the history cases ----------
 const CONTRACT = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'contract.json'), 'utf8'));
 const REPLY_LINE = 'Reply `ok` to accept every ★, or answer like `2b 3: get managers to pilot a 4-day week`. Anything you skip gets the ★.';

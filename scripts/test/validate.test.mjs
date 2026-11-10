@@ -816,6 +816,20 @@ const ROWS = [
     for (const f of readdirSync(join(d, to, 'graders'))) if (/^lint-prompt|-no-invention\.md$/.test(f)) rmSync(join(d, to, 'graders', f));
     edit(d, `${to}/case.yaml`, (t) => t.replace('name: writing-quick-launch-email', 'name: writing-quick-newsletter'));
   }, /^error: evals\/writing-quick-newsletter: graders\/01-full-prompt-heading\.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts\/build\.mjs, so that the build writes its lint graders and validate\.mjs requires a no-invention judge \(repo rule\)\n\n1 error\(s\)$/m],
+  // Also when its graders write the space between the words as \s+: the rule reads what a pattern
+  // matches, not only its text.
+  ['rejects an output case that LINT_GRADER_CASES leaves out, whose graders write Full\\s+prompt', (d) => {
+    const to = 'evals/writing-quick-newsletter';
+    cpSync(join(d, 'evals/writing-quick-launch-email'), join(d, to), { recursive: true });
+    for (const f of readdirSync(join(d, to, 'graders'))) {
+      const t = read(d, `${to}/graders/${f}`);
+      if (/^lint-prompt|-no-invention\.md$/.test(f)) rmSync(join(d, to, 'graders', f));
+      else if (/^type: regex$/m.test(t)) writeFileSync(join(d, to, 'graders', f), t.replaceAll('Full prompt', 'Full\\s+prompt'));
+    }
+    edit(d, `${to}/case.yaml`, (t) => t.replace('name: writing-quick-launch-email', 'name: writing-quick-newsletter'));
+    assert.match(read(d, `${to}/graders/01-full-prompt-heading.md`), /^pattern: '#\+\\s\*Full\\s\+prompt'$/m);
+    assert.doesNotMatch(readdirSync(join(d, to, 'graders')).map((f) => read(d, `${to}/graders/${f}`)).join('\n'), /^pattern: .*full prompt/im);
+  }, /^error: evals\/writing-quick-newsletter: graders\/01-full-prompt-heading\.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts\/build\.mjs, so that the build writes its lint graders and validate\.mjs requires a no-invention judge \(repo rule\)\n\n1 error\(s\)$/m],
   // Every output case, the cases build.mjs writes lint graders for, has a no-invention judge (finding 49, D30).
   ['rejects an output case without a no-invention judge', (d) => rmSync(join(d, `${VEO}/07-no-invention.md`)),
     /^error: evals\/video-veo-quick: an output case \(LINT_GRADER_CASES in scripts\/build\.mjs\) needs an llm grader named <n>-no-invention\.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption \(repo rule\)\n\n1 error\(s\)$/m],
