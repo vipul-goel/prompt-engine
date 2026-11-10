@@ -22,6 +22,7 @@ import { VERSION } from './generated/content.js';
 import { canonicalHostname, parseAllowedHosts, portsIgnoredWarning, unusableWarning } from './hosts.js';
 import { describeError } from './log.js';
 import { createServer } from './server.js';
+import { stalledSockets, type StallRecord } from './stall.js';
 
 const NAME = 'prompt-engine-mcp';
 const DEFAULT_HOST = '127.0.0.1';
@@ -230,21 +231,10 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
   const inFlight = new Set<ServerResponse>();
   let inFlightBytes = 0;
 
-  // See STALL_LIMIT_MS. A response waiting behind another on the same connection
-  // has no socket yet; the one being written does.
-  const stalls = new WeakMap<Socket, { handedOn: number; since: number }>();
+  // See STALL_LIMIT_MS; stall.ts holds the rule.
+  const stalls = new WeakMap<Socket, StallRecord>();
   const stallCheck = setInterval(() => {
-    const now = Date.now();
-    for (const res of inFlight) {
-      const socket = res.socket;
-      if (!socket) continue;
-      // What the socket has been given, less what still waits in it.
-      const handedOn = socket.bytesWritten - socket.writableLength;
-      const seen = stalls.get(socket);
-      if (!socket.writableNeedDrain) stalls.delete(socket);
-      else if (seen?.handedOn !== handedOn) stalls.set(socket, { handedOn, since: now });
-      else if (now - seen.since >= STALL_LIMIT_MS) socket.destroy();
-    }
+    for (const socket of stalledSockets(inFlight, stalls, Date.now(), STALL_LIMIT_MS)) socket.destroy();
   }, STALL_CHECK_MS);
   stallCheck.unref();
 
