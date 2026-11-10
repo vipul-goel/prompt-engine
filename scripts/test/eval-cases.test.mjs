@@ -1458,3 +1458,47 @@ test('the menu graders\' open-placeholder condition stays fast on long runs of #
     for (const s of texts) vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });
   }
 });
+
+// The Midjourney aspect-ratio graders (image-video.md, "C. One line with parameters at the end"):
+// the Full prompt's block holds one line that ends with --ar or --aspect and other parameters.
+// Words are separated by spaces or tabs, so parameters on a line of their own fail, and the match
+// is anchored on the Full prompt's block (in the translated case, the first heading's), so a right
+// Short version doesn't make up for a wrong Full prompt (step 1e, B1.1.7).
+const MIDJOURNEY = [
+  ['image-midjourney-quick', ['Full prompt', 'Short version'],
+    'cozy log cabin in deep snow at night, two warm amber lit windows, snow-laden pine trees, photorealistic --ar 3:2 --no people text watermark',
+    'cozy log cabin in deep snow at night, warm windows, photorealistic --ar 3:2 --no people text watermark'],
+  ['japanese-midjourney-quick', ['プロンプト全文', '短縮版'],
+    '夜の雪山の斜面に建つ小さな木造の山小屋、窓から漏れる暖かい灯り、写真のようなリアルな風景写真 --ar 3:2 --no 人 文字 透かし',
+    '夜の雪山にある小さな木造の山小屋、窓の暖かい灯り、リアルな風景写真 --ar 3:2 --no 人 文字 透かし'],
+];
+const midjourneyReply = ([h1, h2], full, short, fence = '```') => `I wrote a Midjourney prompt in quick mode.\n\n### ${h1}\n${fence}text\n${full}\n${fence}\n\n` +
+  (short === null ? '' : `### ${h2}\n${fence}text\n${short}\n${fence}\n\n`) + '### What next?\n1. Done ★\n2. Refine';
+// The parameters on a line of their own, and --ar moved after the first phrase.
+const ownLine = (line) => line.replace(/ (--ar .*)$/, '\n$1');
+const midLine = (line) => line.replace(' --ar 3:2', '').replace(/^([^,、]+)([,、])/, '$1 --ar 3:2$2');
+test('the Midjourney aspect-ratio graders want the parameters at the end of the Full prompt\'s one line', () => {
+  for (const [c, headings, full, short] of MIDJOURNEY) {
+    const g = graderOf(c, '01-aspect-ratio-parameter');
+    const reply = (f, s = short, fence) => midjourneyReply(headings, f, s, fence);
+    for (const [name, text] of Object.entries({
+      'the right shape': reply(full),
+      'a blank line before the closing fence': reply(`${full}\n`),
+      'a four-backtick fence': reply(full, short, '````'),
+      '--aspect': reply(full.replace('--ar', '--aspect')),
+      'no Short version': reply(full, null),
+    })) assert.ok(regexPasses(g, text), `${c}: ${name}`);
+    for (const [name, text] of Object.entries({
+      'Full prompt: --ar mid-line, Short version right': reply(midLine(full)),
+      'Full prompt: parameters on a line of their own, Short version right': reply(ownLine(full)),
+      'both: parameters on a line of their own': reply(ownLine(full), ownLine(short)),
+      'Full prompt: a second line after the parameters': reply(`${full}\nmore details`),
+      'Full prompt: a trailing comma': reply(`${full},`),
+      'Full prompt: no parameters, Short version right': reply(full.replace(/ --ar .*$/, '')),
+    })) assert.equal(regexPasses(g, text), false, `${c}: ${name}`);
+    // A long run of # or of headings, and a long line without parameters, stay fast.
+    for (const s of [`${'#'.repeat(40_000)}x`, `\n${'#'.repeat(40_000)}x`, '# Full prompt\n'.repeat(3_000), `### ${headings[0]}\n\`\`\`text\n${'a '.repeat(20_000)}\n\`\`\``]) {
+      vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });
+    }
+  }
+});
