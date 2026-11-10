@@ -104,13 +104,15 @@ test('what next menu: a starred option the method allows after What next?, numbe
   ]) assert.ok(!menu(output({ menu: m })), m);
 });
 
-test('no Save to file: a Save option after What next? fails, a sentence about leaving it out passes', () => {
+test('no Save to file: a Save option after What next? fails, however it goes on; a sentence about leaving it out passes', () => {
   const noSave = check(U.STRUCTURE, 'no Save to file (tools disabled)');
   for (const m of [
     '1) Run it now ★\n2) Refine',
     '1) Run it now ★ 2) Refine',
     "1) Run it now ★\n2) Refine\n\n(I left out Save to file because I can't write files here.)",
     '1) Done ★ (paste it into Midjourney)\n2) Refine',
+    // Save later in an option's text is no Save option.
+    '1) Run it now ★\n2) Refine — or save the prompt yourself by copying it',
   ]) assert.ok(noSave(output({ menu: m })), m);
   for (const m of [
     '1) Run it now ★\n2) Refine\n3) Save to file',
@@ -118,6 +120,11 @@ test('no Save to file: a Save option after What next? fails, a sentence about le
     '1) **Run it now** ★\n2) **Refine**\n3) **Save to file**',
     '1. Run it now ★\n2. Refine\n3. Save to file — `prompts/launch-email.md`',
     '- Run it now ★\n- Refine\n- Save to file',
+    // An option that starts with Save, however it goes on or whatever is bold (step 1e, B1.2.11).
+    '1) Run it now ★\n2) Refine\n3) **Save** to file',
+    '1) Run it now ★\n2) Refine\n3) Save to a file',
+    '1) Run it now ★\n2) Refine\n3) Save it to a file',
+    '1) Run it now ★\n2) Refine\n3) Save the prompt to a file — `prompts/launch-email.md`',
   ]) assert.ok(!noSave(output({ menu: m })), m);
   // Before the menu it is no option, such as in a What I added bullet.
   assert.ok(noSave(output().replace('- Audience', '- Save to file is left out: no tool here writes files [best practice]\n- Audience')));

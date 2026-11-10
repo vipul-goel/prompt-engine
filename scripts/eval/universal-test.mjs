@@ -108,8 +108,10 @@ export const STRUCTURE = [
   ['Fill placeholders ★ while placeholders are open', (t) => !(fillOpen.test(t) && STARRED_NOT_FILL.test(t))],
   // Every tool is off, and the core offers Save to file only with a tool that saves files on the
   // user's computer (finding 1). Only an option of the menu counts, with MENU's prefix, so a
-  // sentence after the menu that says why Save was left out still passes (finding 5's audit).
-  ['no Save to file (tools disabled)', (t) => !/^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Save to file/i.test(t)],
+  // sentence after the menu that says why Save was left out still passes (finding 5's audit). Any
+  // option that starts with the word Save counts, however it goes on ("Save it to a file") and
+  // whether or not it is bold ("**Save** to file"), not only the core's own words (step 1e).
+  ['no Save to file (tools disabled)', (t) => !/^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Save\b/i.test(t)],
 ];
 // An image prompt, which can't be generated here: no Run it now option after "What next?", and a
 // starred Done option, or Fill placeholders ★ while placeholders other than secrets are open
