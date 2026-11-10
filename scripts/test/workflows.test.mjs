@@ -1,12 +1,14 @@
 // Checks of the GitHub workflow files. Nothing else reads them: actionlint, which CI runs on them,
 // checks their syntax and shell code, not what they promise, so a workflow with a safeguard taken
 // out is still valid. These tests pin down those promises, each with the review finding or owner
-// decision it comes from. Most read the run: scripts as text; the npm, GitHub release and issue
-// steps also run under bash, with stand-ins for gh and npm, so nothing reaches GitHub or npm.
+// decision it comes from. Most read the run: scripts as text; the on-main, CHANGELOG, tag, npm,
+// GitHub release and issue steps and the two steps that download a tool also run under bash, with
+// stand-ins for gh, npm and curl, so nothing reaches GitHub, npm or the network.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
@@ -160,20 +162,23 @@ function inOrder(text, parts, what) {
 }
 
 // Runs a step's script under bash -e, as GitHub runs a run: block on Linux when no shell is set,
-// in a new folder, with stand-ins first on PATH. Each stand-in logs its arguments, then runs the
-// shell code given for it. GH_CONFIG_DIR and npm's user config point at the empty folder, so even
-// a real gh or npm reached by mistake would have no login. The tester's tokens, npm settings and
-// variables that change how bash or node start don't reach the step, and neither do the files
-// through which a step on GitHub sets variables, PATH or outputs for later steps, so a step run
-// here can't change the CI job that runs these tests.
+// in a new folder (or the folder cwd names in it, as a step's working-directory), with stand-ins
+// first on PATH. Each stand-in logs its arguments, then runs the shell code given for it.
+// RUNNER_TEMP is a folder of its own in it. GH_CONFIG_DIR and npm's user config point at the empty
+// folder, so even a real gh or npm reached by mistake would have no login. The tester's tokens, npm
+// settings and variables that change how bash or node start don't reach the step, and neither do
+// the files through which a step on GitHub sets variables, PATH or outputs for later steps, so a
+// step run here can't change the CI job that runs these tests. With errexit: false the script runs
+// without -e, as it would after a line that turns errexit off.
 const NO_BASH = (process.platform === 'win32' && 'the stand-ins for gh and npm are shell scripts')
   || (spawnSync('bash', ['--version']).error && 'needs bash');
 const NO_JQ = NO_BASH || (spawnSync('jq', ['--version']).error && 'needs jq');
-function runStep(script, { stubs, env = {}, files = {} }) {
+function runStep(script, { stubs, env = {}, files = {}, cwd = '.', errexit = true }) {
   const dir = mkdtempSync(join(tmpdir(), 'pe-workflow-step-'));
   try {
     const bin = join(dir, 'bin');
     mkdirSync(bin);
+    mkdirSync(join(dir, 'runner-temp'));
     for (const [name, body] of Object.entries(stubs)) {
       writeFileSync(join(bin, name), `#!/bin/bash\n{ printf '%s' ${name}; printf ' [%s]' "$@"; printf '\\n'; } >> "$STUB_LOG"\n${body}\n`);
       chmodSync(join(bin, name), 0o755);
@@ -182,18 +187,20 @@ function runStep(script, { stubs, env = {}, files = {} }) {
       mkdirSync(dirname(join(dir, f)), { recursive: true });
       writeFileSync(join(dir, f), text);
     }
+    mkdirSync(join(dir, cwd), { recursive: true });
     writeFileSync(join(dir, 'step.sh'), script);
     writeFileSync(join(dir, 'npmrc'), '');
     const log = join(dir, 'calls.log');
     writeFileSync(log, '');
     const keep = Object.entries(process.env).filter(([k]) => !/^(PATH|GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|NODE_AUTH_TOKEN|NPM_TOKEN|NPM_OWNER|npm_config_.*|BASH_ENV|ENV|SHELLOPTS|BASHOPTS|NODE_OPTIONS|GITHUB_(?:ENV|PATH|OUTPUT|STATE|STEP_SUMMARY))$/i.test(k));
-    const r = spawnSync('bash', ['--noprofile', '--norc', '-e', join(dir, 'step.sh')], {
-      cwd: dir,
+    const r = spawnSync('bash', ['--noprofile', '--norc', ...(errexit ? ['-e'] : []), join(dir, 'step.sh')], {
+      cwd: join(dir, cwd),
       encoding: 'utf8',
       env: {
         ...Object.fromEntries(keep),
         PATH: [bin, dirname(process.execPath), process.env.PATH ?? ''].join(delimiter),
         STUB_LOG: log,
+        RUNNER_TEMP: join(dir, 'runner-temp'),
         GH_CONFIG_DIR: dir,
         NPM_CONFIG_USERCONFIG: join(dir, 'npmrc'),
         npm_config_registry: 'http://127.0.0.1:9/',
@@ -232,10 +239,16 @@ test('no run: script holds a ${{ }} expression; values reach scripts through env
 
 // The tests below look for each safeguard's lines, which stay in place when the safeguard is switched
 // off where it stands. A step with continue-on-error lets its job pass when it fails, and a job with
-// it lets the run pass; GitHub runs a run: script with bash -e, which `|| true`, `set +e` or a shell
-// of the step's own can undo. So none of these appear in the four workflows (the Windows job names
-// bash, which GitHub runs with -e and pipefail).
+// it lets the run pass; GitHub runs a run: script with bash -e, which `|| true`, `set +e`, `shopt -u
+// errexit` or a shell of the step's own can undo. So none of these appear in the four workflows (the
+// Windows job names bash, which GitHub runs with -e and pipefail). ERREXIT_OFF also finds set +e
+// among other options (set -u +e, set +eu), quoted, or after builtin, command or eval. A text check
+// can't find every way to turn errexit off, so the checksum lines also stop their steps on their own,
+// and the steps that download a tool run without -e as well, further down.
+const ERREXIT_OFF = /\bset\b[^\n;&|]*?[ \t]["']?\+(?:[a-zA-Z]*e|o["']?[ \t]+["']?errexit\b)|\bshopt\b[^\n;&|]*\berrexit\b/;
 test('no job or step lets a failure through: no continue-on-error, no || true or set +e, no shell but bash', () => {
+  for (const l of ['set +e', 'set -u +e', 'set +eu', 'set +o errexit', 'shopt -uo errexit', 'builtin set +e', 'command set +e', '{ set +e; }', 'true; set +e', 'eval "set +e"', 'set "+e"']) assert.match(l, ERREXIT_OFF, l);
+  for (const l of ['set -e', 'set -euo pipefail', 'set +x', 'set +o pipefail', 'set -o errexit', 'echo "${X:-not set}" +1']) assert.doesNotMatch(l, ERREXIT_OFF, l);
   for (const f of FILES) {
     assert.equal(wf[f].defaults, undefined, `${f}: defaults for the whole workflow`);
     for (const [name, j] of jobs(wf[f])) {
@@ -246,7 +259,7 @@ test('no job or step lets a failure through: no continue-on-error, no || true or
       assert.equal(s['continue-on-error'], undefined, `${f}, ${label(s)}`);
       assert.ok([undefined, 'bash'].includes(s.shell), `${f}, ${label(s)}: shell ${s.shell}`);
       assert.doesNotMatch(s.run ?? '', /\|\|\s*(?:true|:)(?=[\s;)&|#]|$)/m, `${f}, ${label(s)}: a command whose failure is ignored`);
-      assert.doesNotMatch(s.run ?? '', /^\s*set\s+(?:\+[a-z]*e|\+o\s+errexit)/m, `${f}, ${label(s)}: set +e`);
+      assert.doesNotMatch(s.run ?? '', ERREXIT_OFF, `${f}, ${label(s)}: errexit turned off`);
     }
   }
 });
@@ -588,6 +601,11 @@ esac`;
   assert.match(r.calls.at(-1), /^gh \[release\] \[create\] \[v0\.1\.0\] \[--verify-tag\]/, 'and nothing after it');
 });
 
+// The checksum line of each step that downloads a tool. It stops the step on its own when the archive
+// doesn't match, not only through bash -e, which a line before it could turn off.
+const MCP_CHECK = 'echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum -c - || { echo "::error::The mcp-publisher archive doesn\'t match MCP_PUBLISHER_SHA256"; exit 1; }';
+const LINT_CHECK = 'echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c - || { echo "::error::The actionlint archive doesn\'t match ACTIONLINT_SHA256"; exit 1; }';
+
 // The lines of a run: script after its one checksum line, trimmed. After the check, a script that
 // downloads a tool may only unpack the archive and run the tool, so nothing fetches or swaps it again.
 function afterCheck(run, check) {
@@ -630,17 +648,149 @@ test('release.yml: mcp-publisher is checked against its pinned SHA-256 before it
   const { run } = step(release, 'registry', 'Publish to the MCP Registry');
   inOrder(run, [
     'curl -fsSL -o "${archive}" "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/',
-    'echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum -c -',
+    MCP_CHECK,
     'tar xzf "${archive}"',
     '"${RUNNER_TEMP}/mcp-publisher" login github-oidc',
     '"${RUNNER_TEMP}/mcp-publisher" publish',
   ], 'the registry job');
-  assert.deepEqual(afterCheck(run, 'echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum -c -'), [
+  assert.deepEqual(afterCheck(run, MCP_CHECK), [
     'tar xzf "${archive}" -C "${RUNNER_TEMP}" mcp-publisher',
     '"${RUNNER_TEMP}/mcp-publisher" login github-oidc',
     '"${RUNNER_TEMP}/mcp-publisher" publish',
   ], 'after the check, the job only unpacks the archive and runs mcp-publisher');
   assert.deepEqual([].concat(release.jobs.registry.needs), ['npm'], 'the registry checks the npm package, so npm goes first');
+});
+
+// The steps that download a tool, run with stand-ins. curl serves an archive that holds a stand-in
+// for the tool, which logs "ran <tool>" when it runs, and tar logs each call, then runs the real tar.
+// The registry step first looks the version up in the MCP Registry and waits until npm shows it.
+const REAL_TAR = NO_BASH ? '' : spawnSync('bash', ['-c', 'command -v tar'], { encoding: 'utf8' }).stdout.trim();
+const NO_ARCHIVE = NO_BASH || (!REAL_TAR && 'needs tar') || (spawnSync('sha256sum', ['--version']).error && 'needs sha256sum');
+
+// A stand-in for curl that reads the options these steps use as curl does: with -f (--fail) an HTTP
+// error exits 22, without it curl exits 0; -o writes the body to a file. It serves FAKE_ARCHIVE for
+// DOWNLOAD_URL, answers LOOKUP_URL with LOOKUP_STATUS (404 unless set; "down" fails to connect) and
+// any other MCP Registry URL with 200, as for a server with earlier versions. It fails on any other
+// option or URL, so a change to these calls shows here.
+const CURL = `out=""; url=""; fail=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --fail) fail=1;;
+    --silent|--show-error|--location) ;;
+    --output) out="$2"; shift;;
+    --*) echo "curl stand-in: $1 isn't modelled" >&2; exit 64;;
+    -?*)
+      opts="\${1#-}"
+      while [ -n "$opts" ]; do
+        o="\${opts:0:1}"; opts="\${opts:1}"
+        case "$o" in
+          f) fail=1;;
+          s|S|L) ;;
+          o) if [ -n "$opts" ]; then out="$opts"; else out="$2"; shift; fi; opts="";;
+          *) echo "curl stand-in: -$o isn't modelled" >&2; exit 64;;
+        esac
+      done;;
+    *) url="$1";;
+  esac
+  shift
+done
+case "$url" in
+  "$DOWNLOAD_URL") if [ -n "$out" ]; then cp "$FAKE_ARCHIVE" "$out"; else cat "$FAKE_ARCHIVE"; fi; exit 0;;
+  "$LOOKUP_URL") status="\${LOOKUP_STATUS:-404}";;
+  https://registry.modelcontextprotocol.io/*) status=200;;
+  *) echo "curl stand-in: unexpected URL $url" >&2; exit 64;;
+esac
+case "$status" in
+  200) exit 0;;
+  down) echo "curl: (7) Failed to connect" >&2; exit 7;;
+  *) [ -z "$fail" ] && exit 0; echo "curl: (22) The requested URL returned error: $status" >&2; exit 22;;
+esac`;
+
+// npm view <package>@<version> version, as the registry step's wait calls it: it finds the version
+// when NPM_VISIBLE is set.
+const REGISTRY_NPM = `case "$1 $2" in
+  "view prompt-engine-mcp@"*) [ -n "$NPM_VISIBLE" ] && { echo "\${2#*@}"; exit 0; }; echo "npm error code E404" >&2; exit 1;;
+  *) exit 64;;
+esac`;
+
+// A .tar.gz in dir that holds a stand-in for the tool, with its SHA-256.
+function fakeArchive(dir, tool) {
+  const src = join(dir, `${tool}-src`);
+  mkdirSync(src);
+  writeFileSync(join(src, tool), `#!/bin/bash\n{ printf 'ran %s' ${tool}; printf ' [%s]' "$@"; printf '\\n'; } >> "$STUB_LOG"\n`);
+  chmodSync(join(src, tool), 0o755);
+  const file = join(dir, `${tool}.tar.gz`);
+  const r = spawnSync(REAL_TAR, ['czf', file, '-C', src, tool], { encoding: 'utf8', env: { ...process.env, COPYFILE_DISABLE: '1' } });
+  assert.equal(r.status, 0, `tar: ${r.stderr}`);
+  return { file, sha256: createHash('sha256').update(readFileSync(file)).digest('hex') };
+}
+
+// The two steps that download a tool, each with the stand-ins and environment it runs with here (its
+// own env:, so the pinned SHA-256, and the URLs the stand-in curl answers), and the calls of the tool
+// that the step makes when the archive matches.
+function downloadSteps() {
+  const { name, version } = JSON.parse(read('mcp/server.json'));
+  const pins = release.jobs.registry.env;
+  const lint = step(ci, 'skill', runs(/actionlint/), 'that runs actionlint');
+  return [{
+    s: step(release, 'registry', 'Publish to the MCP Registry'),
+    tool: 'mcp-publisher',
+    pin: 'MCP_PUBLISHER_SHA256',
+    stubs: { curl: CURL, npm: REGISTRY_NPM, sleep: 'exit 0' },
+    files: { 'mcp/server.json': read('mcp/server.json') },
+    env: {
+      ...pins,
+      DOWNLOAD_URL: `https://github.com/modelcontextprotocol/registry/releases/download/${pins.MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz`,
+      LOOKUP_URL: `https://registry.modelcontextprotocol.io/v0.1/servers/${encodeURIComponent(name)}/versions/${version}?include_deleted=true`,
+      NPM_VISIBLE: '1',
+    },
+    calls: [/^ran mcp-publisher \[login\] \[github-oidc\]$/, /^ran mcp-publisher \[publish\]$/],
+  }, {
+    s: lint,
+    tool: 'actionlint',
+    pin: 'ACTIONLINT_SHA256',
+    stubs: { curl: CURL, shellcheck: 'exit 0' },
+    files: {},
+    env: {
+      ...lint.env,
+      DOWNLOAD_URL: `https://github.com/rhysd/actionlint/releases/download/v${lint.env.ACTIONLINT_VERSION}/actionlint_${lint.env.ACTIONLINT_VERSION}_linux_amd64.tar.gz`,
+    },
+    // With the runner's shellcheck, here the stand-in's.
+    calls: [/^ran actionlint \[-shellcheck\] \[.+\/bin\/shellcheck\] \[\.github\/workflows\/\*\.yml\]$/],
+  }];
+}
+
+// GitHub runs these scripts with bash -e, which a line in the script can turn off in more ways than a
+// text check finds, so each checksum line stops its step on its own, and the steps also run without -e.
+test("release.yml and ci.yml: a downloaded tool whose archive doesn't match its pinned SHA-256 is never unpacked or run, with errexit on or off (finding 28, D17)", { skip: NO_ARCHIVE }, () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pe-workflow-archive-'));
+  try {
+    for (const d of downloadSteps()) {
+      const fake = fakeArchive(tmp, d.tool);
+      const go = (env, errexit = true) => runStep(d.s.run, {
+        stubs: { ...d.stubs, tar: 'exec "$REAL_TAR" "$@"' },
+        files: d.files,
+        cwd: d.s['working-directory'] ?? '.',
+        errexit,
+        env: { ...d.env, REAL_TAR, FAKE_ARCHIVE: fake.file, ...env },
+      });
+      for (const errexit of [true, false]) {
+        const what = `${d.tool}, ${errexit ? 'under bash -e' : 'without errexit'}`;
+        const r = go({}, errexit);
+        assert.notEqual(r.code, 0, `${what}: the step fails: ${r.out}`);
+        assert.match(r.out, /: FAILED$/m, `${what}: sha256sum checked the download: ${r.out}`);
+        assert.deepEqual(r.calls.filter((c) => /^(?:tar|ran) /.test(c)), [], `${what}: nothing is unpacked or run`);
+      }
+      // The same archive with its own SHA-256 as the pin: the step unpacks it once and runs the tool.
+      const r = go({ [d.pin]: fake.sha256 });
+      assert.equal(r.code, 0, `${d.tool}: ${r.out}`);
+      assert.equal(r.calls.filter((c) => c.startsWith('tar ')).length, 1, `${d.tool}: unpacked once: ${r.calls.join(' | ')}`);
+      const ran = r.calls.filter((c) => c.startsWith('ran '));
+      assert.ok(ran.length === d.calls.length && ran.every((c, i) => d.calls[i].test(c)), `${d.tool} runs as the step means it to: ${ran.join(' | ')}`);
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('release.yml: each publishing job skips what is already published, so a failed run can be re-run (finding 25)', () => {
@@ -813,11 +963,11 @@ test('ci.yml lints the workflow files with actionlint and shellcheck, at a pinne
     'shellcheck="$(command -v shellcheck)" || {',
     'exit 1; }',
     'curl -fsSL -o "${archive}" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"',
-    'echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c -',
+    LINT_CHECK,
     'tar xzf "${archive}"',
     '"${RUNNER_TEMP}/actionlint" -shellcheck "${shellcheck}" .github/workflows/*.yml',
   ], 'the actionlint step');
-  assert.deepEqual(afterCheck(s.run, 'echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c -'), [
+  assert.deepEqual(afterCheck(s.run, LINT_CHECK), [
     'tar xzf "${archive}" -C "${RUNNER_TEMP}" actionlint',
     '"${RUNNER_TEMP}/actionlint" -shellcheck "${shellcheck}" .github/workflows/*.yml',
   ], 'after the check, the step only unpacks the archive and runs actionlint');
