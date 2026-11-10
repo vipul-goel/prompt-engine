@@ -880,6 +880,9 @@ const ROWS = [
     [/^error: data\/lint-rules\.json: rules must be a list of rules, each an object$/m, OTHER_ERROR], 1, NO_STACK],
   ['names contract budgets that are missing, and skips their checks', damaged((d) => editJson(d, 'data/contract.json', (j) => { delete j.budgets; })),
     [/^error: data\/contract\.json: budgets must map each budget to its limit$/m, OTHER_ERROR], 1, [...NO_STACK, /budgets\./]],
+  // A budget below 0 is refused too, instead of failing its check on every file ("max -1").
+  ['names a contract budget below 0', damaged((d) => editJson(d, 'data/contract.json', (j) => { j.budgets.skillBodyMaxChars = -1; })),
+    [/^error: data\/contract\.json: budgets\.skillBodyMaxChars must be a number of 0 or more$/m, OTHER_ERROR], 1, [...NO_STACK, /body is \d+ chars/]],
   ['names a contract budget that is missing or of the wrong type', damaged((d) => editJson(d, 'data/contract.json', (j) => { delete j.budgets.descriptionMaxChars; j.budgets.skillKeySections = 3; })),
     [/^error: data\/contract\.json: budgets\.descriptionMaxChars must be a number of 0 or more$/m, /^error: data\/contract\.json: budgets\.skillKeySections must be a list of headings$/m, OTHER_ERROR], 1, NO_STACK],
   ['names marketplace plugins that are not a list', damaged((d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins = {}; })),

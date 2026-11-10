@@ -305,6 +305,35 @@ test('build.mjs reports data it cannot render in one line, without a stack trace
   }
 });
 
+// The shape checks before a render: lint rules that aren't a list, and a media target that isn't an
+// entry. Without them, the build stopped with "rules is not iterable" or "Cannot read properties of
+// null (reading 'status')", which named neither the file nor the entry, and no other test noticed.
+test('build.mjs names lint rules that are not a list, and a media target that is not an entry', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-badshape-'));
+  try {
+    copyTo(dir);
+    for (const [file, change, message] of [
+      ['data/lint-rules.json', (j) => { j.rules = {}; }, 'data/lint-rules.json: rules must be a list of rules'],
+      ['data/media-targets.json', (j) => { j.targets[0] = null; }, 'media-targets: targets[0] is not an entry'],
+    ]) {
+      const path = join(dir, file);
+      const before = readFileSync(path, 'utf8');
+      const data = JSON.parse(before);
+      change(data);
+      writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+      for (const args of [[], ['--check']]) {
+        const r = node(join(dir, 'scripts', 'build.mjs'), args);
+        assert.equal(r.code, 1, r.out);
+        assert.equal(r.stdout, '', `${file}, build.mjs ${args.join(' ')}`);
+        assert.equal(r.stderr, `build failed: ${message}\n`);
+      }
+      writeFileSync(path, before);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('build.mjs names a JSON file it reads that does not parse', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pe-badjson-'));
   try {
