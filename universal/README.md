@@ -5,7 +5,7 @@ These files let you use Prompt Engine in any chat app by pasting `prompt-engine.
 | File | What it is | Size |
 |---|---|---|
 | [`prompt-engine.md`](prompt-engine.md) | The instructions. Works on its own. | at most 7,500 characters |
-| [`prompt-engine-knowledge.md`](prompt-engine-knowledge.md) | Optional detailed checklists for coding, writing, research, image and video prompts | about 70,000 characters |
+| [`prompt-engine-knowledge.md`](prompt-engine-knowledge.md) | Optional detailed checklists for coding, writing, research, image and video prompts | about 74,000 characters |
 
 ## Quickest: paste into any chat
 
