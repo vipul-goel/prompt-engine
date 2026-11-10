@@ -10,7 +10,7 @@ One method ships in four formats, so most changes start in one place and flow ou
 |---|---|---|
 | The method (single source) | `skills/prompt-engine/SKILL.md`, `skills/prompt-engine/references/*.md` | Edit by hand |
 | Hand-written mirror | `universal/prompt-engine.md` | When you change the workflow or the output format in `SKILL.md`, make the same change here. Where it has no room for a rule, as for other people's private details (D46), list the gap under Known limits in `docs/compatibility.md`. It must stay within 7,500 characters |
-| Data | `data/contract.json` (output contract and size budgets), `data/lint-rules.json`, `data/media-targets.json` | Edit by hand |
+| Data | `data/contract.json` (output contract, the lookup rule's wording and size budgets), `data/lint-rules.json`, `data/media-targets.json` | Edit by hand |
 | Generated | `universal/prompt-engine-knowledge.md`, `skills/prompt-engine/references/media-targets.md`, `mcp/src/generated/content.ts`, the skill text inside `evals/*/history.jsonl`, and the lint graders `evals/*/graders/lint-prompt*.md` | Never edit; run `node scripts/build.mjs` |
 
 ## Setup
@@ -44,7 +44,7 @@ CI also runs `npm run test:pack`, which packs the build that `npm test` leaves i
 
 The validator explains each failure. The most common ones:
 - **Generated file is stale.** Run `node scripts/build.mjs`.
-- **Contract item missing.** Every heading, score dimension and marker in `data/contract.json` must appear in `SKILL.md`, `references/output-format.md` and the universal core. A heading counts only as a `##` to `####` heading followed by a colon or the end of its line, or as a **bold** label that starts a list item, so `### Score anchors` doesn't count as the `Score` heading. If you rename one, rename it everywhere.
+- **Contract item missing.** Every heading, score dimension and marker in `data/contract.json` must appear in `SKILL.md`, `references/output-format.md` and the universal core. A heading counts only as a `##` to `####` heading followed by a colon or the end of its line, or as a **bold** label that starts a list item, so `### Score anchors` doesn't count as the `Score` heading. If you rename one, rename it everywhere. The contract also holds the wording of the lookup rule (no shell command or subagent until the user picks an option that runs the prompt) in `SKILL.md`, `references/questions.md` and `references/coding.md`, because no eval checks it: if you reword the rule, change its strings in `data/contract.json`, and the changes that `scripts/test/lookup-rule.test.mjs` makes to it, in the same commit.
 - **Budget exceeded.** `SKILL.md` has a size budget, and its key sections must start within the first 8,000 characters. That's because Claude Code keeps only the first 5,000 tokens of an invoked skill after it compacts a long conversation; 8,000 characters is a deliberately conservative proxy for that. Move detail into a reference file instead.
 
 ## Writing guidelines for the method

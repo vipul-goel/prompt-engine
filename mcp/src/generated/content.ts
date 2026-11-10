@@ -86,6 +86,18 @@ export const CONTRACT = {
     ],
     "changeLine": [
       "\"change 2: …\""
+    ],
+    "lookupRuleSkill": [
+      "Look things up before asking, without shell commands or subagents"
+    ],
+    "lookupRuleQuestions": [
+      "use no shell command or subagent until the user picks an option that runs the prompt"
+    ],
+    "lookupRuleCoding": [
+      "rather than shell commands, even read-only ones such as `ls`",
+      "without handing the lookups to a subagent",
+      "because nothing runs until the user picks an option that runs the prompt",
+      "list and search nothing before the prompt runs"
     ]
   },
   "artifacts": {
@@ -99,7 +111,11 @@ export const CONTRACT = {
       "changeLine"
     ],
     "skills/prompt-engine/references/questions.md": [
-      "replyLine"
+      "replyLine",
+      "lookupRuleQuestions"
+    ],
+    "skills/prompt-engine/references/coding.md": [
+      "lookupRuleCoding"
     ],
     "skills/prompt-engine/SKILL.md": [
       "headings",
@@ -109,7 +125,8 @@ export const CONTRACT = {
       "markers",
       "replyLine",
       "menu",
-      "changeLine"
+      "changeLine",
+      "lookupRuleSkill"
     ],
     "universal/prompt-engine.md": [
       "headings",
