@@ -273,10 +273,6 @@ describe.concurrent('--http limits', () => {
     expect(body.length).toBeLessThanOrEqual(1_500_000);
     const server = await startHttp([], { ...ENV, NODE_OPTIONS: '--max-old-space-size=512' });
     const host = { host: `127.0.0.1:${server.port}` };
-    // An answer cut off by a crash never closes its connection, so race them against the exit.
-    const exited = new Promise<string>((resolve) =>
-      server.proc.on('exit', (code, signal) => resolve(`server exited (${code ?? signal}): ${/FATAL ERROR[^\n]*/.exec(server.stderr())?.[0] ?? ''}`)),
-    );
     const clients: Array<Held & { closed: Promise<void> }> = [];
     try {
       // Every head goes first, asking for 100 Continue, so the server decides before any body
@@ -300,12 +296,13 @@ describe.concurrent('--http limits', () => {
       const neither = clients.filter((c) => !admitted.includes(c) && !/^HTTP\/1\.1 100 Continue\r\n\r\nHTTP\/1\.1 503 /.test(c.text));
       expect(neither.map((c) => c.text.slice(0, 60))).toEqual([]);
       expect(admitted.length).toBe(5);
-      // Then the five send their bodies at once.
+      // Then the five send their bodies at once. The server closes each connection after its
+      // answer, and a crash would close them too, so whether it is still up is checked after.
       for (const c of admitted) c.sock.write(body);
-      expect(await Promise.race([Promise.all(admitted.map((c) => c.closed)).then(() => 'all answered'), exited])).toBe('all answered');
-      for (const c of admitted) expect(c.text.slice(0, 60)).toMatch(/^HTTP\/1\.1 100 Continue\r\n\r\nHTTP\/1\.1 200 /);
+      await Promise.all(admitted.map((c) => c.closed));
       await sleep(200);
       expect(server.proc.exitCode ?? server.proc.signalCode, server.stderr()).toBeNull();
+      for (const c of admitted) expect(c.text.slice(0, 60)).toMatch(/^HTTP\/1\.1 100 Continue\r\n\r\nHTTP\/1\.1 200 /);
       expect((await send(server.port, host)).status).toBe(200);
     } finally {
       for (const { sock } of clients) sock.destroy();
