@@ -287,6 +287,38 @@ test('a token right after a written-out escape, a %XX escape or a colour code is
   assert.deepEqual(scanText('C:\\\\notes\\\\new and 100%25 done'), []);
 });
 
+// No list of escapes is complete. A token whose prefix a word rarely ends in (sk-ant-, sk-proj-,
+// a GitHub, GitLab or Slack prefix) is found right after a letter or digit, whatever put it there;
+// one that a word can end in, such as a plain sk- key, is found after the escapes that ESCAPES
+// opens, among them the forms below.
+test('a token right after quoted-printable, a %XX encoded twice, any ECMA-48 sequence or &#NN is found', () => {
+  const plain = `${'sk'}-${'Ab1'.repeat(16)}`; // a key without a distinctive prefix
+  const project = `${'sk'}-pr${'oj'}-${'P'.repeat(40)}`;
+  const pat = `github${'_pat_'}${'a'.repeat(22)}_${'b'.repeat(59)}`;
+  const gitlab = `gl${'pat'}-${'C'.repeat(20)}`;
+  const slack = `xo${'xb'}-${'1'.repeat(12)}-${'d'.repeat(24)}`;
+  const KEY = 'Anthropic or OpenAI-style key';
+  const ESC = '\u{1b}';
+  const forms = ['key=3D', 'url?key%253D', 'url?key%25253D', `${ESC}[38:2:255:0:0m`, '\\x1b[38:2:255:0:0m', `${ESC}[>4;2m`,
+    '\\27[32m', '\\U0000001B[32m', '\\e[1;32m', `${ESC}(B`, `${ESC}M`, 'key&#61', 'key&#x3D'];
+  for (const form of forms) {
+    assert.deepEqual(scanText(`${form}${plain}`), [`line 1: ${KEY}`], `plain key after ${JSON.stringify(form)}`);
+    for (const [token, kind] of [[fake.anthropic, KEY], [project, KEY], [fake.github, 'GitHub token'], [pat, 'GitHub token'], [gitlab, 'GitLab token'], [slack, 'Slack token']]) {
+      assert.deepEqual(scanText(`${form}${token}`), [`line 1: ${kind}`], `${kind} after ${JSON.stringify(form)}`);
+    }
+  }
+  // The distinctive prefixes after a letter or digit that no escape explains, and in a JSON row.
+  for (const [token, kind] of [[fake.anthropic, KEY], [project, KEY], [fake.github, 'GitHub token'], [pat, 'GitHub token'], [gitlab, 'GitLab token'], [slack, 'Slack token']]) {
+    assert.deepEqual(scanText(`id9Z${token}`), [`line 1: ${kind}`], `${kind} after a word`);
+    assert.deepEqual(scanText(JSON.stringify({ content: `x=3D${token}` })), [`line 1: ${kind}`], `${kind} in a row`);
+  }
+  // A plain sk- key, an AWS key ID and a Google API key still start at a word boundary: words end
+  // in "sk-" (task-), and base64 text, such as an image in a transcript, can hold AKIA or AIza
+  // after a letter.
+  assert.deepEqual(scanText(`task-${'Ab1'.repeat(16)}`), []);
+  assert.deepEqual(scanText(`xAK${'IA'}${'Z'.repeat(16)} yAI${'za'}${'D'.repeat(35)}`), []);
+});
+
 test('scanText reads every string of a JSON line nested 50,000 levels deep', () => {
   // A recursive walk overflowed the call stack well before this depth, and validate.mjs stopped.
   const token = `gh${'p'}_${'R'.repeat(36)}`;

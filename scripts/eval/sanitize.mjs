@@ -23,12 +23,17 @@ const KEEP_KEYS = ['type', 'uuid', 'parentUuid', 'isSidechain', 'message', 'tool
 // start of a run of [\w-] characters, or right after a "-" with its first part capped at 1,000
 // characters. Without the cap, each eyJ in a long run such as eyJ-eyJ-… scanned to the run's end:
 // 200,000 such characters took 18 s in Node.
+// Most start at a word boundary, since a word can end in their prefix ("task-..." holds "sk-").
+// Those whose prefix a word rarely ends in (sk-ant-, sk-proj-, the GitHub, GitLab and Slack ones)
+// start anywhere, so that no escape or encoding that ends in a letter or digit hides them, whether
+// ESCAPES below knows it or not. AKIA and AIza keep the boundary: base64 text, such as an image in
+// a transcript, can hold either after a letter.
 export const PRIVATE_PATTERNS = [
-  ['Anthropic or OpenAI-style key', /\bsk-[A-Za-z0-9_-]{20,}/g],
+  ['Anthropic or OpenAI-style key', /(?:\b|(?=sk-(?:ant|proj)-))sk-[A-Za-z0-9_-]{20,}/g],
   ['Stripe key', /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/g],
-  ['GitHub token', /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{20,})/g],
-  ['GitLab token', /\bglpat-[\w-]{20,}/g],
-  ['Slack token', /\bxox[abprs]-[\w-]{10,}/g],
+  ['GitHub token', /gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{20,}/g],
+  ['GitLab token', /glpat-[\w-]{20,}/g],
+  ['Slack token', /xox[abprs]-[\w-]{10,}/g],
   ['AWS key ID', /\bAKIA[0-9A-Z]{16}\b/g],
   ['Google API key', /\bAIza[0-9A-Za-z_-]{35}/g],
   ['npm token', /\bnpm_[A-Za-z0-9]{36}\b/g],
@@ -87,13 +92,21 @@ export function machinePatterns({ home, host } = {}) {
   return extra;
 }
 
-// Escapes that end in a letter or digit, so that a token right after one has no word boundary
-// where it starts: a colour code (its escape character as itself or written out), a backslash
-// escape written out (\n, \t, \a, an octal one such as \012, \x3d, and \u or \U with four or
-// eight hex digits; in a deeper JSON level its backslash is escaped too, and the last backslash
-// still matches) and a %XX escape. Each part is matched without backtracking into a long run,
-// so the scan stays linear.
-const ESCAPES = /(?:\x1b|\\(?:u001[bB]|x1[bB]|0?33|e))\[[0-9;?]*[ -/]*[@-~]|\\(?:[nrtfvba]|[0-7]{1,3}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2})|%[0-9A-Fa-f]{2}/g;
+// Escapes and encodings that end in a letter or digit, so that a token right after one has no word
+// boundary where it starts:
+// - an ECMA-48 escape sequence, such as a colour code (ESC [ 38:2:255:0:0 m) or ESC ( B, with its
+//   escape character as itself or written out (\x1b, \u001b, \U0000001B, \033, Lua's \27 or \e). A
+//   written-out one needs a [ or an intermediate byte after it: else it is read as a backslash
+//   escape below, which leaves the character after it alone;
+// - a backslash escape written out: \n, \t, \a, an octal one such as \012, \x3d, and \u or \U with
+//   four or eight hex digits; in a deeper JSON level its backslash is escaped too, and the last
+//   backslash still matches;
+// - a %XX escape, also one whose % was encoded again (%253D), a quoted-printable =XX (=3D), and an
+//   HTML character reference by number, with or without its semicolon (&#61, &#x3D;).
+// No such list is complete (an HTML &amp without its semicolon is one more form), which is why the
+// distinctive prefixes above need no boundary. Each part is matched without backtracking into a
+// long run, so the scan stays linear.
+const ESCAPES = /\x1b(?:\[[0-?]*[ -/]*[@-~]|[ -/]*[0-~])|\\(?:u001[bB]|U0000001[bB]|x1[bB]|0?33|27|e)(?:\[[0-?]*[ -/]*[@-~]|[ -/]+[0-~])|\\(?:[nrtfvba]|[0-7]{1,3}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2})|%(?:25)*[0-9A-Fa-f]{2}|=[0-9A-F]{2}|&#(?:[0-9]+|[xX][0-9a-fA-F]+);?/g;
 
 // The texts the patterns run on for one line. For a line of JSON, such as a history row,
 // every key and string value as decoded text; for any other line, the line itself. Each text
