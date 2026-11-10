@@ -46,8 +46,8 @@ function standIn(handlers: Record<string, Handler> = {}): McpServer {
 }
 
 describe("pack-mcpb.mjs's check of the packed server", () => {
-  it('passes this server, and says it called two tools', async () => {
-    expect(await check(() => createServer())).toMatch(/and answers get_checklist and check_prompt$/);
+  it('passes this server, and says it called every tool', async () => {
+    expect(await check(() => createServer())).toMatch(/and answers get_checklist, check_prompt, enhance_prompt and ask_user$/);
   });
 
   it('fails a server whose tools only list', async () => {
@@ -58,6 +58,15 @@ describe("pack-mcpb.mjs's check of the packed server", () => {
     // check_prompt answers, but without the structured report it promises.
     await expect(check(() => standIn())).rejects.toThrow(/check_prompt returned/);
     await expect(check(() => standIn({ check_prompt: throws }))).rejects.toThrow(/check_prompt returned .*bundle-only fault/);
+    // The tools before them answer as this server's do.
+    const report: Handler = () => ({ content: [{ type: 'text', text: '{}' }], structuredContent: { dimensions: [], issues: [] } });
+    const brief: Handler = () => ({ content: [{ type: 'text', text: 'Prompt Engine brief from the prompt-engine MCP server (v0.0.0).\nRequested mode: quick' }] });
+    await expect(check(() => standIn({ check_prompt: report, enhance_prompt: throws }))).rejects.toThrow(/enhance_prompt \{mode: "quick"\} returned .*bundle-only fault/);
+    // enhance_prompt answers, but not with the brief for the mode it was given.
+    await expect(check(() => standIn({ check_prompt: report }))).rejects.toThrow(/enhance_prompt \{mode: "quick"\} returned/);
+    await expect(check(() => standIn({ check_prompt: report, enhance_prompt: brief, ask_user: throws }))).rejects.toThrow(/ask_user returned .*bundle-only fault/);
+    // ask_user answers, but not with the questions to ask in the chat, which a client without forms gets.
+    await expect(check(() => standIn({ check_prompt: report, enhance_prompt: brief }))).rejects.toThrow(/ask_user returned/);
   });
 
   it("fails a server whose tools aren't the manifest's", async () => {

@@ -10,7 +10,7 @@
 //   inlines (scripts/notices.mjs);
 // - its server, started as manifest.json's mcp_config describes
 //   (node ${__dirname}/server/index.js), lists exactly the manifest's tools, and no
-//   prompt the manifest doesn't cover, and answers get_checklist and check_prompt
+//   prompt the manifest doesn't cover, and answers a call to each tool
 //   (scripts/check-server.mjs).
 // Claude Desktop is reported to run some Node extensions in its own host instead
 // (anthropics/claude-code#35175); that isn't checked here. If a check fails, the
