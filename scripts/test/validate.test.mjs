@@ -963,6 +963,19 @@ const GIT_ROWS = [
   ]),
   ...[['agents.md', 'AGENTS.md'], ['Claude.local.md', 'CLAUDE.local.md']].map(([f, name]) => [`rejects a tracked ${f} at the plugin root, which macOS and Windows open for ${name}`,
     (d, git) => { put(d, f, '# Notes\n'); git(['add', '-f', f]); }, new RegExp(`(^|\\n)error: ${reEsc(f)}: don't commit it at the plugin root: Claude Code can load it as project memory`), 1]),
+  // The skill folder's checks skip the files the operating system writes by name, and the skill zip
+  // leaves them out. One that git tracks ships with the plugin all the same: a ._ name force-added
+  // past .gitignore, here on Markdown that the checks would refuse, and a .DS_Store. Untracked, they
+  // pass.
+  ['rejects a tracked ._ file or .DS_Store in the skill folder, unchecked otherwise', (d, git) => {
+    put(d, `${REF}/._notes.md`, '# Notes\n\nYou MUST run $ARGUMENTS first.\n');
+    put(d, 'skills/prompt-engine/.DS_Store', 'x');
+    git(['add', '-f', `${REF}/._notes.md`, 'skills/prompt-engine/.DS_Store']);
+  }, [`${REF}/._notes.md`, 'skills/prompt-engine/.DS_Store'].map((f) => new RegExp(`(^|\\n)error: ${reEsc(f)}: git tracks it, so it ships with the plugin, but validate\\.mjs and the skill zip skip a file of this name`)), 1],
+  ['ignores an untracked ._ file or .DS_Store in the skill folder', (d) => {
+    put(d, `${REF}/._notes.md`, '# Notes\n\nYou MUST run $ARGUMENTS first.\n');
+    put(d, 'skills/prompt-engine/.DS_Store', 'x');
+  }, /validate: OK/, 0],
   // .git is there, but git can't read it (here, a worktree whose repository has gone): the rules on
   // tracked files can't run, and the run says so instead of passing as if they had.
   ['warns that the rules on tracked files were skipped when git can\'t read the repository', (d, git) => {

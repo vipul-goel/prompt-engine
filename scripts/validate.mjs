@@ -403,6 +403,12 @@ const MEMORY_FILES = anyCase(['AGENTS.md', 'CLAUDE.local.md']);
 for (const f of tracked ?? []) {
   if (MEMORY_FILES.has(f.toLowerCase())) err(`${f}: don't commit it at the plugin root: Claude Code can load it as project memory in a user's session`);
 }
+// The walk of the skill folder above skips the files the operating system writes (isOsJunk) by name,
+// and the skill zip leaves them out, since git ignores them. One that git tracks all the same, such
+// as a file force-added under a ._ name, ships with the plugin unchecked.
+for (const f of tracked ?? []) {
+  if (f.startsWith('skills/') && isOsJunk(basename(f))) err(`${f}: git tracks it, so it ships with the plugin, but validate.mjs and the skill zip skip a file of this name, which the operating system writes; remove it from git (git rm --cached), or give a file of the skill another name`);
+}
 // The same walk passes through skills/, the skill folder and its references/ folder on the way to a
 // reference. The skill zip is built from the folder on disk, so there a file is refused whether or
 // not git tracks it.
