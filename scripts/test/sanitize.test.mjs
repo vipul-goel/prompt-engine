@@ -362,10 +362,11 @@ test('a token right after a written-out escape, a %XX escape or a colour code is
 // The rows above put a token with a distinctive prefix (sk-ant-, ghp_) after most forms, and those
 // prefixes are found after any character, so the rows pass without ESCAPES. The tokens here start at
 // a word boundary, so each form that ESCAPES opens is tested with them: a form dropped from ESCAPES
-// fails here. Left out: an HTML reference by hex number without its semicolon, such as &#x3D. The
-// scan reads every hex digit after it as part of it, so it misses an AWS key ID or a Google API key
-// right after one, since their first letter, A, is a hex digit.
+// fails here. That includes an HTML reference by hex number without its semicolon, such as &#x3D,
+// of each length it can have: read with every hex digit after it, it took in the first letter of an
+// AWS key ID, a Google API key or a JWT, which is a hex digit too.
 test('a token that starts at a word boundary is found right after each escape that ESCAPES opens, also one JSON level down', () => {
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const tokens = [
     [`${'sk'}-${'Ab1'.repeat(16)}`, 'Anthropic or OpenAI-style key'],
     [`AK${'IA'}${'Z'.repeat(16)}`, 'AWS key ID'],
@@ -374,9 +375,11 @@ test('a token that starts at a word boundary is found right after each escape th
     [`${'npm'}_${'N'.repeat(36)}`, 'npm token'],
     [`${'hf'}_${'H'.repeat(34)}`, 'Hugging Face token'],
     [`${'session'}_${'A1b2'.repeat(6)}`, 'claude.ai session ID'],
+    [`${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: '42' })}.${'s'.repeat(43)}`, 'JWT'],
   ];
   const forms = ['\\n', '\\t', '\\r', '\\f', '\\v', '\\b', '\\a', '\\0', '\\12', '\\012', '\\x3d', '\\u003d', '\\U0000003d',
-    'key%3D', 'key%253D', 'key=3D', 'key&#61', 'key&#x3D;', '\u{1b}[0m', '\\x1b[0m'];
+    'key%3D', 'key%253D', 'key=3D', 'key&#61', 'key&#x3D;', '\u{1b}[0m', '\\x1b[0m',
+    'key&#xA', 'key&#x3D', 'key&#X3d', 'key&#x20A', 'key&#x00A0', 'key&#x1F600', 'key&#x10FFFF'];
   for (const [token, kind] of tokens) {
     for (const form of forms) assert.deepEqual(scanText(`${form}${token}`), [`line 1: ${kind}`], `${kind} after ${JSON.stringify(form)}`);
     // A JSON text in a string of the row: decoded once, its escapes are still written out.
