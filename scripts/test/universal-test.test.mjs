@@ -677,6 +677,10 @@ const TIMING_SHAPES = [
   // (B1.2.4).
   ['fence openers with no closer', '', '```x\na', 40_000],
   ['a list item with many key sentences', 'Notes:\n- The mailbox.\n', '  The key is fine.\n', 4_000],
+  // asksForKey reads a list item's own text once, when a sentence of it first needs it: here every
+  // sentence names the key, the line before the list asks, and the item says where to set the key,
+  // so every sentence needs it (step 1e). Read again for each sentence, the item took seconds.
+  ['a list item with many key sentences, after a line that asks', 'To run it, I need:\n- The mailbox; set it in your .env file.\n', '  Use the key here.\n', 8_000],
   ['ready put off again and again on one line', 'prompt ', 'not ready, ', 20_000],
   // A starred option's ★, looked for up to 200 characters on its line (OPTION_STAR), which
   // without the bound read the rest of the line from every bulleted option (step 1e, B1.2.11).
