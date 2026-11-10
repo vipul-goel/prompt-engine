@@ -204,12 +204,15 @@ export const CHANGED = [
 // prompt; any of these after can, could, would or will you; and reply with, which may also take a
 // or an; on a question that starts with what's your or what's the, unless it asks for the pick
 // ("What's your pick?"); on "here is the email" or another deliverable that isn't a prompt; and on
-// a line that starts with Subject:, an email written out. A heuristic: it misses an ask in other
-// words ("I need the app name", "Which app is it?", "What app is this for?"), a put-off ready as
-// above, an ask whose verb doesn't start its clause ("you could send the date"), and a task
-// started without such words ("Below is the email it writes"); and it flags a question about
-// something other than values ("What are your thoughts?") and a request to send the result on
-// ("Send the email to your list").
+// a line that starts with Subject:, an email written out. Such a clause starts at the reply's
+// start, after a line break, after . ! ? : ; , or a dash, or after and, or or then; the white space
+// at its start stops at a line break, which starts a clause of its own, and that keeps the time
+// linear on a run of blank lines (step 1e, B2.2.8). A heuristic: it misses an ask in other words
+// ("I need the app name", "Which app is it?", "What app is this for?"), a put-off ready as above,
+// an ask whose verb doesn't start its clause ("you could send the date"), and a task started
+// without such words ("Below is the email it writes"); and it flags a question about something
+// other than values ("What are your thoughts?") and a request to send the result on ("Send the
+// email to your list").
 const PUT_OFF = /\b(?:not|never|no longer|almost|nearly|once|until|after|as soon as|if|whether)\b|n['’]t\b|\b(?:will|would|could|should|might|may|shall|can)\s+(?:\w+\s+){0,2}?be\b/i;
 const saysReady = (t) => t.split('\n').some((line) => /\bprompts?\b/i.test(line) && [...line.matchAll(/\bready\b/gi)]
   .some((m) => !PUT_OFF.test(line.slice(Math.max(0, m.index - 200), m.index).split(/[.!?;:,—–]/).at(-1))));
@@ -217,7 +220,7 @@ const UNGOVERNED = String.raw`(?<!\bto\s+)(?<!(?:\bnot|\bnever|n['’]t|\bno nee
 const NOT_A_VALUE = String.raw`(?:(?:full|short)\s+)?(?:prompts?|versions?)|options?|picks?|choices?|numbers?|changes?|edits?|feedback|thoughts?|questions?`;
 const VALUE = String.raw`(?:[ \t]*:|\s+(?:your|the)\s+(?!(?:${NOT_A_VALUE})\b)\w)`;
 const TO_CHAT = String.raw`(?=[^.!?\n]{0,120}?\b(?:below|here|in (?:this|the|our) (?:chat|conversation)|in your (?:next )?(?:reply|message)|so (?:that )?(?:I|we)|and (?:I|we)|for me|to me)\b)`;
-const CLAUSE_START = String.raw`(?:^|[\n.!?:;,—–]|\s(?:and|or|then)\s)\s*(?:(?:[-*•]|\d+[.)])\s+)?\**(?:(?:please|just|simply|kindly)\s+)?`;
+const CLAUSE_START = String.raw`(?:^|[\n.!?:;,—–]|\s(?:and|or|then)\s)[^\S\n]*(?:(?:[-*•]|\d+[.)])\s+)?\**(?:(?:please|just|simply|kindly)\s+)?`;
 const ASKS_OR_STARTS = new RegExp(String.raw`${UNGOVERNED}\b(?:send|tell|give|share|paste|provide)\s+(?:me|us)\b(?!\s+(?:[\x60"']?\d|which|when|if|whether|how|what (?:to|you)|your (?:pick|choice))\b)` +
   String.raw`|${UNGOVERNED}\b(?:send|give|provide)\s+(?:these|the following)\b` +
   String.raw`|${CLAUSE_START}(?:(?:send|share)(?:\s+(?:over|along))?|(?:paste|give|provide)${TO_CHAT}(?:\s+(?:in|below|here))?)${VALUE}` +

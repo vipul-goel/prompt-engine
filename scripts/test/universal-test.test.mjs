@@ -705,6 +705,11 @@ const TIMING_SHAPES = [
   // The ★ before What next? keeps V8 from returning at once, as it did on a reply with no ★.
   ['one line of bulleted Run it now options, after a ★', '★ What next? Refine', ' - Run it now', 8_000],
   ['one line of bulleted Done options, after a ★', '★ What next? Refine', ' - Done', 10_000],
+  // Runs of line breaks: each line break starts a clause in MENU_ACK's ask check, whose white space
+  // at a clause's start read the rest of the run from each of them until step 1e's B2.2.8.
+  ['a run of blank lines', '', '\n', 20_000],
+  ['lines of one space', '', ' \n', 20_000],
+  ['CRLF blank lines', '', '\r\n', 20_000],
 ];
 test('every check stays fast on long repeated replies', () => {
   assert.ok(TIMED_CHECKS.size > 20, `only ${TIMED_CHECKS.size} checks`);
