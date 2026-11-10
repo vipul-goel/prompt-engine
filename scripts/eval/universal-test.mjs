@@ -64,11 +64,15 @@ export const OPTION_STAR = String.raw`\b(?:(?!\s\d[.)]\s)[^\n★]){0,200}★`;
 // Refine anywhere after "What next?". It doesn't check that the starred option comes first.
 // This pattern, STARRED_NOT_FILL, MEDIA_MENU and the Save to file check read the menu from the
 // first "What next?" on, as the eval graders' menu checks do: the same verdicts as reading from
-// any of them, in time linear in the reply's length (step 1e).
+// any of them, in time linear in the reply's length (step 1e). They read up to it with
+// [^W]*(?:W(?!hat next\?)[^W]*)*, whose group repeats at each W, not at each character as
+// (?:(?!What next\?)[\s\S])* did: JavaScriptCore, which runs the eval graders, stops after enough
+// repeats and reports no match, which failed correct replies of about 50 KB and more there (step
+// 1e, B2.2.4). The two match the same text, with or without the i flag.
 // output-format.md marks only the recommended option with ★, so a second ★ after the first
 // "What next?" fails MENU and MEDIA_MENU, and the eval graders' menu checks (step 1e).
-export const ONE_STAR = String.raw`(?!(?:(?!What next\?)[\s\S])*What next\?[^★]*★[^★]*★)`;
-export const MENU = new RegExp(String.raw`^${ONE_STAR}(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)${OPTION_STAR}`, 'i');
+export const ONE_STAR = String.raw`(?![^W]*(?:W(?!hat next\?)[^W]*)*What next\?[^★]*★[^★]*★)`;
+export const MENU = new RegExp(String.raw`^${ONE_STAR}[^W]*(?:W(?!hat next\?)[^W]*)*What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)${OPTION_STAR}`, 'i');
 // Whether placeholders other than secrets' are open, read from the start of the reply, as
 // (?=FILL_OPEN) or (?!FILL_OPEN): a Fill before running section, up to the next line that starts
 // with #, lists one; or the Full prompt holds one, read from the first Full prompt heading to the
@@ -91,7 +95,10 @@ export const MENU = new RegExp(String.raw`^${ONE_STAR}(?:(?!What next\?)[\s\S])*
 // after other words ("mark it [[TBD]]"), a field of an output template that the model fills, or
 // code such as f([[1]]). The (?<!#) keeps a long run of # linear. The lookahead for [[ in front of
 // the lookbehinds keeps a long run of spaces or tabs linear: without it, JavaScriptCore read such a
-// run back from every place in it (step 1e, B2.1.1).
+// run back from every place in it (step 1e, B2.1.1). The text before the first Full prompt heading
+// is read a run of # at a time, [^#]*(?:(?<!#)#+(?![ \t]*Full prompt)[^#]*)*, for the reason the
+// menu is read up to What next? a W at a time (B2.2.4); the loop can't pass a run of # that starts
+// such a heading, which (?:(?!(?<!#)#+[ \t]*Full prompt)[\s\S])* checked at each character.
 // writing-quick-launch-email's 08 and the media 05 graders hold the same text. The skill also
 // leaves out the placeholder of another person's private detail that it removed (D46). The core
 // has no room for that rule, so this check doesn't model it; private-detail-redaction-quick's 08
@@ -99,10 +106,10 @@ export const MENU = new RegExp(String.raw`^${ONE_STAR}(?:(?!What next\?)[\s\S])*
 const SECRET_PLACEHOLDER = String.raw`(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)`;
 const OUTPUT_HEADING = String.raw`[ \t]*#+[ \t]*(?:Short version|What I added|Assumptions|Score|What next)`;
 export const FILL_OPEN = String.raw`[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]` +
-  String.raw`|(?:(?!(?<!#)#+[ \t]*Full prompt)[\s\S])*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?!${OUTPUT_HEADING})[^\n]*)*?\n(?!${OUTPUT_HEADING})[^\n]*?` +
+  String.raw`|[^#]*(?:(?<!#)#+(?![ \t]*Full prompt)[^#]*)*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?!${OUTPUT_HEADING})[^\n]*)*?\n(?!${OUTPUT_HEADING})[^\n]*?` +
   String.raw`(?=\[\[)(?<!(?:such as|e\.g\.,?|for example,?|like|write|leave(?: an?)?|insert|put)[ \t]+\x60?)(?<!\]\]\x60?(?:,|[ \t]+or)[ \t]+\x60?)(?<![\w\])])\[\[(?!placeholders?\]\])(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]`;
 const fillOpen = new RegExp(`^(?:${FILL_OPEN})`, 'i');
-const STARRED_NOT_FILL = new RegExp(String.raw`^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)${OPTION_STAR}`, 'i');
+const STARRED_NOT_FILL = new RegExp(String.raw`^[^W]*(?:W(?!hat next\?)[^W]*)*What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)${OPTION_STAR}`, 'i');
 // The score table, from its first row to its last; the row labels may be bold, as the eval
 // graders' score-table checks accept (finding 60). Read from the first Clear goal row on, as
 // there, which keeps the time linear.
@@ -131,14 +138,14 @@ export const STRUCTURE = [
   // sentence ("Tip - save it in your notes") starts none. A heuristic: it misses the option in
   // other words ("Keep a copy") and flags a bullet after the menu that starts with one of those
   // words ("- Save it somewhere safe").
-  ['no Save to file (tools disabled)', (t) => !/^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?(?:(?:^|\s)\(?\d{1,2}[.):]\)?|(?:^|\n)[ \t]*[-*•])[ \t]*(?:(?:[^\w\s]|_){1,4}[ \t]*)?(?:Save|Download|Export)(?![a-z])/i.test(t)],
+  ['no Save to file (tools disabled)', (t) => !/^[^W]*(?:W(?!hat next\?)[^W]*)*What next\?[\s\S]*?(?:(?:^|\s)\(?\d{1,2}[.):]\)?|(?:^|\n)[ \t]*[-*•])[ \t]*(?:(?:[^\w\s]|_){1,4}[ \t]*)?(?:Save|Download|Export)(?![a-z])/i.test(t)],
 ];
 // An image prompt, which can't be generated here: no Run it now option after "What next?", and a
 // starred Done option, or Fill placeholders ★ while placeholders other than secrets are open
 // (findings 5 and 22; D1). The pattern of image-midjourney-quick's 05 grader.
-export const MEDIA_MENU = new RegExp(String.raw`^${ONE_STAR}(?!(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Run it now)` +
-  String.raw`(?:(?=${FILL_OPEN})(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Fill (in )?(the )?placeholders${OPTION_STAR}` +
-  String.raw`|(?!${FILL_OPEN})(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Done${OPTION_STAR})`, 'i');
+export const MEDIA_MENU = new RegExp(String.raw`^${ONE_STAR}(?![^W]*(?:W(?!hat next\?)[^W]*)*What next\?[\s\S]*?${OPTION}Run it now)` +
+  String.raw`(?:(?=${FILL_OPEN})[^W]*(?:W(?!hat next\?)[^W]*)*What next\?[\s\S]*?${OPTION}Fill (in )?(the )?placeholders${OPTION_STAR}` +
+  String.raw`|(?!${FILL_OPEN})[^W]*(?:W(?!hat next\?)[^W]*)*What next\?[\s\S]*?${OPTION}Done${OPTION_STAR})`, 'i');
 export const DONE_NOT_RUN = ['Done ★ (Fill placeholders ★ while placeholders are open), not Run it now', has(MEDIA_MENU)];
 export const QUESTIONS = [
   // A first numbered question; the number may be bold or a heading, as coding-vague 01 accepts

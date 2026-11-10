@@ -22,7 +22,8 @@
 // moment during a try on the half failed linear patterns under a changing load. A time over ten
 // times LIMIT_MS fails without the growth test. The JavaScriptCore leg runs the shapes on which
 // linear patterns take hundreds of milliseconds there with fewer repeats, given after the
-// shape's repeats. Graders that share a pattern and flags are timed once. No model calls.
+// shape's repeats. Graders that share a pattern and flags are timed once. A last test checks that
+// the menu graders match long correct replies in JavaScriptCore as in V8 (B2.2.4). No model calls.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -235,6 +236,50 @@ say('DONE');
     const slow = lines.filter((l) => l.startsWith('SLOW\t')).map((l) => l.split('\t').slice(1).join(': '));
     if (!lines.includes('DONE')) slow.push(`stopped in ${lines.findLast((l) => l.startsWith('RUN\t'))?.slice(4) ?? 'no grader'}: ${r.error ?? r.stderr}`);
     assert.deepEqual(slow, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Past some amount of work on one match, JavaScriptCore stops and reports no match, with no error:
+// the menu graders, whose tempered loops such as (?:(?!What next\?)[\s\S])* passed once per
+// character, failed correct replies from about 50 KB in Bun 1.4.4, and from about 128 KB in macOS's
+// jsc (step 1e, B2.2.4). So each menu grader must match a long correct reply there as V8 does, with
+// the reply's text before the Full prompt heading, inside the Full prompt, or after it. Bun, the
+// runtime of claude plugin eval, comes first, since it gave up sooner than jsc.
+const LINE = 'Write the launch email in a friendly, plain tone for busy readers.\n';
+const SCORE = '| | Original | Enhanced |\n|---|---|---|\n| Clear goal | 1 | 3 |\n| Context | 0 | 3 |\n| Constraints | 0 | 3 |\n| Output format | 0 | 3 |\n| Edge cases | 0 | 2 |\n\nSelf-assessed coverage of five areas, not a prediction of output quality.';
+const longReply = (where, menu, n = 2_400) => `I wrote the prompt.\n${where === 'before' ? LINE.repeat(n) : ''}\n### Full prompt\n\`\`\`text\n${where === 'in' ? LINE.repeat(n) : 'Write it.\n'}\`\`\`\n\n### Short version\n\`\`\`text\nWrite it.\n\`\`\`\n\n### What I added & why\n- **Tone** [best practice] friendly.\n\n### Assumptions\n1. Friendly tone.\n${where === 'after' ? LINE.repeat(n) : ''}\n### Score\n${SCORE}\n\n### What next?\n${menu}`;
+const MENU_GRADERS = [
+  ['writing-quick-launch-email/08-what-next-menu', '1. Run it now ★\n2. Refine\n3. Save to file'],
+  ['followup-change-assumption/03-what-next-menu', '1. Run it now ★\n2. Refine\n3. Save to file'],
+  ['private-detail-redaction-quick/08-what-next-menu', '1. Try it here ★\n2. Refine\n3. Save to file'],
+  ['image-midjourney-quick/05-done-not-run', '1. Done ★\n2. Refine\n3. Save to file'],
+  ['video-veo-quick/05-done-menu', '1. Done ★\n2. Refine\n3. Save to file'],
+];
+const verdictEngine = spawnSync('bun', ['--version']).status === 0 ? ['bun', 'run'] : existsSync(JSC) ? [JSC] : null;
+test('the menu graders match long correct replies in JavaScriptCore, as in V8', { skip: !verdictEngine && 'no bun or jsc shell here' }, () => {
+  const items = MENU_GRADERS.flatMap(([id, menu]) => {
+    const { pattern, flags } = PATTERNS.find((p) => p.ids.includes(id));
+    return ['before', 'in', 'after'].map((where) => ({ name: `${id}, text ${where} the Full prompt`, pattern, flags, reply: longReply(where, menu) }));
+  });
+  for (const it of items) assert.ok(new RegExp(it.pattern, it.flags).test(it.reply), `V8: ${it.name}`);
+  const dir = mkdtempSync(join(tmpdir(), 'pe-grader-verdicts-'));
+  try {
+    const file = join(dir, 'verdicts.js');
+    // As claude plugin eval runs a regex grader: match with g, then test.
+    writeFileSync(file, `var I = ${JSON.stringify(items)}, out = [];
+var say = typeof print === 'function' ? print : function (x) { console.log(x); };
+for (var i = 0; i < I.length; i++) {
+  I[i].reply.match(new RegExp(I[i].pattern, I[i].flags + 'g'));
+  if (!new RegExp(I[i].pattern, I[i].flags).test(I[i].reply)) out.push(I[i].name);
+}
+say('NO MATCH\\t' + JSON.stringify(out));
+`);
+    const r = spawnSync(verdictEngine[0], [...verdictEngine.slice(1), file], { encoding: 'utf8', timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
+    const line = (r.stdout ?? '').split('\n').find((l) => l.startsWith('NO MATCH\t'));
+    assert.ok(line, `no result from ${verdictEngine[0]}: ${r.error ?? r.stderr}`);
+    assert.deepEqual(JSON.parse(line.slice('NO MATCH\t'.length)), [], `${items[0].reply.length} to ${items.at(-1).reply.length} characters`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
