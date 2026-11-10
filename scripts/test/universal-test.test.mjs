@@ -521,7 +521,8 @@ test('secret case, after 1: the check stays fast on a long sentence with many as
 });
 
 // Every check of every turn, once each, timed on long replies that repeat one piece. Each piece
-// made some check take seconds in Node 24 at 56799e0 (step 1e); real replies take milliseconds.
+// made some check take seconds in Node 24 at 56799e0 or later in step 1e; real replies take
+// milliseconds.
 // The script runs the checks in Node, so V8 is the engine that matters here; the eval graders
 // that share these patterns are timed in JavaScriptCore too (eval-grader-time.test.mjs).
 const TIMED_CHECKS = new Map([...U.CASES.flatMap((c) => c.checks.flat()), ['asksForKey', U.asksForKey]].map(([name, ok]) => [name, ok]));
@@ -540,6 +541,13 @@ const TIMING_SHAPES = [
   ['one line of Done options after What next?', 'What next?', ' 1. Done', 5_000],
   ['one line of a)', '', 'a) ', 43_000],
   ['| Clear goal | repeated', '', '| Clear goal |', 9_000],
+  // The change check's fences, read from every ``` to the end of the reply when no line starts
+  // with a closer; asksForKey, which read a whole list item again for every sentence in it; and
+  // the ready of MENU_ACK, whose clause was read from the line's start for every ready put off
+  // (B1.2.4).
+  ['fence openers with no closer', '', '```x\na', 40_000],
+  ['a list item with many key sentences', 'Notes:\n- The mailbox.\n', '  The key is fine.\n', 4_000],
+  ['ready put off again and again on one line', 'prompt ', 'not ready, ', 20_000],
 ];
 test('every check stays fast on long repeated replies', () => {
   assert.ok(TIMED_CHECKS.size > 20, `only ${TIMED_CHECKS.size} checks`);

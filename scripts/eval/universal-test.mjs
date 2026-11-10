@@ -144,8 +144,10 @@ export const DEEP_ROUND = [
 ];
 // After `change 1: …`: the core's Refine line asks for one line on what changed and "the
 // section 5 reply again", menu included, so the turn gets every output check, and the new detail
-// must be inside a fenced block, not only echoed in prose (finding 5).
-const fenced = (t) => [...t.matchAll(/```[^\n]*\n([\s\S]*?)\n```/g)].map((m) => m[1]);
+// must be inside a fenced block, not only echoed in prose (finding 5). A fence opens at the start
+// of a line, as in Markdown, so each opener reads only to the next line that starts with ```,
+// and the time grows linearly with the reply's length (step 1e).
+const fenced = (t) => [...t.matchAll(/(?:^|\n)```[^\n]*\n([\s\S]*?)\n```/g)].map((m) => m[1]);
 export const CHANGED = [
   ...STRUCTURE,
   ['change applied in the prompt', (t) => fenced(t).some((b) => /Product Hunt/i.test(b))],
@@ -155,9 +157,10 @@ export const CHANGED = [
 // prompts, the full and the short version), and holds no fenced block (such as code or the
 // prompt again) and no score table. Running the prompt instead would write the code or the
 // email, or ask for what the run needs, as one live reply to ok did ("I can't run the full
-// prompt yet…"). The ready counts only when nothing before it in its clause negates it or puts it
-// off ("isn't ready", "will be ready", "once I have them, … ready"); a clause ends at . ! ? ; : , or
-// a dash. The reply also asks for no values and starts no task in prose (step 1e). It fails on
+// prompt yet…"). The ready counts only when nothing before it in its clause, within 200
+// characters, negates it or puts it off ("isn't ready", "will be ready", "once I have them, …
+// ready"); a clause ends at . ! ? ; : , or a dash. The bound keeps the time linear on a line that
+// puts off many readys (step 1e). The reply also asks for no values and starts no task in prose (step 1e). It fails on
 // send, tell, give, share, paste or provide followed by me or us, unless to comes right before the
 // verb ("to give me the app name", which says what an option does), a negation governs it
 // ("doesn't tell me which option") or the next words are about the pick ("tell me which", "what
@@ -169,7 +172,7 @@ export const CHANGED = [
 // question about something other than values ("What are your thoughts?").
 const PUT_OFF = /\b(?:not|never|no longer|almost|nearly|once|until|after|as soon as|if|whether)\b|n['’]t\b|\b(?:will|would|could|should|might|may|shall|can)\s+(?:\w+\s+){0,2}?be\b/i;
 const saysReady = (t) => t.split('\n').some((line) => /\bprompts?\b/i.test(line) && [...line.matchAll(/\bready\b/gi)]
-  .some((m) => !PUT_OFF.test(line.slice(0, m.index).split(/[.!?;:,—–]/).at(-1))));
+  .some((m) => !PUT_OFF.test(line.slice(Math.max(0, m.index - 200), m.index).split(/[.!?;:,—–]/).at(-1))));
 const UNGOVERNED = String.raw`(?<!\bto\s+)(?<!(?:\bnot|\bnever|n['’]t|\bno need to)\s+(?:\w+\s+){0,2})`;
 const ASKS_OR_STARTS = new RegExp(String.raw`${UNGOVERNED}\b(?:send|tell|give|share|paste|provide)\s+(?:me|us)\b(?!\s+(?:[\x60"']?\d|which|when|if|whether|how|what (?:to|you)|your (?:pick|choice))\b)` +
   String.raw`|${UNGOVERNED}\b(?:send|give|provide)\s+(?:these|the following)\b` +
@@ -246,14 +249,17 @@ export function asksForKey(text) {
     if (!item && /^\s+\S/.test(line) && blocks.at(-1)?.item) blocks.at(-1).text += `\n${line}`;
     else blocks.push({ item, text: line });
   }
-  let intro = '';
+  // Each list item and each line that introduces a list is read once, not once per sentence, so
+  // the time grows linearly with the reply's length (step 1e).
+  let introAsks = false; // whether the line that introduces the list has asking words
   for (const b of blocks) {
+    let itemAsks; // whether this item counts them, read when a sentence of it first needs it
     for (const sentence of b.text.split(/(?<=[.!?])\s+/)) {
       const s = sentence.replace(ROTATE_KEY, ' ');
       if (!KEY_WORD.test(s) || keyKeptHere(s)) continue;
-      if (ASKING.test(s) || (b.item && !keyKeptHere(b.text) && INTRO_ASKING.test(intro))) return true;
+      if (ASKING.test(s) || (b.item && introAsks && (itemAsks ??= !keyKeptHere(b.text)))) return true;
     }
-    if (!b.item && b.text.trim() !== '') intro = b.text;
+    if (!b.item && b.text.trim() !== '') introAsks = INTRO_ASKING.test(b.text);
   }
   return false;
 }
