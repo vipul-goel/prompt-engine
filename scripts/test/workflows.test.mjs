@@ -452,7 +452,8 @@ test('release.yml: a version already on npm counts as published only when NPM_OW
   let r = npmStep({ NPM_OWNER: 'vipul-goel' });
   assert.equal(r.code, 0, r.out);
   assert.equal(r.calls.at(-1), publish, 'a new version is published');
-  for (const MAINTAINERS of ['["vipul-goel <npm-address>"]', '"vipul-goel <npm-address>"', '[{"name":"vipul-goel"}]']) {
+  // npm view prints a maintainer as "name <address> (url)", leaving out the parts it lacks.
+  for (const MAINTAINERS of ['["vipul-goel <npm-address>"]', '"vipul-goel <npm-address>"', '[{"name":"vipul-goel"}]', '["vipul-goel <npm-address> (https://example.com/owner)"]', '["vipul-goel (https://example.com/owner)"]', '["vipul-goel"]']) {
     r = npmStep({ ON_NPM: '1', MAINTAINERS, NPM_OWNER: 'vipul-goel' });
     assert.equal(r.code, 0, `${MAINTAINERS}: ${r.out}`);
     assert.ok(!r.calls.includes(publish), `${MAINTAINERS}: skipped, as already published`);
@@ -477,10 +478,11 @@ test('release.yml: a version already on npm counts as published only when NPM_OW
 test("release.yml: the NPM_OWNER error names the package's maintainers by account, without their e-mail addresses", { skip: NO_BASH }, () => {
   const ADDRESS = /[\w.%+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}/;
   for (const [MAINTAINERS, accounts] of [
-    // npm 11 prints "name <address>" strings, over several lines. The step also reads a single
-    // string, and objects, which npm 11 prints for an entry with fields other than a name, an
-    // address and a URL.
+    // npm 11 prints "name <address>" strings, over several lines, and "name <address> (url)" for an
+    // entry with a URL. The step also reads a single string, and objects, which npm 11 prints for an
+    // entry with fields other than a name, an address and a URL.
     ['[\n  "someone-else <someone-else@example.com>",\n  "second-owner <second.owner@example.org>"\n]', 'someone-else, second-owner'],
+    ['["someone-else <someone-else@example.com> (https://example.com/someone-else)"]', 'someone-else'],
     ['"someone-else <someone-else@example.com>"', 'someone-else'],
     ['[{"name":"someone-else","email":"someone-else@example.com"},{"name":"second-owner","email":"second.owner@example.org"}]', 'someone-else, second-owner'],
     ['[]', 'none listed'],
