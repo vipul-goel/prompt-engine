@@ -1480,6 +1480,13 @@ test("the rubrics that quote answer 7 quote its question too, and deep's 04 quot
   }
   const deep = graderOf('followup-deep-second-round', '04-further-round').body.split('\n');
   for (const [i, q] of questions.entries()) assert.ok(deep.some((l) => l.startsWith(`${i + 1}. "${q}": "`)), q);
+  // A prompt that keeps answer 7's words, "Write for the reader first.", still leaves its None out;
+  // output-format.md: the prompt states a declining ★ ("Name no competitors."). Both 05 rubrics say
+  // so (step 1e).
+  for (const [c, g] of [['followup-ok-accepts-recommendations', '05-uses-recommended-answers'], ['followup-partial-answers', '05-applies-overrides']]) {
+    assert.ok(graderOf(c, g).body.includes("An answer that declines something, such as answer 7's 'None', is stated only by a line that says so, such as 'Don't target a search keyword.'"), c);
+  }
+  assert.ok(readFileSync(join(EVALS, '..', 'skills', 'prompt-engine', 'references', 'output-format.md'), 'utf8').includes('so the prompt states it ("Name no competitors.")'));
 });
 
 // With the seven questions quoted, deep's 04 could read a new question on a nearby subject as one
