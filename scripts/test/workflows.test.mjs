@@ -301,6 +301,37 @@ test('env: sets only the variables listed here, none of which changes how bash, 
   }
 });
 
+// Settings outside a step's script change what it runs too. A job's container: runs each of its
+// steps that names no container of its own in an image, where "the default shell for run steps
+// inside a container is sh instead of bash" (docs.github.com, workflow syntax), and the container's
+// env: or options: can set BASH_ENV there. services:, a job-level uses: (another workflow's jobs) and
+// another runner change where and what runs, and a checkout's ref: or repository: builds another
+// commit than the one the run is for. So jobs and steps hold only the keys listed here, each job runs
+// on GitHub's Ubuntu runner (the Windows job on its Windows one), and each action takes only the
+// inputs listed here, each with one of the values listed.
+const JOB_KEYS = ['name', 'runs-on', 'permissions', 'needs', 'if', 'environment', 'outputs', 'env', 'strategy', 'defaults', 'steps'];
+const STEP_KEYS = ['name', 'id', 'uses', 'with', 'run', 'env', 'if', 'working-directory', 'shell'];
+const INPUTS = {
+  'actions/checkout': { 'persist-credentials': ['false'] },
+  'actions/setup-node': { 'node-version': ['22', '24', '22.19.0', '${{ matrix.node }}'], 'registry-url': ['https://registry.npmjs.org'] },
+  'actions/download-artifact': { 'artifact-ids': ['${{ needs.build.outputs.artifact-id }}'], path: ['dist'] },
+  'actions/upload-artifact': { name: ['release', 'eval-results'], path: ['dist/', 'eval-results.json\nevals/results/\n'], 'if-no-files-found': ['error'], overwrite: ['true'] },
+};
+test("jobs and steps hold only the keys listed here, so no job has a container:, every job runs on a GitHub-hosted runner, and actions take only the inputs listed here, so no checkout has a ref:", () => {
+  for (const f of FILES) {
+    for (const [name, j] of jobs(wf[f])) {
+      for (const k of Object.keys(j)) assert.ok(JOB_KEYS.includes(k), `${f}, job ${name}: ${k}`);
+      assert.equal(j['runs-on'], f === 'ci.yml' && name === 'windows' ? 'windows-latest' : 'ubuntu-latest', `${f}, job ${name}: runs-on`);
+      j.steps.forEach((s, i) => {
+        const what = `${f}, ${label({ ...s, job: name, i })}`;
+        for (const k of Object.keys(s)) assert.ok(STEP_KEYS.includes(k), `${what}: ${k}`);
+        const inputs = (s.uses !== undefined && INPUTS[s.uses.replace(/@.*$/, '')]) || {};
+        for (const [k, v] of Object.entries(s.with ?? {})) assert.ok(Object.hasOwn(inputs, k) && inputs[k].includes(v), `${what}: with: ${k}: ${v}`);
+      });
+    }
+  }
+});
+
 // A tag such as actions/checkout@v7 is moved by the action's publisher with each release, so what
 // runs with the release's OIDC token or write permission could change with no commit here.
 test('every action is pinned to a full commit SHA, with its version in a comment, the same in every workflow', () => {
