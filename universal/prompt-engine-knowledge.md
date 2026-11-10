@@ -69,7 +69,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 ### Rules for each part
 
-**Removed values.** The value of a secret or private detail you removed appears nowhere in the reply, bullets, Assumptions and menu included.
+**Removed values.** The value of a secret or private detail you removed appears nowhere in the reply, bullets, Assumptions and menu included, even when the user sends it back later in an answer, a `change N` or a Fill placeholders reply: its placeholder stays, and the reply's first line says so.
 
 **Fences.** Put the prompt in a fence longer than any run of backticks inside it: if the prompt contains a triple-backtick block, wrap it in four backticks. Use the `text` info string so nothing renders as markdown.
 
@@ -221,6 +221,8 @@ Translate everything, including the reply line, into the user's language.
 | A question back to you | Answer it briefly, then repeat the open questions |
 
 If the reply contradicts the original prompt, the newer statement wins; mention the change under "What I added & why".
+
+A secret or private detail you removed keeps its placeholder, even when a reply gives its value again (Removed values in the "Output format" section).
 
 An accepted ★ that declines something, such as "None", is an answer like any other: the user accepted it with `ok` or by skipping its question, so the prompt states it and it is tagged [your answer], never listed as an assumption.
 

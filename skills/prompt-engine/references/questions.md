@@ -89,4 +89,6 @@ Translate everything, including the reply line, into the user's language.
 
 If the reply contradicts the original prompt, the newer statement wins; mention the change under "What I added & why".
 
+A secret or private detail you removed keeps its placeholder, even when a reply gives its value again (Removed values in `references/output-format.md`).
+
 An accepted ★ that declines something, such as "None", is an answer like any other: the user accepted it with `ok` or by skipping its question, so the prompt states it and it is tagged [your answer], never listed as an assumption.
