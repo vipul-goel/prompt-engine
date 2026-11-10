@@ -862,6 +862,11 @@ const ROWS = [
   ['scans a history row nested 20,000 levels deep, down to its last level', (d) => edit(d, `${SAVE_CASE}/history.jsonl`,
     (t) => `{"type":"user","message":{"content":${'['.repeat(20_000)}"push with gh${'p'}_${'R'.repeat(36)}"${']'.repeat(20_000)}}}\n${t}`),
     /^error: evals\/save-to-file\/history\.jsonl line 1: GitHub token \(looks private; remove it or record again\)$/m, 1, NO_STACK],
+  // A line that isn't a JSON object, here a list nested 200,000 levels deep: the build names it, and
+  // validate.mjs lists that with its other errors, where the checks of the recording skipped it.
+  ['names a history line that is not a JSON object, such as a deeply nested list', (d) => edit(d, `${SAVE_CASE}/history.jsonl`,
+    (t) => `${t}${'['.repeat(200_000)}${']'.repeat(200_000)}\n`),
+    /^error: build failed: evals\/save-to-file\/history\.jsonl: line \d+ is not a JSON object; re-record it\n\n1 error\(s\)$/m, 1, NO_STACK],
   // ---- text that must make no difference
   ['passes with CRLF line endings', (d) => {
     for (const f of [SKILL, `${REF}/media-targets.md`, CORE, 'data/contract.json']) edit(d, f, (t) => t.replace(/\n/g, '\r\n'));

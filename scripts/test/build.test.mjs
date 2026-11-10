@@ -575,6 +575,18 @@ test('leaves a failed Read as it was recorded', () => {
   assert.equal(refreshHistory(input, 'BODY', files({})), input);
 });
 
+// Claude Code writes one JSON object per line. The checks in eval-cases.mjs skip a line that isn't
+// one, such as a list nested 200,000 levels deep, and a null row stopped the build with a
+// TypeError. The message names the line in the file: JSON.parse's own counts lines in the row.
+test('refuses a line that does not parse or is not a JSON object, and names its line', () => {
+  const start = `${jsonl(readUse({ file_path: `/plugin/${REL}` }))}\n\n`;
+  for (const row of ['[]', '1', '"x"', 'null', 'true', `${'['.repeat(200_000)}${']'.repeat(200_000)}`]) {
+    assert.throws(() => refreshHistory(`${start}${row}\n`, 'BODY', files({})), { message: 'line 3 is not a JSON object; re-record it' }, row.slice(0, 12));
+  }
+  assert.throws(() => refreshHistory(`${start}{\n`, 'BODY', files({})), { message: /^line 3: [^\n]*JSON at position 1; re-record it$/ });
+  assert.throws(() => refreshHistory(`${start}{"type":`, 'BODY', files({})), { message: /^line 3: [^\n]*JSON[^\n]*; re-record it$/ });
+});
+
 // media-targets.md is generated and copied into recorded Reads in the same run, so the Reads get
 // the new render rather than the file still on disk, and one build settles. No committed recording
 // reads it yet, so the copy's save-to-file recording reads it in place of writing.md.

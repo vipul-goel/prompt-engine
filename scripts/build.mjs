@@ -188,7 +188,7 @@ const numberLines = (text) => text.split('\n').map((l, i) => `${i + 1}\t${l}`).j
 // arguments starts. A reference file is refreshed both in the Read result and in Claude
 // Code's own copy of it (toolUseResult.file); a failed Read (is_error) stays as recorded.
 // A recording this can't refresh exactly throws, so it is recorded again instead of being
-// patched by guesswork: skill text without a recorded invocation, arguments without their
+// patched by guesswork: a line that isn't one JSON object, skill text without a recorded invocation, arguments without their
 // ARGUMENTS line (or an ARGUMENTS line other than an empty one without them), a plugin path that
 // wasn't rewritten, a Read with offset or limit (D12: Claude Code's partial-read format isn't
 // verified), a Read of a file that no longer exists, or a Read of a file outside the skill's
@@ -198,9 +198,14 @@ const numberLines = (text) => text.split('\n').map((l, i) => `${i + 1}\t${l}`).j
 export function refreshHistory(jsonl, skillBody, readPluginFile) {
   const reads = new Map(); // Read tool_use id -> { rel, partial }
   let args = null; // the arguments of the latest prompt-engine invocation; null before the first one
-  return jsonl.split('\n').map((line) => {
+  return jsonl.split('\n').map((line, i) => {
     if (!line.trim()) return line;
-    const row = JSON.parse(line);
+    // Claude Code writes one JSON object per line. The checks in eval-cases.mjs skip a line that
+    // isn't one, so it is named here, by its line in the file: JSON.parse's message counts the
+    // lines and columns of the row.
+    let row;
+    try { row = JSON.parse(line); } catch (e) { throw new Error(`line ${i + 1}: ${e.message.replace(/ \(line \d+ column \d+\)$/, '')}; re-record it`); }
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) throw new Error(`line ${i + 1} is not a JSON object; re-record it`);
     const content = row.message?.content;
     // A typed slash command: "<command-name>/prompt-engine:prompt-engine</command-name>\n<command-args>…</command-args>".
     const typed = typeof content === 'string' ? content
