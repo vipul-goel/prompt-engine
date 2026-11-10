@@ -1,15 +1,16 @@
 // Checks of the GitHub workflow files. Nothing else reads them: actionlint, which CI runs on them,
 // checks their syntax and shell code, not what they promise, so a workflow with a safeguard taken
 // out is still valid. These tests pin down those promises, each with the review finding or owner
-// decision it comes from. Most read the run: scripts as text; the on-main, CHANGELOG, tag, npm,
-// GitHub release and issue steps and the two steps that download a tool also run under bash, with
-// stand-ins for gh, npm and curl, so nothing reaches GitHub, npm or the network.
+// decision it comes from. Many read the run: scripts as text. The steps that hold a safeguard also
+// run under bash, with stand-ins for gh, npm and curl, so nothing reaches GitHub, npm or the network:
+// the on-main, CHANGELOG and tag checks, the release build's MCP tests, the npm, MCP Registry and
+// GitHub release steps, the two steps that download a tool, and the data check's filter and issue.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -169,11 +170,12 @@ function inOrder(text, parts, what) {
 // settings and variables that change how bash or node start don't reach the step, and neither do
 // the files through which a step on GitHub sets variables, PATH or outputs for later steps, so a
 // step run here can't change the CI job that runs these tests. With errexit: false the script runs
-// without -e, as it would after a line that turns errexit off.
+// without -e, as it would after a line that turns errexit off. The files that readBack names, in
+// the step's folder, come back in files.
 const NO_BASH = (process.platform === 'win32' && 'the stand-ins for gh and npm are shell scripts')
   || (spawnSync('bash', ['--version']).error && 'needs bash');
 const NO_JQ = NO_BASH || (spawnSync('jq', ['--version']).error && 'needs jq');
-function runStep(script, { stubs, env = {}, files = {}, cwd = '.', errexit = true }) {
+function runStep(script, { stubs, env = {}, files = {}, cwd = '.', errexit = true, readBack = [] }) {
   const dir = mkdtempSync(join(tmpdir(), 'pe-workflow-step-'));
   try {
     const bin = join(dir, 'bin');
@@ -207,7 +209,8 @@ function runStep(script, { stubs, env = {}, files = {}, cwd = '.', errexit = tru
         ...env,
       },
     });
-    return { code: r.status, out: `${r.stdout}${r.stderr}`, calls: readFileSync(log, 'utf8').split('\n').filter(Boolean) };
+    const back = readBack.filter((f) => existsSync(join(dir, cwd, f))).map((f) => [f, readFileSync(join(dir, cwd, f), 'utf8')]);
+    return { code: r.status, out: `${r.stdout}${r.stderr}`, calls: readFileSync(log, 'utf8').split('\n').filter(Boolean), files: Object.fromEntries(back) };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -425,6 +428,28 @@ test("release.yml stops unless CHANGELOG.md has a dated heading for the tag's ve
     const r = go('v0.2.0', heading);
     assert.equal(r.code, 1, `${heading === undefined ? 'no CHANGELOG.md' : JSON.stringify(heading)} stops the release: ${r.out}`);
     assert.match(r.out, /^::error::CHANGELOG\.md has no "## \[0\.2\.0\] - YYYY-MM-DD" heading/m);
+  }
+});
+
+// publishing.md's step 6 says the release tests the MCP server before it builds anything. So the
+// build job's install, build or test failing stops the job, with nothing run after the failed command.
+test('release.yml: the build job stops when installing, building or testing the MCP server fails, before the release files are built', { skip: NO_BASH }, () => {
+  const s = step(release, 'build', runs(/^npm test$/m), 'that runs the MCP tests');
+  assert.ok(s.i < step(release, 'build', runs(/release\.mjs --tag/), 'that builds the release files').i, 'the tests run before the release files are built');
+  // The stand-in npm fails the command NPM_FAILS names.
+  const npm = `case "$*" in
+  "$NPM_FAILS") echo "npm error code 1" >&2; exit 1;;
+  ci|"run build"|test) exit 0;;
+  *) exit 64;;
+esac`;
+  const go = (NPM_FAILS = 'nothing') => runStep(s.run, { stubs: { npm }, cwd: s['working-directory'] ?? '.', env: { NPM_FAILS } });
+  let r = go();
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.calls, ['npm [ci]', 'npm [run] [build]', 'npm [test]'], 'it installs what the lockfile pins, builds and runs the tests');
+  for (const [fails, call] of [['ci', 'npm [ci]'], ['run build', 'npm [run] [build]'], ['test', 'npm [test]']]) {
+    r = go(fails);
+    assert.notEqual(r.code, 0, `a failed npm ${fails} fails the step: ${r.out}`);
+    assert.equal(r.calls.at(-1), call, `nothing runs after the failed npm ${fails}: ${r.calls.join(' | ')}`);
   }
 });
 
@@ -793,6 +818,36 @@ test("release.yml and ci.yml: a downloaded tool whose archive doesn't match its 
   }
 });
 
+// The registry step skips a version only when the registry answers for that version, and sends it
+// only once npm shows it, since the registry checks the npm package. The lookup is curl -f: without
+// -f, curl exits 0 for a 404 too, and the step would skip every release.
+test('release.yml: the MCP Registry step skips only a version the registry has, and publishes only a version npm shows (finding 25)', { skip: NO_ARCHIVE }, () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pe-workflow-archive-'));
+  try {
+    const [d] = downloadSteps();
+    const version = JSON.parse(read('mcp/server.json')).version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const fake = fakeArchive(tmp, d.tool);
+    const go = (env) => runStep(d.s.run, { stubs: d.stubs, files: d.files, cwd: d.s['working-directory'], env: { ...d.env, FAKE_ARCHIVE: fake.file, [d.pin]: fake.sha256, ...env } });
+    const ran = (r) => r.calls.filter((c) => c.startsWith('ran '));
+    let r = go({ LOOKUP_STATUS: '200' });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, new RegExp(`^Version ${version} is already in the MCP Registry$`, 'm'));
+    assert.deepEqual(r.calls.map((c) => c.split(' ')[0]), ['curl'], 'a version the registry has: nothing runs after the lookup');
+    for (const LOOKUP_STATUS of ['404', 'down']) {
+      r = go({ LOOKUP_STATUS });
+      assert.equal(r.code, 0, `${LOOKUP_STATUS}: ${r.out}`);
+      assert.ok(ran(r).length === d.calls.length && ran(r).every((c, i) => d.calls[i].test(c)), `a lookup that answers ${LOOKUP_STATUS} doesn't skip: ${r.calls.join(' | ')}`);
+    }
+    r = go({ NPM_VISIBLE: '' });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`^::error::prompt-engine-mcp@${version} is not visible on npm yet`, 'm'));
+    assert.equal(r.calls.filter((c) => c.startsWith('curl ')).length, 1, `nothing is downloaded: ${r.calls.join(' | ')}`);
+    assert.deepEqual(ran(r), [], "a version npm doesn't show yet is never sent to the registry");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('release.yml: each publishing job skips what is already published, so a failed run can be re-run (finding 25)', () => {
   inOrder(step(release, 'github-release', runs(/gh release create/), 'that creates the release').run,
     ['gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" --silent', 'exit 0', 'gh release create'], 'github-release');
@@ -841,6 +896,17 @@ test('verify-data.yml runs weekly with a 45-day window, under the 60 days after 
   assert.ok(Object.hasOwn(verify.on, 'workflow_dispatch'));
   assert.match(step(verify, 'stale', 'Find stale entries').run, /Date\.now\(\) - 45 \* 864e5/);
   assert.deepEqual(verify.permissions, { contents: 'read', issues: 'write' });
+});
+
+test('verify-data.yml lists exactly the entries last checked over 45 days ago or without a date it can read (finding 31, D18)', { skip: NO_BASH }, () => {
+  // Day 44 is dated 43.5 days back, so it stays inside the window even when the step starts a moment
+  // after this line, just before midnight UTC.
+  const ago = (days) => new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+  const targets = [['Old', '2020-01-01'], ['Day 46', ago(46)], ['Day 44', ago(43.5)], ['Fresh', ago(5)], ['No date', undefined], ['Month 13', '2026-13-01'], ['Not a date', 'soon']]
+    .map(([name, last_verified]) => ({ name, last_verified, status: 'verified' }));
+  const r = runStep(step(verify, 'stale', 'Find stale entries').run, { stubs: {}, files: { 'data/media-targets.json': JSON.stringify({ targets }) }, readBack: ['stale.md'] });
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual([...(r.files['stale.md'] ?? '').matchAll(/^- (.+?) \(last checked /gm)].map((m) => m[1]), ['Old', 'Day 46', 'No date', 'Month 13', 'Not a date']);
 });
 
 // verify-data.yml's issue step, run with a stand-in gh. `gh issue list` answers from a canned list,
