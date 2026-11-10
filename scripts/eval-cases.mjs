@@ -676,6 +676,18 @@ export function checkSuiteRules(root, cases, err) {
     if (Object.hasOwn(LINT_GRADER_CASES, c.name) && !c.graders.some((g) => g.data.type === 'llm' && g.name.endsWith('-no-invention'))) {
       err(`${c.dir}: an output case (LINT_GRADER_CASES in scripts/build.mjs) needs an llm grader named <n>-no-invention.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption (repo rule)`);
     }
+    // A case that LINT_GRADER_CASES leaves out gets neither its lint graders nor the rule above, so
+    // an output case is also known by its graders: a regex grader on the reply (claude plugin eval's
+    // default target) whose pattern spells out "Full prompt", with match contains or count:N. Not
+    // caught: a case whose graders find the heading without spelling it out, as the translated cases
+    // and followup-fill-placeholders do, or only through llm graders.
+    const lookup = c.graders.find((g) => {
+      const d = g.data;
+      const p = d.pattern ?? (g.body !== '' ? g.body : undefined);
+      return d.type === 'regex' && (d.target === undefined || d.target === 'last_message')
+        && (d.match === undefined || d.match === 'contains' || /^count:[1-9]/.test(d.match)) && typeof p === 'string' && /full prompt/i.test(p);
+    });
+    if (lookup && !Object.hasOwn(LINT_GRADER_CASES, c.name)) err(`${c.dir}: graders/${lookup.name}.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts/build.mjs, so that the build writes its lint graders and validate.mjs requires a no-invention judge (repo rule)`);
     // A tool_used grader with min: 0, such as a max: 0 check, passes with zero calls, which is
     // all a run can make of a tool it doesn't grant. Listed in allowed_tools, the tool shows as
     // not granted in the progress output; a grader that requires it in the trace fails the case.

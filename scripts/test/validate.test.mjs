@@ -761,6 +761,14 @@ const ROWS = [
     put(d, `${OK_CASE}/graders/09-recommended.md`, grader('llm', 'focus: last_message\n', '\nPASS if the prompt follows every recommended default of the round. FAIL otherwise.\n'));
     put(d, `${OK_CASE}/graders/10-accepted.md`, grader('llm', 'focus: last_message\n', '\nPASS if the prompt reflects every default the user accepted. FAIL otherwise.\n'));
   }, ['09-recommended', '10-accepted'].map((n) => new RegExp(`^error: evals/followup-ok-accepts-recommendations/graders/${n}\\.md: judges the answers to the question round the recording ends in, but quotes none of its options; quote each answer it checks word for word, in double quotes \\(repo rule\\)$`, 'm'))],
+  // An output case that LINT_GRADER_CASES leaves out, here a copy of one without its lint graders and
+  // its no-invention judge, is named by its grader of the Full prompt heading.
+  ['rejects an output case that LINT_GRADER_CASES leaves out', (d) => {
+    const to = 'evals/writing-quick-newsletter';
+    cpSync(join(d, 'evals/writing-quick-launch-email'), join(d, to), { recursive: true });
+    for (const f of readdirSync(join(d, to, 'graders'))) if (/^lint-prompt|-no-invention\.md$/.test(f)) rmSync(join(d, to, 'graders', f));
+    edit(d, `${to}/case.yaml`, (t) => t.replace('name: writing-quick-launch-email', 'name: writing-quick-newsletter'));
+  }, /^error: evals\/writing-quick-newsletter: graders\/01-full-prompt-heading\.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts\/build\.mjs, so that the build writes its lint graders and validate\.mjs requires a no-invention judge \(repo rule\)\n\n1 error\(s\)$/m],
   // Every output case, the cases build.mjs writes lint graders for, has a no-invention judge (finding 49, D30).
   ['rejects an output case without a no-invention judge', (d) => rmSync(join(d, `${VEO}/07-no-invention.md`)),
     /^error: evals\/video-veo-quick: an output case \(LINT_GRADER_CASES in scripts\/build\.mjs\) needs an llm grader named <n>-no-invention\.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption \(repo rule\)\n\n1 error\(s\)$/m],

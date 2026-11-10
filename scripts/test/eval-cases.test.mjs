@@ -826,6 +826,29 @@ test('checkSuiteRules wants an llm no-invention grader in every output case, the
   assert.deepEqual(errors, [NEED('image-midjourney-quick'), NEED('research-quick-vector-databases'), NEED('video-veo-quick')]);
 });
 
+// A case that LINT_GRADER_CASES leaves out gets neither its lint graders nor the rule above, so an
+// output case is also known by a regex grader that looks for the Full prompt heading in the reply.
+test('checkSuiteRules names a case whose graders look for a Full prompt heading, when LINT_GRADER_CASES leaves it out', () => {
+  const NAMED = (name) => `evals/${name}: graders/01-x.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts/build.mjs, so that the build writes its lint graders and validate.mjs requires a no-invention judge (repo rule)`;
+  const one = (name, grader) => ({ [`evals/${name}/prompt.md`]: promptMd(), [`evals/${name}/graders/01-x.md`]: grader });
+  const { schema, errors } = rules({
+    ...one('newsletter', "---\ntype: regex\npattern: '#+\\s*Full prompt'\nflags: i\n---\n"),
+    ...one('in-body', '---\ntype: regex\ntarget: last_message\n---\n\n#+ full prompt\n'), // the pattern in the body, the target written out
+    ...one('counted', "---\ntype: regex\npattern: 'Full prompt'\nmatch: count:1\n---\n"),
+    // Not output cases by this rule: a question round with no Full prompt, a check of a saved file
+    // or of the trace, and an llm rubric.
+    ...one('asks', "---\ntype: regex\npattern: 'Full prompt'\nmatch: not_contains\n---\n"),
+    ...one('saved', "---\ntype: regex\npattern: 'Full prompt'\ntarget: {source: file, path: prompts/x.md}\n---\n"),
+    ...one('traced', "---\ntype: regex\npattern: 'Full prompt'\ntarget: trace\n---\n"),
+    ...one('judged', '---\ntype: llm\n---\n\nPASS if the reply has a Full prompt heading.\n'),
+    // A listed case, with its no-invention judge.
+    ...one('spanish-quick', "---\ntype: regex\npattern: 'Full prompt'\n---\n"),
+    'evals/spanish-quick/graders/02-no-invention.md': '---\ntype: llm\n---\n\nPASS if nothing is invented.\n',
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, [NAMED('counted'), NAMED('in-body'), NAMED('newsletter')]);
+});
+
 // ---------- checkConversations: the history cases ----------
 const CONTRACT = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'contract.json'), 'utf8'));
 const REPLY_LINE = 'Reply `ok` to accept every ★, or answer like `2b 3: get managers to pilot a 4-day week`. Anything you skip gets the ★.';
