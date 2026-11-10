@@ -51,6 +51,13 @@ export const SEMVER = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 // Files the operating system writes into folders (Finder, Explorer). Git ignores them
 // (.gitignore), validate.mjs skips them and release.mjs leaves them out of the skill zip.
 export const OS_JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+// In the skill folder, these and the AppleDouble files that macOS writes on some drives, such as
+// exFAT or FAT ones: "._" and the name of the file whose metadata they hold. Git ignores them too.
+// The one for SKILL.md or a reference ends in .md, so validate.mjs took it for a file of the skill.
+// validate.mjs's walk skips each name that isOsJunk matches, and release.mjs's zip leaves out each
+// path that ZIP_EXCLUDES matches (zip matches a -x pattern against the whole path in the archive).
+export const isOsJunk = (name) => OS_JUNK.has(name) || name.startsWith('._');
+export const ZIP_EXCLUDES = [...[...OS_JUNK].map((f) => `*${f}`), '*/._*'];
 
 const STATUS_LABEL = {
   verified: '✓ verified against the vendor’s own documentation',

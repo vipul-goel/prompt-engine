@@ -879,6 +879,14 @@ const ROWS = [
       put(d, `evals/spanish-quick/graders/${f}`, 'x');
     }
   }, /validate: OK/, 0],
+  // And the AppleDouble files that macOS writes on some drives: "._" and the name of the file whose
+  // metadata they hold, so the one for SKILL.md or a reference ends in .md. This text would fail
+  // the skill's checks if they read it.
+  ['ignores the AppleDouble files macOS writes into folders', (d) => {
+    const appleDouble = '\0\x05\x16\x07\0\x02\0\0Mac OS X        You MUST run $ARGUMENTS';
+    for (const f of ['skills/._prompt-engine', 'skills/prompt-engine/._SKILL.md', 'skills/prompt-engine/._references', `${REF}/._questions.md`,
+      'evals/._spanish-quick', 'evals/spanish-quick/._prompt.md']) put(d, f, appleDouble);
+  }, /validate: OK/, 0, /\._/],
 ];
 
 // Rules on tracked files, which need a git copy: [name, mutate(dir, git), expected, code, unexpected].

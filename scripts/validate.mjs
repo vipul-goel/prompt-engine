@@ -20,7 +20,7 @@
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, relative, basename } from 'node:path';
-import { buildAll, root, normalize, readJson, splitFrontmatter, OS_JUNK, KNOWLEDGE_ORDER, SEMVER } from './build.mjs';
+import { buildAll, root, normalize, readJson, splitFrontmatter, isOsJunk, KNOWLEDGE_ORDER, SEMVER } from './build.mjs';
 import { checkEvalCases, checkSuiteRules, checkConversations } from './eval-cases.mjs';
 import { scanText, publicText } from './eval/sanitize.mjs';
 
@@ -195,11 +195,12 @@ if (!front) {
 
 // ---------- skill folder ----------
 // release.mjs zips this folder as it is on disk. entries() lists a folder without the files the
-// operating system writes into folders, and without following links: the walk reports an entry
+// operating system writes into folders (isOsJunk in build.mjs, AppleDouble ._ files included,
+// which the zip leaves out too), and without following links: the walk reports an entry
 // that is neither a plain file nor a folder, and leaves it out of the checks below. statSync
 // followed links, and stopped validate.mjs on one that leads nowhere, such as the lock file Emacs
 // keeps next to a file with unsaved changes.
-const entries = (dir) => readdirSync(join(root, dir), { withFileTypes: true }).filter((e) => !OS_JUNK.has(e.name));
+const entries = (dir) => readdirSync(join(root, dir), { withFileTypes: true }).filter((e) => !isOsJunk(e.name));
 const walk = (dir) => entries(dir).flatMap((e) => {
   const p = `${dir}/${e.name}`;
   if (e.isDirectory()) return walk(p);

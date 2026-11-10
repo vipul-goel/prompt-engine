@@ -99,14 +99,17 @@ function zipCopy(setup, args = ['--zip']) {
   }
 }
 
-// validate.mjs skips these files, so only release.mjs's -x list keeps them out of the zip.
-test('release.mjs --zip leaves out the files Finder and Explorer write', { skip: NO_ZIP }, () => {
+// validate.mjs skips these files, so only release.mjs's -x list keeps them out of the zip: the
+// ones Finder and Explorer write, and the AppleDouble files that macOS writes on some drives ("._"
+// and the name of the file whose metadata they hold).
+test('release.mjs --zip leaves out the files Finder, Explorer and macOS write', { skip: NO_ZIP }, () => {
   const r = zipCopy((dir) => {
     for (const f of OS_JUNK) for (const sub of ['', 'references']) writeFileSync(join(dir, 'skills', 'prompt-engine', sub, f), 'x');
+    for (const f of ['._SKILL.md', '._references', 'references/._questions.md']) writeFileSync(join(dir, 'skills', 'prompt-engine', f), 'x');
   });
   assert.equal(r.code, 0, r.out);
   assert.ok(r.entries.includes('prompt-engine/SKILL.md'), r.entries.join('\n'));
-  assert.deepEqual(r.entries.filter((e) => OS_JUNK.has(e.split('/').at(-1))), []);
+  assert.deepEqual(r.entries.filter((e) => OS_JUNK.has(e.split('/').at(-1)) || e.split('/').at(-1).startsWith('._')), []);
 });
 
 // zip -r adds to an archive that is already there and keeps the entries whose files are gone, so

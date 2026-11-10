@@ -15,7 +15,7 @@ import { mkdirSync, rmSync, copyFileSync, existsSync, readFileSync, writeFileSyn
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { root, OS_JUNK, normalize } from './build.mjs';
+import { root, ZIP_EXCLUDES, normalize } from './build.mjs';
 
 // The command line, read strictly: a --tag form this script didn't read, an empty value or an
 // argument it didn't know built everything without the check that --tag asks for.
@@ -58,7 +58,7 @@ const needs = (cmd, fn) => {
     process.exit(1);
   }
 };
-needs('zip', () => run('zip', ['-q', '-r', zipPath, 'prompt-engine', '-x', ...[...OS_JUNK].map((f) => `*${f}`)], { cwd: join(root, 'skills') }));
+needs('zip', () => run('zip', ['-q', '-r', zipPath, 'prompt-engine', '-x', ...ZIP_EXCLUDES], { cwd: join(root, 'skills') }));
 const listing = needs('unzip', () => execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' })).split('\n').filter(Boolean);
 if (!listing.includes('prompt-engine/SKILL.md') || listing.some((f) => !f.startsWith('prompt-engine/'))) {
   console.error('zip layout is wrong: expected everything under prompt-engine/');
