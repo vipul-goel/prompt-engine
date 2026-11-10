@@ -125,6 +125,23 @@ describe('package.json', () => {
     }
   });
 
+  // npm ci, the first step of the MCP checks, deletes node_modules and installs it again.
+  it('still knows a left-over copy for its own after node_modules is installed again', () => {
+    const { root, run, copy } = licenseTree();
+    try {
+      writeFileSync(join(root, 'LICENSE'), 'root license\n');
+      expect(run('copy').status).toBe(0);
+      rmSync(join(root, 'mcp', 'node_modules'), { recursive: true, force: true });
+      writeFileSync(join(root, 'LICENSE'), 'root license, updated\n');
+      expect(run('copy').status).toBe(0);
+      expect(readFileSync(copy, 'utf8')).toBe('root license, updated\n');
+      expect(run('remove').status).toBe(0);
+      expect(existsSync(copy)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('packs the built server without the Cloudflare Worker entry', () => {
     // npm sets npm_execpath when it runs the tests; fall back to npm on PATH.
     const npm = process.env.npm_execpath?.endsWith('.js') ? [process.execPath, process.env.npm_execpath] : ['npm'];
