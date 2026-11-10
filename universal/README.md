@@ -26,7 +26,7 @@ Most apps let you save instructions so every chat starts with them. Menu names c
 3. Optionally, upload `prompt-engine-knowledge.md` under **Knowledge**.
 4. Suggested conversation starters: `prompt-engine: write a blog post about remote work`, `quick: a Midjourney prompt for a cozy cabin at night`, `deep: instructions for an agent that refactors my billing module`.
 
-In a GPT made only for this, every message is treated as a rough prompt to improve. Creating GPTs may depend on your ChatGPT plan.
+In a GPT made only for this, each new request is treated as a rough prompt to improve, without `prompt-engine:`. Answers to its questions, menu picks, `change N` replies and follow-ups after "Run it now" aren't new requests, and when it can't tell whether you want a task done or a prompt improved, it asks once. Creating GPTs may depend on your ChatGPT plan.
 
 **ChatGPT: a Project**
 Paste `prompt-engine.md` into the project's instructions and add the knowledge file to the project's files.

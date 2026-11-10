@@ -60,6 +60,7 @@ Expected:
 Create a custom GPT (ChatGPT) or a Gem (Gemini) with `prompt-engine.md` as its instructions, following [universal/README.md](../universal/README.md).
 - [ ] The instructions field accepts the whole file. Note any length error.
 - [ ] A plain message such as `a cover letter for a marketing job` is treated as a rough prompt to improve, because the chat is set up only for this.
+- [ ] Have it carry out the prompt: pick Run it now, or, if Fill placeholders is offered instead, fill them in and then pick Run it now. Then send a follow-up on the result, such as `make it shorter`. It changes the result, or asks once whether you mean the result or the prompt; it doesn't treat the follow-up as a new rough prompt, with a question round or a new score and menu.
 - [ ] Optionally, attach `prompt-engine-knowledge.md` and check whether a coding prompt gets coding-specific questions, such as which command proves the work is done.
 
 ## Claude.ai
