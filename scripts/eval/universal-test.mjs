@@ -109,7 +109,10 @@ const STARRED_NOT_FILL = new RegExp(String.raw`^(?:(?!What next\?)[\s\S])*What n
 const SCORE_TABLE = ['score table', has(/^(?=([\s\S]*?\|\s*(\*\*)?Clear goal(\*\*)?\s*\|))\1[\s\S]*\|\s*(\*\*)?Edge cases(\*\*)?\s*\|/i)];
 export const STRUCTURE = [
   ['full prompt heading', has(/#\s*Full prompt/i)],
-  ['short version heading', has(/#\s*Short version/i)],
+  // The Short version's heading starts a line, and its fenced block follows it, as the eval
+  // graders' Short version checks want (SKILL.md: "Short version in a fenced block"; step 1e,
+  // B2.1.3).
+  ['short version heading', has(/(?:^|\n)[ \t]*#+[ \t]*Short version[^\n]*\n\s*`{3}/i)],
   ['what I added heading', has(/#\s*What I added/i)],
   ['assumptions heading', has(/#\s*Assumptions/i)],
   SCORE_TABLE,

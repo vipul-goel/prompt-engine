@@ -238,6 +238,11 @@ test('Done ★, not Run it now: the Midjourney case wants a starred Done option,
   const noShort = image('1) Done ★ (paste it into Midjourney)\n2) Refine').replace(/### Short version\n```text\n[^`]*```\n\n/, '');
   assert.ok(!noShort.includes('Short version'));
   assert.deepEqual(failing(checks, noShort), ['short version heading']);
+  // And its fenced block, as the eval graders' Short version checks want: a note in its place
+  // fails (step 1e, B2.1.3).
+  const noBlock = image('1) Done ★ (paste it into Midjourney)\n2) Refine').replace(/(### Short version\n)```text\n[^`]*```/, '$1The full prompt is already one short line, so use it as is.');
+  assert.ok(noBlock.includes('### Short version\nThe full prompt is already'));
+  assert.deepEqual(failing(checks, noBlock), ['short version heading']);
   // With no Fill before running heading, an open placeholder in the Full prompt counts too (step 1e).
   const signed = (menu) => output({ menu, prompt: 'A cozy cabin in the snow at night, a wooden sign reading [[sign text]] --ar 3:2' });
   assert.deepEqual(failing(checks, signed('1) Done ★ (paste it into Midjourney)\n2) Refine')),

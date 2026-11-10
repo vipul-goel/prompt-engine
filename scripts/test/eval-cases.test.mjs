@@ -1782,10 +1782,11 @@ test('the Midjourney aspect-ratio graders read the first fenced block of a reply
 });
 
 // The media cases want a Short version too (SKILL.md, Present: "3. Short version in a fenced
-// block"; image-video.md: "The same blocks serve both versions"). The English cases check its
-// heading, as writing-quick-launch-email's 02 does; the Japanese case, whose headings D3
-// translates, checks that the reply's second heading, after the Full prompt's block, is followed
-// by a fence (step 1e, B1.1.11). The replies below pass every regex grader of their case.
+// block"; image-video.md: "The same blocks serve both versions"). The English cases check that its
+// heading starts a line and is followed by a fence, as writing-quick-launch-email's 02 does (step
+// 1e, B2.1.3); the Japanese case, whose headings D3 translates, checks that the reply's second
+// heading, after the Full prompt's block, is followed by a fence (step 1e, B1.1.11). The replies
+// below pass every regex grader of their case.
 const mediaScore = (h) => `| | ${h.orig} | ${h.enh} |\n|---|---|---|\n| ${h.rows[0]} | 2 | 3 |\n| ${h.rows[1]} | 1 | 3 |\n| ${h.rows[2]} | 0 | 3 |\n| ${h.rows[3]} | 0 | 3 |\n| ${h.rows[4]} | 0 | 2 |`;
 const MEDIA_EN = { full: 'Full prompt', short: 'Short version', added: 'What I added & why', assumptions: 'Assumptions', score: 'Score', next: 'What next?', orig: 'Original', enh: 'Enhanced', rows: ['Clear goal', 'Context', 'Constraints', 'Output format', 'Edge cases'], caveat: 'Self-assessed coverage of five areas, not a prediction of output quality.' };
 const MEDIA_JA = { full: 'プロンプト全文', short: '短縮版', added: '追加した内容とその理由', assumptions: '仮定', score: 'スコア', next: '次のステップ', orig: '元のプロンプト', enh: '改善後', rows: ['目的の明確さ', '背景・文脈', '制約', '出力形式', 'エッジケース'], caveat: '5つの観点を自己評価したもので、出力品質を予測するものではありません。' };
@@ -1867,4 +1868,20 @@ test('the media cases fail a reply without its Short version', () => {
   // The fence must follow that second heading: a later block, such as one under the menu, doesn't
   // stand in for a missing Short version (step 1e).
   assert.equal(regexPasses(ja, `${mediaReply({ ja: true, short: false })}\n\n\`\`\`text\n夜の雪山にある小さな木造の山小屋 --ar 3:2\n\`\`\``), false);
+  // The English cases want the fence too, right under a heading that starts a line: a note in
+  // place of the block fails, as in Japanese, and so does the heading in the middle of a line
+  // (step 1e, B2.1.3).
+  const noBlock = (reply) => reply.replace(/(### Short version\n)```text\n[^`]*```/, '$1The full prompt is already one short line, so use it as is.');
+  for (const [c, reply, grader] of [
+    ['image-midjourney-quick', mediaReply(), '09-short-version-heading'],
+    ['video-veo-quick', veoReply(), '08-short-version-heading'],
+    ['writing-quick-launch-email', menuReply({ prompt: 'Write the launch email for our new app.', menu: '1. Run it now ★\n2. Refine' }), '02-short-version-heading'],
+  ]) {
+    const g = graderOf(c, grader);
+    assert.ok(regexPasses(g, reply), c);
+    assert.ok(regexPasses(g, reply.replace('### Short version\n', '## Short version\n\n')), `${c}: a ## heading, a blank line, then the fence`);
+    assert.notEqual(noBlock(reply), reply);
+    assert.equal(regexPasses(g, noBlock(reply)), false, `${c}: a note in place of the block`);
+    assert.equal(regexPasses(g, reply.replace('### Short version', 'See the ### Short version')), false, `${c}: the heading mid-line`);
+  }
 });
