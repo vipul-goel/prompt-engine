@@ -186,9 +186,23 @@ test('one build settles a reference line that ends in CR CR LF, and a data value
     const data = JSON.parse(readFileSync(file, 'utf8'));
     data.targets[0].notes = 'First line.\r\nSecond line.';
     writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    // And so into a recorded Read of that reference and the MCP server's copy of it, which the build
+    // writes as it renders them, before any read of a file on disk could drop the CR.
+    const recording = join(dir, 'evals/save-to-file/history.jsonl');
+    const recorded = readFileSync(recording, 'utf8');
+    const reads = recorded.replaceAll('/plugin/skills/prompt-engine/references/writing.md', `/plugin/${MEDIA}`);
+    assert.notEqual(reads, recorded, 'the recording reads writing.md');
+    writeFileSync(recording, reads);
     const build = node(join(dir, 'scripts', 'build.mjs'));
     assert.equal(build.code, 0, build.out);
     for (const p of [MEDIA, 'universal/prompt-engine-knowledge.md']) assert.doesNotMatch(readFileSync(join(dir, p), 'utf8'), /\r/, p);
+    const texts = (c) => (typeof c === 'string' ? [c] : Array.isArray(c) ? c.flatMap((p) => (typeof p?.text === 'string' ? [p.text] : [])) : []);
+    const results = readFileSync(recording, 'utf8').split('\n').filter(Boolean).flatMap((l) => JSON.parse(l).message?.content ?? [])
+      .filter((part) => part?.type === 'tool_result').flatMap((part) => texts(part.content)).filter((t) => t.includes('First line.'));
+    assert.ok(results.length > 0, 'the recorded Reads hold the media targets');
+    for (const t of results) assert.doesNotMatch(t, /\r/);
+    // The MCP content's copy of the reference, apart from the data as written (MEDIA_TARGETS).
+    assert.ok(readFileSync(join(dir, 'mcp/src/generated/content.ts'), 'utf8').includes('**Note:** First line.\\nSecond line.'), 'the MCP content copies the note without its CR');
     const check = node(join(dir, 'scripts', 'build.mjs'), ['--check']);
     assert.equal(check.code, 0, check.out);
     const twice = node(join(dir, 'scripts', 'build.mjs'));

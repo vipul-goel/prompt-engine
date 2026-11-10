@@ -55,6 +55,8 @@ const REFUSES = [
   // A file converted to CRLF twice: YAML reads CR CR LF as two line breaks, normalize() as one.
   ['a line that ends in CR CR LF', 'a: 1\r\nb: |\r\r\n  x\r\r\n', 'f.yaml:2: the line ends in CR CR LF'],
   ['a line separator', 'a: x\u{2028}y\n', 'f.yaml:1: control character U+2028'],
+  ['a paragraph separator', 'a: x\u{2029}y\n', 'f.yaml:1: control character U+2029'],
+  ['a byte-order mark after the start', 'a: x\u{FEFF}y\n', 'f.yaml:1: control character U+FEFF'],
   ['a control character inside a block', 'a: |\n  x\u{85}\n', 'f.yaml:2: control character U+0085'],
   ['four spaces of indentation', 'a:\n    b: 1\n', 'f.yaml:2: unsupported indentation'],
   ['one space of indentation', 'a:\n b: 1\n', 'f.yaml:2: unsupported indentation'],

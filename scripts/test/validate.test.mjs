@@ -301,6 +301,7 @@ const ROWS = [
   ['requires a description', (d) => edit(d, SKILL, (t) => t.replace(/^description:.*\n/m, '')), /SKILL\.md: description is required/],
   ['requires a description that is more than spaces', setFront('description', 'description: "   "'), /SKILL\.md: description is required/],
   ['rejects > in the description', setFront('description', 'description: "Use for prompts > 100 words."'), /description must not contain < or >/],
+  ['rejects < in the description', setFront('description', 'description: "Use for prompts < 100 words."'), /description must not contain < or >/],
   ['rejects angle brackets in the description', setFront('description', 'description: "Use <when> asked to improve a prompt."'), /description must not contain < or >/],
   ['rejects a description that starts like a YAML block scalar', setFront('description', 'description: "| Improve prompts for any AI tool."'), /description must be a single-line string, not a YAML block scalar/],
   ['rejects a description that starts like a folded YAML block scalar', setFront('description', 'description: "> Improve prompts for any AI tool."'), /description must be a single-line string, not a YAML block scalar/],
@@ -403,6 +404,13 @@ const ROWS = [
     edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n<!-- a note -->\n${KEY_LAST}\n`));
     rebuild(d);
   }, /validate: OK/, 0],
+  // Such a block starts after up to three spaces too, and goes on until a line holds -->.
+  ...[['an HTML comment whose <!-- is indented three spaces', (h) => `   <!-- a note\n${h}\n-->`],
+    ['the third line of an HTML comment', (h) => `<!-- a note\nover two lines\n${h}\n-->`]].map(([what, block]) => [
+    `rejects a key section whose heading line is copied into ${what} near the top`, (d) => {
+      moveSection(KEY_LAST, KEY_LIMIT + 100)(d);
+      edit(d, SKILL, (t) => t.replace(`\n${BUDGETS.skillKeySections[0]}`, () => `\n${block(KEY_LAST)}\n\n${BUDGETS.skillKeySections[0]}`));
+    }, new RegExp(`SKILL\\.md: section "${reEsc(KEY_LAST)}" starts at char \\d+; keep it within the first ${KEY_LIMIT} `)]),
   ['rejects a key section whose heading line goes on with more of a word', (d) => edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n${KEY_LAST}s\n`)),
     new RegExp(`SKILL\\.md: missing section "${reEsc(KEY_LAST)}"`)],
   // "Within the first 8,000 characters": the last offset that passes is 7,999.
@@ -410,6 +418,12 @@ const ROWS = [
     new RegExp(`SKILL\\.md: section "${reEsc(KEY_LAST)}" starts at char ${KEY_LIMIT + 1}; keep it within the first ${KEY_LIMIT} `)],
   [`accepts a key section that starts at the last of the first ${KEY_LIMIT} characters`, (d) => { moveSection(KEY_LAST, KEY_LIMIT - 1)(d); rebuild(d); },
     /validate: OK/, 0, /missing section|starts at char/],
+  // Characters, as the body budget counts them: one outside the BMP, two UTF-16 units, counts as one.
+  [`accepts a key section that starts at the last of the first ${KEY_LIMIT} characters after an emoji, which counts as one`, (d) => {
+    edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n\u{1F600}\n\n${KEY_LAST}\n`));
+    moveSection(KEY_LAST, KEY_LIMIT - 1)(d);
+    rebuild(d);
+  }, /validate: OK/, 0, /missing section|starts at char/],
   ['rejects a universal core over its character budget', (d) => edit(d, CORE, (t) => `${t}\n${filler(BUDGETS.universalCoreMaxChars - chars(t) + 100)}\n`),
     new RegExp(`universal/prompt-engine\\.md: \\d+ chars \\(max ${BUDGETS.universalCoreMaxChars}\\)`)],
   // ---- references
@@ -455,6 +469,16 @@ const ROWS = [
     editJson(d, 'data/contract.json', (j) => { j.required.menu = j.required.menu.join(', '); });
     rebuild(d);
   }, /^error: data\/contract\.json: required\.menu must be a list of non-empty strings\n\n1 error\(s\)$/m],
+  // An empty list turned a check off as well: a group with no strings to look for, or a file with no
+  // groups to check it against.
+  ['rejects a contract group with no strings', (d) => {
+    editJson(d, 'data/contract.json', (j) => { j.required.scoreDimensions = []; });
+    rebuild(d);
+  }, /^error: data\/contract\.json: required\.scoreDimensions must be a list of non-empty strings\n\n1 error\(s\)$/m],
+  ['rejects an artifact with no contract groups', (d) => {
+    editJson(d, 'data/contract.json', (j) => { j.artifacts[CORE] = []; });
+    rebuild(d);
+  }, /^error: data\/contract\.json: artifacts\["universal\/prompt-engine\.md"\] must be a list of group names from required\n\n1 error\(s\)$/m],
   // ---- plugin root
   ...FORBIDDEN_ROOT.map((f) => [`rejects ${f} at the plugin root`, (d) => writeFileSync(join(d, f), ''), new RegExp(`(^|\\n)error: ${reEsc(f)}: not allowed at the repo root`)]),
   // Memory files in the folders that Claude Code walks through to a reference, tracked or not.
@@ -935,6 +959,8 @@ const ROWS = [
     [/^error: data\/media-targets\.json: targets must be a list of entries$/m, OTHER_ERROR], 1, NO_STACK],
   ['names lint rules that are not a list', damaged((d) => editJson(d, 'data/lint-rules.json', (j) => { delete j.rules; })),
     [/^error: data\/lint-rules\.json: rules must be a list of rules, each an object$/m, OTHER_ERROR], 1, NO_STACK],
+  ['names a lint rule that is not an object', damaged((d) => editJson(d, 'data/lint-rules.json', (j) => { j.rules.push(null); })),
+    [/^error: data\/lint-rules\.json: rules must be a list of rules, each an object$/m, OTHER_ERROR], 1, NO_STACK],
   ['names contract budgets that are missing, and skips their checks', damaged((d) => editJson(d, 'data/contract.json', (j) => { delete j.budgets; })),
     [/^error: data\/contract\.json: budgets must map each budget to its limit$/m, OTHER_ERROR], 1, [...NO_STACK, /budgets\./]],
   // A budget below 0 is refused too, instead of failing its check on every file ("max -1").
@@ -942,6 +968,9 @@ const ROWS = [
     [/^error: data\/contract\.json: budgets\.skillBodyMaxChars must be a number of 0 or more$/m, OTHER_ERROR], 1, [...NO_STACK, /body is \d+ chars/]],
   ['names a contract budget that is missing or of the wrong type', damaged((d) => editJson(d, 'data/contract.json', (j) => { delete j.budgets.descriptionMaxChars; j.budgets.skillKeySections = 3; })),
     [/^error: data\/contract\.json: budgets\.descriptionMaxChars must be a number of 0 or more$/m, /^error: data\/contract\.json: budgets\.skillKeySections must be a list of headings$/m, OTHER_ERROR], 1, NO_STACK],
+  // Every line starts with an empty heading, so one would stand for a key section at the body's start.
+  ['names an empty key-section heading', damaged((d) => editJson(d, 'data/contract.json', (j) => { j.budgets.skillKeySections = ['']; })),
+    [/^error: data\/contract\.json: budgets\.skillKeySections must be a list of headings$/m, OTHER_ERROR], 1, NO_STACK],
   ['names marketplace plugins that are not a list', damaged((d) => editJson(d, '.claude-plugin/marketplace.json', (j) => { j.plugins = {}; })),
     [/^error: \.claude-plugin\/marketplace\.json: plugins must be a list of plugin entries$/m, OTHER_ERROR], 1, NO_STACK],
   ['names server.json packages that are not a list', damaged((d) => editJson(d, 'mcp/server.json', (j) => { j.packages = { npm: j.packages[0] }; })),
