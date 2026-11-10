@@ -110,7 +110,7 @@ Use the copy-paste prompt. See [universal/README.md](../universal/README.md) for
 
 ## MCP clients
 
-Run the MCP server locally with `npx -y prompt-engine-mcp`. Until the first release, that runs version 0.0.1, a placeholder published by hand on 2026-11-09 to claim the package name: a full build of the server from that day, without npm's provenance statement. In Claude Desktop, install the `.mcpb` file from the releases page instead (not yet tested in Claude Desktop). Configuration for Claude Code, Cursor, VS Code and others, and how to self-host the HTTP version, are in [mcp/README.md](../mcp/README.md).
+Run the MCP server locally with `npx -y prompt-engine-mcp`. Until the first release, that runs version 0.0.1, a placeholder published by hand on 2026-11-09 to claim the package name: a full build of the server at commit 60f4ef1, without npm's provenance statement. Its method is older than the one these docs describe: for example, it has no rules for other people's private details, and its `check_prompt` doesn't flag `think step-by-step`. The first release brings the current method. In Claude Desktop, install the `.mcpb` file from the releases page instead (not yet tested in Claude Desktop). Configuration for Claude Code, Cursor, VS Code and others, and how to self-host the HTTP version, are in [mcp/README.md](../mcp/README.md).
 
 ## Install it once
 
