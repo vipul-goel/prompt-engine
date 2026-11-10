@@ -51,16 +51,17 @@ const MAX_REQUESTS = 128;
 const BODY_BUDGET_BYTES = 8_000_000;
 // Node's header and request timeouts end once a request has arrived, and a
 // socket has no idle timeout, so an answer a client doesn't read would wait in
-// the socket's buffer, holding its request's slot, for as long as the
-// connection stays open. Every 5 s, each connection with a request in flight is
-// checked: once a write has waited for the client for 15 s while the socket
-// handed no more bytes to the operating system, the connection is closed, which
-// ends every request on it. The count of bytes handed on is compared, not the
-// length of the socket's buffer, which the next write can refill to the same
-// length. The operating system takes the bytes in bursts, as the client's reads
-// free its buffers, which can hold hundreds of kilobytes, so a client reading a
-// large answer slowly can go 15 s without a burst: on macOS, a client reading a
-// 2.2 MB batch answer at 30 KB/s got all of it, and one at 25 KB/s was closed.
+// the socket's buffer, holding its request's slot and those of the requests
+// behind it, for as long as the connection stays open. Every 5 s, each
+// connection with a request in flight is checked (stall.ts): once bytes, however
+// few, have waited in the socket's buffer for 15 s while it handed no more to
+// the operating system, the connection is closed, which ends every request on
+// it. The count of bytes handed on is compared, not the length of the socket's
+// buffer, which the next write can refill to the same length. The operating
+// system takes the bytes in bursts, as the client's reads free its buffers,
+// which can hold hundreds of kilobytes, so a client reading a large answer
+// slowly can go 15 s without a burst: on macOS, a client reading a 2.2 MB batch
+// answer at 30 KB/s got all of it, and one at 25 KB/s was closed.
 const STALL_CHECK_MS = 5_000;
 const STALL_LIMIT_MS = 15_000;
 // A backstop on open sockets: connections past it are closed at once.

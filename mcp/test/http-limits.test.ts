@@ -72,10 +72,11 @@ function post(port: number, body: string, extraHeaders = ''): string {
   );
 }
 
-/** A batch of 100 get_checklist calls, whose answer (2.2 MB) is more than the socket buffers hold. */
-const BATCH = JSON.stringify(
-  Array.from({ length: 100 }, (_, i) => ({ jsonrpc: '2.0', id: i + 1, method: 'tools/call', params: { name: 'get_checklist', arguments: { domain: 'image-video' } } })),
-);
+/** A get_checklist call whose answer is about 23 KB. */
+const CHECKLIST_CALL = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_checklist', arguments: { domain: 'image-video' } } };
+
+/** A batch of 100 get_checklist calls, whose answer (2.2 MB) is more than the socket buffers hold on macOS. */
+const BATCH = JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ ...CHECKLIST_CALL, id: i + 1 })));
 
 describe.concurrent('--http limits', () => {
   it('keeps serving while many connections send nothing, and closes connections past 1024 at once', async ({ expect }) => {
@@ -310,31 +311,54 @@ describe.concurrent('--http limits', () => {
     }
   });
 
-  it('closes a connection whose answers the client stops reading after 15-20 s, which frees their slots', async ({ expect }) => {
+  // Answers smaller than the socket's 64 KiB high-water mark: once the operating system's buffers
+  // are full, the one being written waits in the socket's buffer below the mark, where Node never
+  // sets writableNeedDrain. How many answers those buffers take differs between systems (about 24
+  // of these on macOS), and each one they take gives its slot back, so stalled uploads take the
+  // slots the connection doesn't hold. The client writes an empty line every second, so it sees
+  // the close as a reset.
+  it('closes a connection whose answers the client stops reading, however small they are, which frees their slots', { timeout: 90_000 }, async ({ expect }) => {
     const server = await startHttp();
     const host = { host: `127.0.0.1:${server.port}` };
-    // A batch whose answer (2.2 MB) is more than the socket buffers hold, then 127 tools/list
-    // behind it on the same connection, all sent at once: the one connection takes every slot.
+    const held: Held[] = [];
+    const admitted = () => held.filter((h) => /^HTTP\/1\.1 100 Continue\r\n\r\n$/.test(h.text)).length;
+    const body = JSON.stringify(CHECKLIST_CALL);
+    expect(Buffer.byteLength((await send(server.port, host, { body })).body)).toBeLessThan(60_000);
     const sock = connect(server.port, '127.0.0.1');
+    let closedAt: number | undefined;
     sock.on('error', () => {});
+    sock.on('close', () => (closedAt = Date.now()));
     sock.pause(); // never reads
+    const crlf = setInterval(() => sock.writable && sock.write('\r\n'), 1_000);
     try {
       await new Promise((resolve) => sock.once('connect', resolve));
       const started = Date.now();
-      sock.write(post(server.port, BATCH) + post(server.port, TOOLS_LIST).repeat(127));
+      // As many requests as fit in one read of the socket, so the server has them all before it
+      // stops reading: a request cut in two would be closed by the 10 s header timeout instead.
+      const request = post(server.port, body);
+      sock.write(request.repeat(Math.floor(60_000 / Buffer.byteLength(request))));
       await sleep(2_000);
+      for (let i = 0; i < 128; i++) await holdUpload(server.port, held);
+      await sleep(300);
+      const left = 128 - admitted();
+      expect(left, 'the operating system took every answer, so the connection holds no slot').toBeGreaterThan(0);
       expect((await send(server.port, host)).status).toBe(503);
-      let status = 503;
-      while (status === 503 && Date.now() - started < 30_000) {
-        await sleep(500);
-        status = (await send(server.port, host)).status;
-      }
-      const seconds = (Date.now() - started) / 1000;
-      expect(status, `slots still held after ${seconds} s`).toBe(200);
+      // 15-20 s after the answer stopped moving. On macOS the operating system has been seen to take
+      // one more answer about 5 s in, which starts the 15 s again.
+      await waitFor(() => closedAt !== undefined, () => `still open after ${(Date.now() - started) / 1000} s`, 30_000);
+      const seconds = (closedAt! - started) / 1000;
       expect(seconds).toBeGreaterThanOrEqual(14);
-      expect(seconds).toBeLessThan(25);
+      expect(seconds).toBeLessThan(30);
+      // The slots it held are free: as many uploads are admitted, while the first ones, which
+      // started 2 s in, still wait for the 30 s request timeout.
+      await sleep(300);
+      for (let i = 0; i < left; i++) await holdUpload(server.port, held);
+      await sleep(300);
+      expect(admitted()).toBe(128);
     } finally {
+      clearInterval(crlf);
       sock.destroy();
+      for (const { sock: upload } of held) upload.destroy();
       server.proc.kill('SIGTERM');
     }
   });
