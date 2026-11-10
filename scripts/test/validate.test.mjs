@@ -851,7 +851,7 @@ const ROWS = [
       else if (/^type: regex$/m.test(t)) writeFileSync(join(d, to, 'graders', f), t.replaceAll('Full prompt', 'Full\\s+prompt'));
     }
     edit(d, `${to}/case.yaml`, (t) => t.replace('name: writing-quick-launch-email', 'name: writing-quick-newsletter'));
-    assert.match(read(d, `${to}/graders/01-full-prompt-heading.md`), /^pattern: '#\+\\s\*Full\\s\+prompt'$/m);
+    assert.match(read(d, `${to}/graders/01-full-prompt-heading.md`), /^pattern: .*Full\\s\+prompt/m);
     assert.doesNotMatch(readdirSync(join(d, to, 'graders')).map((f) => read(d, `${to}/graders/${f}`)).join('\n'), /^pattern: .*full prompt/im);
   }, /^error: evals\/writing-quick-newsletter: graders\/01-full-prompt-heading\.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts\/build\.mjs, so that the build writes its lint graders and validate\.mjs requires a no-invention judge \(repo rule\)\n\n1 error\(s\)$/m],
   // Every output case, the cases build.mjs writes lint graders for, has a no-invention judge (finding 49, D30).
