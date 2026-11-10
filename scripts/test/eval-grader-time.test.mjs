@@ -12,12 +12,17 @@
 // machine slows a linear pattern in every try, though: some linear menu graders took about 400 ms
 // in JavaScriptCore at a load of 4, and over 1,000 ms at loads of 10 and more, which failed the
 // leg (step 1e). So a slow pattern fails only when its time doesn't grow linearly with the
-// reply's length: the best of three tries on the reply, taken in turns with three on its first
-// half so that both see the same load, must be 1.3 to 3 times the best on the half (2 for linear
-// growth, 4 for quadratic). JavaScriptCore can take as long on the half as on the whole, as it
-// did on the menu graders without their {0,200} bound, and that fails too. A time over ten times
-// LIMIT_MS, on the reply or on its half, fails without the growth test. Graders that share a
-// pattern and flags are timed once. No model calls.
+// reply's length, judged from three tries each on a quarter, a half and all of the reply, taken
+// in turns so that the three lengths see the same loads, by the median time of each length. It
+// fails when both doublings of the length take more than 2.8 times as long (2 for linear growth,
+// 4 for quadratic), or when the whole reply takes less than 1.5 times as long as its quarter, as
+// JavaScriptCore did on the menu graders without their {0,200} bound. A jump at one doubling
+// alone doesn't fail: Bun's times jumped from about 20 ms to 1 s between two lengths of a linear
+// shape. Until step 1e's B2.2.5 the best try on the half and on the whole decided, and one quiet
+// moment during a try on the half failed linear patterns under a changing load. A time over ten
+// times LIMIT_MS fails without the growth test. The JavaScriptCore leg runs the shapes on which
+// linear patterns take hundreds of milliseconds there with fewer repeats, given after the
+// shape's repeats. Graders that share a pattern and flags are timed once. No model calls.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -50,7 +55,11 @@ for (const c of readdirSync(EVALS).sort()) {
 }
 const PATTERNS = [...byPattern.values()].map((p) => ({ ...p, name: p.ids.length > 1 ? `${p.ids[0]} (and ${p.ids.length - 1} more)` : p.ids[0] }));
 
-// [label, prefix, piece, repeats]: the reply is the prefix, then the piece repeated.
+// [label, prefix, piece, repeats, repeats in JavaScriptCore]: the reply is the prefix, then the
+// piece repeated. The last is given for the shapes on which linear patterns took 0.4 to 0.8 s in
+// macOS's jsc at a load of about 10 (step 1e, B2.2.5). With those repeats, the slow patterns that
+// each of these shapes was made for still took from 1.7 s to over a minute there at loads of 15
+// to 22, and V8 runs the full repeats.
 const SHAPES = [
   // An unanchored search that starts with #+ reads the rest of the run from every # of it
   // (B1.2.1): 35 graders, among them every Full prompt heading check, took seconds at 40,000.
@@ -58,7 +67,7 @@ const SHAPES = [
   ['a line, then a run of #', 'x\n', '#', 40_000],
   // A region that runs from a Full prompt heading to the next heading that starts a line, when
   // every later heading starts mid-line (B1.2.2): each heading read to the end of the reply.
-  ['Full prompt headings after [[', '', '# Full prompt\n[[', 6_000],
+  ['Full prompt headings after [[', '', '# Full prompt\n[[', 6_000, 3_000],
   // [^\]\n]* read from every [[ to the end of the line (B1.2.2).
   ['one line of [[x under a Full prompt heading', '# Full prompt\n', '[[x', 15_000],
   // [\s\S]*What next\? and [\s\S]*?What next\? read the rest of the reply from every What next?;
@@ -68,8 +77,8 @@ const SHAPES = [
   // slow on the first three.
   ['What next? repeated', '', 'What next?', 13_000],
   ['one line of Done options after What next?', 'What next?', ' 1. Done', 5_000],
-  ['one line of a)', '', 'a) ', 43_000],
-  ['| Clear goal | repeated', '', '| Clear goal |', 9_000],
+  ['one line of a)', '', 'a) ', 43_000, 20_000],
+  ['| Clear goal | repeated', '', '| Clear goal |', 9_000, 4_500],
   ['one line of --ar 1:1 under a Full prompt heading', '### Full prompt\n```text\nx', ' --ar 1:1', 5_000],
   // The aspect-ratio graders read --no's list one word at a time after the --ar (step 1e).
   ['a long --no list under a Full prompt heading', '### Full prompt\n```text\nx --ar 1:1 --no', ' a', 40_000],
@@ -84,8 +93,8 @@ const SHAPES = [
   // reads all 200 at every bulleted option on one line; the next numbered option stops it sooner.
   // Without the bound it read the rest of the line from each option (step 1e, B1.2.11). The ★
   // before What next? keeps V8 from returning at once, as it did on a reply with no ★ at all.
-  ['one line of bulleted Run it now options, after a ★', '★ What next? Refine', ' - Run it now', 8_000],
-  ['one line of bulleted Done options, after a ★', '★ What next? Refine', ' - Done', 10_000],
+  ['one line of bulleted Run it now options, after a ★', '★ What next? Refine', ' - Run it now', 8_000, 2_500],
+  ['one line of bulleted Done options, after a ★', '★ What next? Refine', ' - Done', 10_000, 3_000],
   // A run of spaces or tabs on a line under a Full prompt heading: in JavaScriptCore, the menu
   // graders' lookbehinds before an open placeholder's [[ read the run back from every place in it,
   // until they first looked for the [[ (step 1e, B2.1.1). V8 was fast.
@@ -99,13 +108,14 @@ const SHAPES = [
   ["a run of tabs on the Full prompt's fenced line", '### Full prompt\n```text\nx', '\t', 3_000],
   ["single-dash words on the Full prompt's fenced line", '### Full prompt\n```text\nx', ' -a', 8_000],
 ];
-// The reply of a shape, and its first half.
-const replies = ([, prefix, piece, n]) => [prefix + piece.repeat(n), prefix + piece.repeat(Math.ceil(n / 2))];
+// The reply of a shape with n repeats, and its first half and quarter.
+const replies = (prefix, piece, n) => [n, Math.ceil(n / 2), Math.ceil(n / 4)].map((k) => prefix + piece.repeat(k));
 
 // Whether a pattern is slow on a reply, from time(s), which times it on s: '' when it isn't, else
-// what was measured. Both legs run it; the JavaScriptCore one as source text, so it is plain
-// JavaScript that the jsc shell and Bun both read.
-function slowness(time, full, half, limit) {
+// what was measured. half and quarter are the reply's first half and quarter. Both legs run it;
+// the JavaScriptCore one as source text, so it is plain JavaScript that the jsc shell and Bun both
+// read.
+function slowness(time, full, half, quarter, limit) {
   var ms = 0;
   for (var k = 0; k < 3; k++) {
     ms = time(full);
@@ -113,16 +123,22 @@ function slowness(time, full, half, limit) {
   }
   if (ms < limit) return '';
   if (ms > 10 * limit) return Math.round(ms) + ' ms';
-  var bestFull = ms, bestHalf = Infinity;
+  // Three rounds over the three lengths, the second in reverse order, so that a load that rises or
+  // falls during the rounds reaches each length alike.
+  var texts = [quarter, half, full], names = ['a quarter of', 'half', 'all of'], t = [[], [], []];
   for (var r = 0; r < 3; r++) {
-    var h = time(half);
-    if (h > 10 * limit) return Math.round(ms) + ' ms, and ' + Math.round(h) + ' ms on half the reply';
-    bestHalf = Math.min(bestHalf, h);
-    if (r > 0) bestFull = Math.min(bestFull, time(full));
+    for (var i = 0; i < 3; i++) {
+      var j = r === 1 ? 2 - i : i, x = time(texts[j]);
+      if (x > 10 * limit) return Math.round(x) + ' ms on ' + names[j] + ' the reply';
+      t[j].push(x);
+    }
   }
-  var growth = bestFull / bestHalf;
-  if (bestFull < limit || (growth >= 1.3 && growth <= 3)) return '';
-  return Math.round(bestFull) + ' ms, ' + growth.toFixed(1) + ' times its time on half the reply';
+  // The median of each length, and at least 1 ms, so that a length that took no time divides.
+  var m = t.map(function (a) { return Math.max(1, a.sort(function (a1, a2) { return a1 - a2; })[1]); });
+  if (m[2] < limit) return '';
+  var superLinear = m[1] / m[0] > 2.8 && m[2] / m[1] > 2.8, flat = m[2] < 1.5 * m[0];
+  if (!superLinear && !flat) return '';
+  return Math.round(m[2]) + ' ms, ' + Math.round(m[1]) + ' ms on half the reply and ' + Math.round(m[0]) + ' ms on a quarter';
 }
 
 test('the timing test reads the regex graders', () => {
@@ -133,30 +149,40 @@ test('the timing test reads the regex graders', () => {
 // grow linearly with the reply's length (step 1e: at loads of 10 and more, the JavaScriptCore leg
 // failed linear menu graders that took about 400 ms at a load of 4).
 test('a slow pattern fails only when its time does not grow linearly, so a busy machine fails no linear one', () => {
-  // time(s) for a pattern that takes full ms on the reply and half ms on its first half.
-  const times = (full, half) => (s) => (s === 'full' ? full : half);
-  const verdict = (full, half) => slowness(times(full, half), 'full', 'half', 1_000);
-  assert.equal(verdict(300, 150), '', 'fast');
-  assert.equal(verdict(1_500, 750), '', 'linear, on a busy machine');
-  assert.equal(verdict(2_400, 1_500), '', 'linear, with a fixed part');
-  assert.match(verdict(4_000, 1_000), /^4000 ms, 4\.0 times its time on half the reply$/, 'quadratic');
-  // JavaScriptCore can be as slow on half the reply as on all of it, as it was on some menu
+  // time(s) for a pattern whose tries on the reply, its half and its quarter take the times listed
+  // for each, in turn; the last one again once the list runs out.
+  const replay = (series) => {
+    const at = { full: 0, half: 0, quarter: 0 };
+    return (s) => series[s][Math.min(at[s]++, series[s].length - 1)];
+  };
+  const verdict = (full, half, quarter) => slowness(replay({ full, half, quarter }), 'full', 'half', 'quarter', 1_000);
+  assert.equal(verdict([300], [150], [75]), '', 'fast');
+  assert.equal(verdict([1_500], [750], [375]), '', 'linear, on a busy machine');
+  assert.equal(verdict([2_400], [1_500], [1_050]), '', 'linear, with a fixed part');
+  assert.equal(verdict([4_000], [1_000], [250]), '4000 ms, 1000 ms on half the reply and 250 ms on a quarter', 'quadratic');
+  assert.equal(verdict([4_000, 4_100, 4_050, 4_020], [1_000, 1_020, 990], [250, 600, 240]), '4050 ms, 1000 ms on half the reply and 250 ms on a quarter', 'quadratic, with a slow try on the quarter');
+  // JavaScriptCore can be as slow on part of the reply as on all of it, as it was on some menu
   // patterns without their {0,200} bound.
-  assert.match(verdict(5_000, 5_000), /1\.0 times/, 'as slow on half the reply');
-  assert.match(verdict(40_000, 20_000), /^40000 ms$/, 'far over the limit: no growth test');
-  assert.match(verdict(5_000, 40_000), /^5000 ms, and 40000 ms on half the reply$/, 'far over the limit on half the reply');
-  // As before, one try under the limit is enough, and so is one at full length during the growth test.
-  let n = 0;
-  assert.equal(slowness((s) => (s === 'full' ? (n++ === 1 ? 900 : 1_500) : 100), 'full', 'half', 1_000), '', 'one fast try');
-  n = 0;
-  assert.equal(slowness((s) => (s === 'full' ? (n++ < 3 ? 1_500 : 900) : 100), 'full', 'half', 1_000), '', 'fast again during the growth test');
+  assert.match(verdict([5_000], [5_000], [5_000]), /^5000 ms, 5000 ms on half/, 'as slow on a quarter of the reply');
+  assert.match(verdict([40_000], [20_000], [10_000]), /^40000 ms$/, 'far over the limit: no growth test');
+  assert.equal(verdict([5_000], [40_000], [100]), '40000 ms on half the reply', 'far over the limit on half the reply');
+  // The tries on the reply and its half behind a failure of the JavaScriptCore leg at 5b9758d, at
+  // a load of 24 to 32 (step 1e, B2.2.5): the old rule's best tries, 1,004 ms and 295 ms, gave 3.4
+  // times. The quarter's times are about half the half's, as for the linear pattern it was.
+  assert.equal(verdict([1_120, 1_050, 1_080, 1_004, 1_090, 1_080], [295, 430, 450], [215, 230, 150]), '', 'linear, under a changing load');
+  // Bun's time on a linear shape jumped from about 20 ms to 1 s between two of its lengths.
+  assert.equal(verdict([1_034], [21], [10]), '', 'a jump at one doubling');
+  assert.equal(verdict([1_034], [900], [10]), '', 'a jump at the other doubling');
+  // As before, one try under the limit is enough, and so is a median under it during the growth test.
+  assert.equal(verdict([1_500, 900, 1_500], [100], [50]), '', 'one fast try');
+  assert.equal(verdict([1_500, 1_500, 1_500, 900, 1_500, 900], [100], [50]), '', 'fast again during the growth test');
 });
 
 test('every regex grader takes linear time on long repeated replies (V8)', () => {
   const run = new vm.Script("s.match(new RegExp(p, f.includes('g') ? f : f + 'g')); new RegExp(p, f).test(s)");
   const slow = [];
-  for (const shape of SHAPES) {
-    const [full, half] = replies(shape);
+  for (const [label, prefix, piece, n] of SHAPES) {
+    const [full, half, quarter] = replies(prefix, piece, n);
     for (const { name, pattern, flags } of PATTERNS) {
       // A try stops at ten times the limit, which fails the pattern anyway.
       const time = (s) => {
@@ -169,8 +195,8 @@ test('every regex grader takes linear time on long repeated replies (V8)', () =>
         }
         return performance.now() - t0;
       };
-      const found = slowness(time, full, half, LIMIT_MS);
-      if (found) slow.push(`${name} on ${shape[0]}: ${found}`);
+      const found = slowness(time, full, half, quarter, LIMIT_MS);
+      if (found) slow.push(`${name} on ${label}: ${found}`);
     }
   }
   assert.deepEqual(slow, []);
@@ -186,9 +212,10 @@ test('every regex grader takes linear time on long repeated replies (JavaScriptC
     writeFileSync(file, `var P = ${JSON.stringify(PATTERNS)}, S = ${JSON.stringify(SHAPES)}, LIMIT = ${LIMIT_MS};
 var now = typeof preciseTime === 'function' ? function () { return preciseTime() * 1000; } : function () { return performance.now(); };
 var say = typeof print === 'function' ? print : function (x) { console.log(x); };
+var replies = ${replies};
 ${slowness}
 for (var i = 0; i < S.length; i++) {
-  var full = S[i][1] + S[i][2].repeat(S[i][3]), half = S[i][1] + S[i][2].repeat(Math.ceil(S[i][3] / 2));
+  var texts = replies(S[i][1], S[i][2], S[i][4] || S[i][3]);
   for (var j = 0; j < P.length; j++) {
     var p = P[j];
     say('RUN\\t' + p.name + ' on ' + S[i][0]);
@@ -197,7 +224,7 @@ for (var i = 0; i < S.length; i++) {
       s.match(new RegExp(p.pattern, p.flags.indexOf('g') >= 0 ? p.flags : p.flags + 'g'));
       new RegExp(p.pattern, p.flags).test(s);
       return now() - t0;
-    }, full, half, LIMIT);
+    }, texts[0], texts[1], texts[2], LIMIT);
     if (found) say('SLOW\\t' + p.name + ' on ' + S[i][0] + '\\t' + found);
   }
 }
