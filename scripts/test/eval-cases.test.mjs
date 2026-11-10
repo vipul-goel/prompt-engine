@@ -1314,3 +1314,27 @@ test('the text no-invention rubrics cover a number only with an item that states
     if (existsSync(prompt)) assert.doesNotMatch(readFileSync(prompt, 'utf8'), /\bguests?\b/i, c);
   }
 });
+
+// The three remote-work cases resume one recorded question round. Its answer 7, "None. Write for
+// the reader first", declines an SEO keyword, which only its question, "SEO keyword?", says. So
+// every rubric that quotes the answer quotes the question on its line: 05 checks that the prompt
+// states the declining ★ (D33), and 06 that an Assumptions item doesn't present it as a default.
+// deep's 04 fails a round that asks one of the seven questions again, so it quotes all seven
+// (step 1e, B1.1.4).
+test("the rubrics that quote answer 7 quote its question too, and deep's 04 quotes all seven questions", () => {
+  const cases = ['followup-ok-accepts-recommendations', 'followup-partial-answers', 'followup-deep-second-round'];
+  const round = recordedReply(cases[0]);
+  for (const c of cases) assert.equal(recordedReply(c), round, `${c} resumes the same round`);
+  const questions = [...round.matchAll(/^\d\. \*\*([^*\n]+)\*\*$/gm)].map((m) => m[1]);
+  assert.equal(questions.length, 7);
+  assert.equal(questions[6], 'SEO keyword?');
+  const answer = '"None. Write for the reader first"';
+  const quoting = cases.flatMap((c) => gradersOf(c).filter((g) => g.body.includes(answer)).map((g) => [`${c}/${g.name}`, g.body]));
+  assert.equal(quoting.length, 7, quoting.map(([n]) => n).join(', '));
+  for (const [name, body] of quoting) {
+    const line = body.split('\n').find((l) => l.includes(answer));
+    assert.ok(line.startsWith(`7. "${questions[6]}": ${answer}`), `${name}: ${line}`);
+  }
+  const deep = graderOf('followup-deep-second-round', '04-further-round').body.split('\n');
+  for (const [i, q] of questions.entries()) assert.ok(deep.some((l) => l.startsWith(`${i + 1}. "${q}": "`)), q);
+});
