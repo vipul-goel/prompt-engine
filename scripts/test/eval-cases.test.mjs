@@ -1629,7 +1629,9 @@ test('the menu graders\' open-placeholder condition stays fast on long runs of #
 // the Full prompt's block holds one line that ends with --ar or --aspect and other parameters.
 // Words are separated by spaces or tabs, so parameters on a line of their own fail, and the match
 // is anchored on the Full prompt's block (in the translated case, the first heading's), so a right
-// Short version doesn't make up for a wrong Full prompt (step 1e, B1.1.7).
+// Short version doesn't make up for a wrong Full prompt (step 1e, B1.1.7). From the first parameter
+// to the end of the line come only parameters, each with at most one value (a list for --no,
+// --sref and --cref) and no comma, so description text after them fails too (step 1e).
 const MIDJOURNEY = [
   ['image-midjourney-quick', ['Full prompt', 'Short version'],
     'cozy log cabin in deep snow at night, two warm amber lit windows, snow-laden pine trees, photorealistic --ar 3:2 --no people text watermark',
@@ -1643,6 +1645,11 @@ const midjourneyReply = ([h1, h2], full, short, fence = '```') => `I wrote a Mid
 // The parameters on a line of their own, and --ar moved after the first phrase.
 const ownLine = (line) => line.replace(/ (--ar .*)$/, '\n$1');
 const midLine = (line) => line.replace(' --ar 3:2', '').replace(/^([^,、]+)([,、])/, '$1 --ar 3:2$2');
+// The description's last phrase moved after the parameters, as the reviewers did with T1's replies
+// (step 1e): "photorealistic" then reads as one more thing for --no to leave out.
+const lastPhraseAfter = (line) => line.replace(/([,、])([^,、]+?) (--ar .*)$/, ' $3$1$2');
+// --ar and another parameter in the middle of the description.
+const paramsMidLine = (line) => line.replace(/ --ar .*$/, '').replace(/^([^,、]+)([,、])/, '$1 --ar 3:2 --v 7$2');
 test('the Midjourney aspect-ratio graders want the parameters at the end of the Full prompt\'s one line', () => {
   for (const [c, headings, full, short] of MIDJOURNEY) {
     const g = graderOf(c, '01-aspect-ratio-parameter');
@@ -1653,6 +1660,9 @@ test('the Midjourney aspect-ratio graders want the parameters at the end of the 
       'a four-backtick fence': reply(full, short, '````'),
       '--aspect': reply(full.replace('--ar', '--aspect')),
       'no Short version': reply(full, null),
+      'more parameters, with and without a value': reply(full.replace('--no people text watermark', '--style raw --v 7.1 --stylize 250 --tile').replace('--no 人 文字 透かし', '--style raw --v 7.1 --stylize 250 --tile')),
+      'a parameter before --ar': reply(full.replace('--ar 3:2', '--v 7 --ar 3:2')),
+      'two style references': reply(`${full} --sref https://example.com/a.png https://example.com/b.png`),
     })) assert.ok(regexPasses(g, text), `${c}: ${name}`);
     for (const [name, text] of Object.entries({
       'Full prompt: --ar mid-line, Short version right': reply(midLine(full)),
@@ -1661,7 +1671,13 @@ test('the Midjourney aspect-ratio graders want the parameters at the end of the 
       'Full prompt: a second line after the parameters': reply(`${full}\nmore details`),
       'Full prompt: a trailing comma': reply(`${full},`),
       'Full prompt: no parameters, Short version right': reply(full.replace(/ --ar .*$/, '')),
+      'Full prompt: the last phrase after the parameters': reply(lastPhraseAfter(full)),
+      'Full prompt: --ar and another parameter mid-line': reply(paramsMidLine(full)),
+      'Full prompt: --ar mid-line, and the line also ends with parameters': reply(`${midLine(full)} --v 7`),
+      'Full prompt: a parameter with two values': reply(full.replace('--ar 3:2', '--ar 3:2 --v 7 night')),
     })) assert.equal(regexPasses(g, text), false, `${c}: ${name}`);
+    assert.notEqual(lastPhraseAfter(full), full);
+    assert.notEqual(paramsMidLine(full), full);
     // A long run of # or of headings, and a long line without parameters, stay fast.
     for (const s of [`${'#'.repeat(40_000)}x`, `\n${'#'.repeat(40_000)}x`, '# Full prompt\n'.repeat(3_000), `### ${headings[0]}\n\`\`\`text\n${'a '.repeat(20_000)}\n\`\`\``]) {
       vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });

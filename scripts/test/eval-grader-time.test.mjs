@@ -71,6 +71,8 @@ const SHAPES = [
   ['one line of a)', '', 'a) ', 43_000],
   ['| Clear goal | repeated', '', '| Clear goal |', 9_000],
   ['one line of --ar 1:1 under a Full prompt heading', '### Full prompt\n```text\nx', ' --ar 1:1', 5_000],
+  // The aspect-ratio graders read --no's list one word at a time after the --ar (step 1e).
+  ['a long --no list under a Full prompt heading', '### Full prompt\n```text\nx --ar 1:1 --no', ' a', 40_000],
   // A run of spaces after a full stop, which an ask check read in two parts (B1.1.8), and the
   // lead-ins that the ask checks accept before a verb.
   ['spaces after a full stop', 'x.', ' ', 40_000],
