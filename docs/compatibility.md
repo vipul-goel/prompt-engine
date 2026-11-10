@@ -63,7 +63,7 @@ The full suite's eight failures were all the skill's, not the graders': the Span
 | `video-veo-quick` | 1/3 | 0/3 | 0/3 (ec57909) | The negative prompt and settings now have their own blocks; small added details, such as soft shadows, missing from Assumptions |
 | `followup-ok-accepts-recommendations` | 0/3 | 1/3 | 2/3 (ec57909) | Once, an accepted answer left out of the prompt |
 | `followup-partial-answers` | 1/3 | 0/3 | 1/3 (ec57909) | An accepted answer left out of the prompt once, and listed under Assumptions once |
-| `critique-opens-with-gaps` | 2/3 | — | 2/3 (f54bcdf) | Once, the gaps came as a list |
+| `critique-opens-with-gaps` | 2/3 | — | 2/3 (f54bcdf) | Once, the opening line named the gaps and then added a second sentence; 2 of 3 judge votes failed it |
 | `strong-prompt-minimal-changes` | 2/3 | — | 2/3 (f54bcdf) | Once, the judge failed the reply's first line or layout |
 | `secret-redaction-quick` | 0/1 | — | 2/3 (b8c9328) | Once, a count (an overview of 3-5 bullets) missing from Assumptions |
 

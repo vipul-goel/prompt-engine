@@ -1389,6 +1389,22 @@ test('the quick output cases fail a reply that also carries out the prompt, as s
   }
 });
 
+// D2: a critique or what's-missing request opens its question round with one sentence that names
+// the biggest gaps. SKILL.md: "open the question round with one sentence, not a list"; output-
+// format.md: "That line is one sentence, not a list". The two judges check that unit, so a second
+// sentence on the opening line gets one verdict (step 1e, B1.1.10).
+test('the gap-line judges check one sentence, as the method asks', () => {
+  const skill = join(EVALS, '..', 'skills', 'prompt-engine');
+  assert.ok(readFileSync(join(skill, 'SKILL.md'), 'utf8').includes('open the question round with one sentence, not a list, naming the biggest gaps'));
+  assert.ok(readFileSync(join(skill, 'references', 'output-format.md'), 'utf8').includes('That line is one sentence, not a list'));
+  for (const c of ['critique-opens-with-gaps', 'whats-missing-opens-with-gaps']) {
+    const body = graderOf(c, '01-gap-line-first').body;
+    assert.ok(body.includes("PASS if the reply opens with one sentence, not a list, that names the prompt's biggest gaps"), c);
+    assert.ok(body.includes('if the comments on the prompt take more than one sentence, such as a second sentence, a list of gaps, a paragraph for each gap or a score'), c);
+    assert.doesNotMatch(body, /\bone line that names\b|more than one line\b/, c);
+  }
+});
+
 const NUMBER_RULE = "A number is covered only when an item states it: an item that names what the number measures, such as 'a guest list', doesn't cover '40 guests'.";
 test('the text no-invention rubrics cover a number only with an item that states it (D30)', () => {
   const media = new Set(MEDIA_RUBRICS.map(([c, g]) => `${c}/${g}`));
