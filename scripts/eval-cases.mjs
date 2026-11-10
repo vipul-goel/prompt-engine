@@ -721,9 +721,12 @@ export function checkSuiteRules(root, cases, err) {
     if (s.tags.includes('trigger')) {
       const skill = c.graders.filter((g) => g.data.type === 'tool_used' && g.data.tool === 'Skill');
       if (!skill.length) err(`${c.dir}: a case tagged trigger needs a tool_used grader on Skill (repo rule)`);
-      // checkGrader reports an arm value other than with-only or both.
+      // checkGrader reports an arm value other than with-only or both, and min: 0 without max. A
+      // range of calls that holds both 0 and 1, min: 0 with a max of 1 or more, passes whether the
+      // skill starts or not.
       for (const g of skill) {
         if (g.data.arm === undefined || g.data.arm === 'with-only') err(`${g.file}: a trigger case's Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)`);
+        if (g.data.min === 0 && whole(g.data.max, 1, Infinity)) err(`${g.file}: min: 0 with a max above 0 passes whether the skill starts or not; use min of 1 or more to check that it starts, or max: 0 to check that it doesn't (repo rule)`);
       }
     }
     // Every case pins the agent under test, and all pin the same one, so the scores of a run

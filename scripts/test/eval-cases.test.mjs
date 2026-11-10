@@ -750,6 +750,25 @@ test('checkSuiteRules wants a trigger case\'s tool_used grader on Skill, not on 
   assert.deepEqual(errors, ['evals/read-only: a case tagged trigger needs a tool_used grader on Skill (repo rule)']);
 });
 
+// claude plugin eval passes a tool_used grader when the calls number from min (1 when unset) to max
+// (no limit when unset). In a trigger case, a range that holds both 0 and 1 call, min: 0 with a max
+// of 1 or more, passes whether the skill starts or not. checkGrader names min: 0 without max.
+test('checkSuiteRules refuses a trigger case\'s Skill grader that passes whether the skill starts or not', () => {
+  const trigger = (name, range) => ({ [`evals/${name}/prompt.md`]: promptMd('tags: [trigger]\n'), [`evals/${name}/graders/01-skill.md`]: SKILL_CHECK(`${range}arm: both\n`) });
+  const { schema, errors } = rules({
+    ...trigger('zero-to-one', 'min: 0\nmax: 1\n'),
+    ...trigger('zero-to-fifty', 'min: 0\nmax: 50\n'),
+    ...trigger('starts', ''),
+    ...trigger('starts-once', 'min: 1\nmax: 1\n'),
+    ...trigger('never', 'min: 0\nmax: 0\n'),
+    // Outside a trigger case, "at most one call" is a check like any other.
+    'evals/smoke/prompt.md': promptMd('tags: [smoke]\n'),
+    'evals/smoke/graders/01-skill.md': SKILL_CHECK('min: 0\nmax: 1\n'),
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, ['fifty', 'one'].map((n) => `evals/zero-to-${n}/graders/01-skill.md: min: 0 with a max above 0 passes whether the skill starts or not; use min of 1 or more to check that it starts, or max: 0 to check that it doesn't (repo rule)`));
+});
+
 test('checkSuiteRules reads tags as claude plugin eval does: prompt.md\'s, else case.yaml\'s', () => {
   const caseYaml = (name) => `schema_version: "1.1"\nname: ${name}\ntags: [trigger]\nexecution:\n  model: ${MODEL}\n`;
   const { schema, errors } = rules({
