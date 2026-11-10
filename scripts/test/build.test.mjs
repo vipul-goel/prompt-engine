@@ -475,6 +475,16 @@ test('refreshing skill text with a long run of spaces inside it is fast', () => 
   assert.ok(performance.now() - t0 < 2_000, `${Math.round(performance.now() - t0)} ms`);
 });
 
+// A typed command's arguments are found with indexOf: a lazy pattern tried the rest of the text
+// from each <command-args> that nothing closed, which took quadratic time, several seconds at
+// 500,000 characters.
+test('refreshing a typed command with a long run of unclosed <command-args> tags is fast', () => {
+  const typed = JSON.stringify({ type: 'user', message: { role: 'user', content: `<command-name>/prompt-engine</command-name>\n${'<command-args>x '.repeat(32_000)}` } });
+  const t0 = performance.now();
+  assert.equal(refreshHistory(typed, 'BODY', () => undefined), typed);
+  assert.ok(performance.now() - t0 < 2_000, `${Math.round(performance.now() - t0)} ms`);
+});
+
 test('the old body\'s trailing white space is kept', () => {
   const once = refresh(variant(`${HEAD}${OLD_BODY}\n\n`, undefined));
   assert.equal(skillText(once), `${HEAD}${body}\n\n`);

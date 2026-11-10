@@ -739,9 +739,38 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // A heading as the method writes it: "### Full prompt". It starts at the first # of a run, which
 // gives the same answers: tried from each # of a long run, it took quadratic time.
 const headingRe = (h) => new RegExp(`(?<!#)#+[ \\t]*${esc(h)}`);
-// The text of the fenced block right after a heading, closed by a fence as long as its opener;
-// null when no fenced block follows the heading.
-const fencedAfter = (text, h) => text.match(new RegExp(`(?<!#)#+[ \\t]*${esc(h)}[^\\n]*\\n\\s*(\`{3,})[^\\n]*\\n([\\s\\S]*?)\\n\\1[ \\t]*(?:\\n|$)`))?.[2] ?? null;
+// The text of the fenced block right after a heading, closed by a line of as many backticks as its
+// opener has (and spaces or tabs); null when no fenced block follows the heading. The pattern this
+// replaces also read the opener as a shorter run of three or more of its backticks, so the whole run
+// is tried first, then each shorter one. It tried the rest of the text from each heading whose fence
+// had no closing line, which took quadratic time on a run of such headings, and on a long run of
+// backticks with no line break after it. Here the fence lines are found in one pass, and each length
+// is looked for once: a length with no closing line after one heading has none after a later one. A
+// heading later on the same line has the same block.
+const fencedAfter = (text, h) => {
+  const heading = new RegExp(`(?<!#)#+[ \\t]*${esc(h)}[^\\n]*\\n\\s*(?=(\`{3,}))\\1[^\\n]*\\n`, 'g');
+  let fences = null; // backticks in a fence line -> where the line break before each such line is
+  const passed = new Map(); // backticks -> how many of those lines come before the block looked at
+  for (let m; (m = heading.exec(text)); heading.lastIndex = text.indexOf('\n', m.index) + 1) {
+    const start = m.index + m[0].length;
+    if (fences === null) {
+      fences = new Map();
+      for (const f of text.matchAll(/\n(`{3,})[ \t]*(?=\n|$)/g)) {
+        const at = fences.get(f[1].length);
+        if (at) at.push(f.index);
+        else fences.set(f[1].length, [f.index]);
+      }
+    }
+    for (let n = m[1].length; n >= 3; n--) {
+      const at = fences.get(n) ?? [];
+      let i = passed.get(n) ?? 0;
+      while (i < at.length && at[i] < start) i++;
+      passed.set(n, i);
+      if (i < at.length) return text.slice(start, at[i]);
+    }
+  }
+  return null;
+};
 // Quoted text and the text it is looked up in, in one form: NFKC, dashes as -, no ` or * (code
 // and emphasis marks), curly quotes straight, each run of white space as one space, lowercase.
 const normalizeQuote = (s) => s.normalize('NFKC').replace(/[\u{2010}-\u{2015}\u{2212}]/gu, '-').replace(/[`*]/g, '')
@@ -788,10 +817,59 @@ const criteriaOf = (g) => (g.data.type === 'llm' ? g.data.criteria ?? (g.body !=
 // "The user's entire request", and quotes in single quotes aren't read (CONTRIBUTING.md says so).
 // Another quotation mark (« », ‹ ›, „, 「 or 『) between the phrase and the double quotes makes the
 // phrase unreadable: the request quoted in that mark was passed over for a later double-quoted word.
-const ORIGINAL_PROMPT = /<original_prompt>([\s\S]*?)<\/original_prompt>/gi;
 const ORIGINAL_PROMPT_OPEN = /<original_prompt>/gi;
-const WHOLE_REQUEST = /The\s+user['\u{2018}\u{2019}\u{2BC}]s\s+whole\s+request\b[^"\u{201C}\u{AB}\u{BB}\u{2039}\u{203A}\u{201E}\u{300C}\u{300E}\n]*["\u{201C}]([^"\u{201D}\n]+)["\u{201D}]/giu;
 const WHOLE_REQUEST_MARK = /The\s+user['\u{2018}\u{2019}\u{2BC}]s\s+whole\s+request\b/giu;
+// Both forms are read in time in step with the text. Lazy patterns, from an opening tag to its
+// closing tag and from the phrase to the quote after it, tried the rest of the text or line again
+// from each tag or phrase that nothing closed, which took quadratic time on a run of them. The
+// readers below give the same answers. When an opening tag has no closing tag after it, no later one
+// has, so the reading stops there. The phrases before one quotation mark or line break share it,
+// and so do the quotes that open before one ", ” or line break, so each is looked for once.
+const PROMPT_TAG_OPEN = /<original_prompt>/gi;
+const PROMPT_TAG_CLOSE = /<\/original_prompt>/gi;
+// After the phrase, the first quotation mark or line break; after the " or “ that opens the request,
+// the first ", ” or line break.
+const REQUEST_STOP = /["\u{201C}\u{AB}\u{BB}\u{2039}\u{203A}\u{201E}\u{300C}\u{300E}\n]/gu;
+const REQUEST_QUOTE_END = /["\u{201D}\n]/gu;
+// The text in each <original_prompt> block: from an opening tag to the first closing tag after it.
+function originalPrompts(text) {
+  const blocks = [];
+  for (let from = 0; ; from = PROMPT_TAG_CLOSE.lastIndex) {
+    PROMPT_TAG_OPEN.lastIndex = from;
+    if (!PROMPT_TAG_OPEN.exec(text)) return blocks;
+    PROMPT_TAG_CLOSE.lastIndex = PROMPT_TAG_OPEN.lastIndex;
+    const close = PROMPT_TAG_CLOSE.exec(text);
+    if (!close) return blocks;
+    blocks.push(text.slice(PROMPT_TAG_OPEN.lastIndex, close.index));
+  }
+}
+// The quoted request after each "The user's whole request": when the first quotation mark or line
+// break after the phrase is " or “, the text from there to the next ", ” or line break, if that is a
+// quotation mark and the text isn't empty. A phrase inside a quote already found is passed over.
+function wholeRequests(text) {
+  const quotes = [];
+  let resume = 0; // where the last quote found ends
+  let stop = -1; // the first quotation mark or line break after the last phrase
+  let end = -1; // the first ", ” or line break after the last opening quote
+  for (const m of text.matchAll(WHOLE_REQUEST_MARK)) {
+    if (m.index < resume) continue;
+    const after = m.index + m[0].length;
+    if (stop < after) {
+      REQUEST_STOP.lastIndex = after;
+      stop = REQUEST_STOP.exec(text)?.index ?? text.length;
+    }
+    if (text[stop] !== '"' && text[stop] !== '\u{201C}') continue;
+    if (end <= stop) {
+      REQUEST_QUOTE_END.lastIndex = stop + 1;
+      end = REQUEST_QUOTE_END.exec(text)?.index ?? text.length;
+    }
+    if (end > stop + 1 && (text[end] === '"' || text[end] === '\u{201D}')) {
+      quotes.push(text.slice(stop + 1, end));
+      resume = end + 1;
+    }
+  }
+  return quotes;
+}
 // Text in straight or curly double quotes, on one line. Curly quoted text holds no opening curly
 // quote: from each of a long run of unclosed ones, the match ran to the end of the line, which took
 // quadratic time. So in "\u{201C}a \u{201C}b\u{201D}" the quote is "b".
@@ -870,16 +948,15 @@ export function checkConversations(root, cases, { err, contract }) {
       if (typeof criteria !== 'string') continue;
       // A marker that doesn't parse would be skipped without a word: an opening tag without its
       // closing tag, an empty block, or the request's quote on another line or across a line break.
-      const blocks = [...criteria.matchAll(ORIGINAL_PROMPT)];
-      if ((criteria.match(ORIGINAL_PROMPT_OPEN) ?? []).length !== blocks.length || blocks.some((m) => m[1].trim() === '')) err(`${g.file}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`);
-      for (const m of blocks) {
-        const block = m[1].trim();
+      const blocks = originalPrompts(criteria).map((b) => b.trim());
+      if ((criteria.match(ORIGINAL_PROMPT_OPEN) ?? []).length !== blocks.length || blocks.includes('')) err(`${g.file}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`);
+      for (const block of blocks) {
         const place = block === '' ? 'whole' : placeIn(typed, block);
         if (place !== 'whole') err(`${g.file}: the <original_prompt> text ${misplaced(place, source)} (repo rule)`);
       }
-      const requests = [...criteria.matchAll(WHOLE_REQUEST)];
+      const requests = wholeRequests(criteria);
       if ((criteria.match(WHOLE_REQUEST_MARK) ?? []).length !== requests.length) err(`${g.file}: "The user's whole request" isn't followed by the request in quotes on the same line, which validate.mjs can't check (repo rule)`);
-      for (const [, quote] of requests) {
+      for (const quote of requests) {
         const place = placeIn(typed, quote);
         if (place === 'whole') continue;
         err(`${g.file}: the quoted request "${quote}" ${misplaced(place, source)} (repo rule)`);

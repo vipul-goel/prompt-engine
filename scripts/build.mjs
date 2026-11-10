@@ -232,7 +232,15 @@ export function refreshHistory(jsonl, skillBody, readPluginFile) {
     // A typed slash command: "<command-name>/prompt-engine:prompt-engine</command-name>\n<command-args>…</command-args>".
     const typed = typeof content === 'string' ? content
       : Array.isArray(content) ? content.filter((p) => p.type === 'text').map((p) => p.text).join('\n') : '';
-    if (COMMAND_NAME.test(typed)) args = typed.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1] ?? '';
+    // Its arguments run from the first <command-args> to the first </command-args> after it, or are
+    // empty. Found with indexOf: a lazy pattern tried the rest of the text from each <command-args>
+    // that nothing closed, which took quadratic time on a run of them; with no closing tag after the
+    // first one, there is none after a later one either.
+    if (COMMAND_NAME.test(typed)) {
+      const open = typed.indexOf('<command-args>');
+      const close = open < 0 ? -1 : typed.indexOf('</command-args>', open + '<command-args>'.length);
+      args = close < 0 ? '' : typed.slice(open + '<command-args>'.length, close);
+    }
     const parts = Array.isArray(content) ? content : [];
     let changed = false;
     for (const part of parts) {

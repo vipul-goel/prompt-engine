@@ -1261,8 +1261,10 @@ test('checkConversations wants a rubric that judges the answers of the round the
 // The module's patterns take time in step with the text they read. Each input here took quadratic
 // time on one long run of a character: the flow reader's checks of the entry so far, for each # and
 // each quote (about 10 seconds at 400,000 characters), and the trailing punctuation that answerKey
-// drops, in an option and in a rubric's quote (more than a minute at 200,000). Each must finish in
-// under 2 seconds, which leaves room for a busy machine.
+// drops, in an option and in a rubric's quote (more than a minute at 200,000). The rest took
+// quadratic time on a run of an opening tag, phrase or heading that nothing closes, read again from
+// each: 400,000 to 500,000 characters of one took several seconds. Each must finish in under 2
+// seconds, which leaves room for a busy machine.
 const RUN = 200_000;
 const roundWith = (option) => `1. Who will read it?\n   a) ${option} ★ (they decide)\n   b) Employees\n\n${REPLY_LINE}`;
 const FAST = [
@@ -1273,6 +1275,15 @@ const FAST = [
   }))],
   ['a rubric quote with a run of dots inside it', () => histories(recordedCase('dots', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
     '01-answers.md': judge(`The answer "Managers${'.'.repeat(RUN)}x" is used.`),
+  }))],
+  ['"The user\'s whole request" repeated on one line, with no quote', () => histories(recordedCase('phrase', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
+    '01-request.md': judge("The user's whole request ".repeat(RUN / 25)),
+  }))],
+  ['an <original_prompt> tag repeated, never closed', () => histories(recordedCase('tags', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
+    '01-request.md': judge('<original_prompt>x '.repeat(2.5 * RUN / 19)),
+  }))],
+  ['a Full prompt heading and a fence repeated, never closed, in a recorded output', () => histories(recordedCase('fences', [userRow('write the notes'), assistantRow(`${'### Full prompt\n```x\n'.repeat(2 * RUN / 21)}\n### What next?\n3. Save to file: \`out/notes.md\``)], '3', {
+    '01-saved.md': savedFile('Goal'),
   }))],
 ];
 for (const [name, fn] of FAST) {
