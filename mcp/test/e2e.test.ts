@@ -16,12 +16,13 @@ import { PKG, SAMPLE_QUESTIONS, textOf } from './helpers.js';
 
 const TOOLS = ['ask_user', 'check_prompt', 'enhance_prompt', 'get_checklist'];
 
-function stdioClient(era: 'legacy' | 'modern', elicit?: () => ElicitResult, stderr: 'pipe' | 'ignore' = 'ignore') {
+/** `elicit` answers forms; its signal aborts when the server cancels the form's request. */
+function stdioClient(era: 'legacy' | 'modern', elicit?: (signal: AbortSignal) => ElicitResult | Promise<ElicitResult>, stderr: 'pipe' | 'ignore' = 'ignore') {
   const client = new Client(
     { name: 'prompt-engine-e2e', version: '0.0.0' },
     { capabilities: elicit ? { elicitation: { form: {} } } : {}, ...(era === 'modern' ? { versionNegotiation: { mode: 'auto' as const } } : {}) },
   );
-  if (elicit) client.setRequestHandler('elicitation/create', async () => elicit());
+  if (elicit) client.setRequestHandler('elicitation/create', async (_request, ctx) => elicit(ctx.mcpReq.signal));
   const transport = new StdioClientTransport({ command: process.execPath, args: [CLI], stderr });
   return { client, transport };
 }
@@ -119,6 +120,32 @@ describe('stdio', () => {
       }
     });
   }
+
+  // The stdio server has to act on notifications/cancelled, which servers made per HTTP request
+  // ignore (see the stopped-call tests in integration.test.ts), so this checks how cli.ts makes it.
+  it('legacy era: stopping a call cancels its open form, and the server goes on serving', async () => {
+    let opened: (signal: AbortSignal) => void = () => {};
+    const formOpen = new Promise<AbortSignal>((resolve) => (opened = resolve));
+    const { client, transport } = stdioClient('legacy', (signal) => {
+      opened(signal);
+      // No answer until the server cancels the form's request.
+      return new Promise<ElicitResult>((resolve) => signal.addEventListener('abort', () => resolve({ action: 'cancel' }), { once: true }));
+    });
+    await client.connect(transport);
+    try {
+      const stop = new AbortController();
+      const call = client.callTool({ name: 'ask_user', arguments: { questions: SAMPLE_QUESTIONS } }, { signal: stop.signal });
+      const form = await formOpen;
+      const stopped = expect(call).rejects.toThrow('the user stopped the call');
+      stop.abort('the user stopped the call');
+      await stopped;
+      await waitFor(() => form.aborted, () => 'the form was still open 5 s after the call was stopped', 5_000);
+      const { tools } = await client.listTools();
+      expect(tools.map((t) => t.name).sort()).toEqual(TOOLS);
+    } finally {
+      await client.close();
+    }
+  });
 
   it('logs a reason code, never the content, for messages it cannot read', async () => {
     const proc = spawn(process.execPath, [CLI], { stdio: ['pipe', 'pipe', 'pipe'], env: ENV });

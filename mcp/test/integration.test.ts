@@ -11,7 +11,7 @@ import { DOMAINS, REFERENCE_RESOURCES, buildBrief, buildChecklist, buildReferenc
 import { PROMPT_MAX_CHARS } from '../src/check.js';
 import { VERSION } from '../src/generated/content.js';
 import { DEFAULT_INTRO, HEADER_MAX_CHARS, MAX_OPTIONS, MAX_QUESTIONS, NOTES_MAX_CHARS } from '../src/questions.js';
-import { ASK_USER_MAX_CHARS, FORM_WAIT_MS, INSTRUCTIONS, TOOL_NAMES, createServer } from '../src/server.js';
+import { ASK_USER_MAX_CHARS, FORM_WAIT_MS, INSTRUCTIONS, TOOL_NAMES, createServer, type CreateServerOptions } from '../src/server.js';
 import {
   ERAS,
   PKG,
@@ -765,6 +765,73 @@ describe('ask_user with a client that supports form elicitation', () => {
       expect(textOf(result)).toMatch(/timed out/);
     } finally {
       vi.useRealTimers();
+      await conn.close();
+    }
+  });
+
+  // A client that stops a tool call sends notifications/cancelled for it, as the SDK's client does
+  // when the call's signal aborts. On a 2025-era stdio connection the server is then waiting for the
+  // form's answer, for up to FORM_WAIT_MS, so it has to cancel the form's elicitation/create too,
+  // and the host can then close the form. A server made with perRequest, as HTTP serving makes them,
+  // ignores that notification, so cli.ts must not pass it for stdio. The second test shows that such
+  // a server leaves the form open, so the first one tells the two apart.
+  async function stopCallWithFormOpen(server: CreateServerOptions) {
+    let opened: (signal: AbortSignal) => void = () => {};
+    const formOpen = new Promise<AbortSignal>((resolve) => (opened = resolve));
+    const conn = await connectStdioInProcess(
+      'legacy',
+      {
+        elicit: (_form, signal) => {
+          opened(signal);
+          // No answer until the server cancels the form's request.
+          return new Promise<ElicitResult>((resolve) => signal.addEventListener('abort', () => resolve({ action: 'cancel' }), { once: true }));
+        },
+      },
+      server,
+    );
+    try {
+      const stop = new AbortController();
+      const call = conn.client.callTool(ask, { signal: stop.signal });
+      const form = await formOpen;
+      const stopped = expect(call).rejects.toThrow('the user stopped the call');
+      stop.abort('the user stopped the call');
+      await stopped;
+      return { conn, form };
+    } catch (error) {
+      await conn.close();
+      throw error;
+    }
+  }
+
+  /** Whether the signal has aborted, or aborts within ms. */
+  const abortsWithin = (signal: AbortSignal, ms: number) =>
+    signal.aborted
+      ? Promise.resolve(true)
+      : new Promise<boolean>((resolve) => {
+          const timer = setTimeout(() => resolve(false), ms);
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            resolve(true);
+          }, { once: true });
+        });
+
+  it('legacy shim on stdio: stopping the call cancels its open form, and the connection goes on serving', async () => {
+    const { conn, form } = await stopCallWithFormOpen({});
+    try {
+      expect(await abortsWithin(form, 5_000), 'the form was still open 5 s after the call was stopped').toBe(true);
+      expect((await conn.client.listTools()).tools).toHaveLength(TOOL_NAMES.length);
+    } finally {
+      await conn.close();
+    }
+  });
+
+  it('a server made with perRequest, as HTTP serving makes them, leaves that form open', async () => {
+    const { conn, form } = await stopCallWithFormOpen({ perRequest: true });
+    try {
+      // Once a request sent after the cancel is answered, the server has read the cancel.
+      expect((await conn.client.listTools()).tools).toHaveLength(TOOL_NAMES.length);
+      expect(await abortsWithin(form, 200)).toBe(false);
+    } finally {
       await conn.close();
     }
   });
