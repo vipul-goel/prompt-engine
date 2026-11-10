@@ -54,6 +54,12 @@ const has = (re) => (t) => re.test(t);
 // The option prefix that the eval graders' menu checks share, (^|\s)(\d[.)]|[-*•])[ \t]*\**
 // (findings 57 and 58).
 const OPTION = String.raw`(^|\s)(\d[.)]|[-*•])[ \t]*\**`;
+// A starred option's ★, read after its label: on the option's own line, after a note if there is
+// one ("Run it now — try it here ★"), within 200 characters and before the next numbered option on
+// that line, so in "1) Run it now 2) Refine ★" the ★ is option 2's. MENU, STARRED_NOT_FILL and
+// MEDIA_MENU, and the eval graders' menu checks, end each starred option this way (step 1e); in
+// every kept reply the ★ comes right after the label. The bound keeps the time linear.
+export const OPTION_STAR = String.raw`\b(?:(?!\s\d[.)]\s)[^\n★]){0,200}★`;
 // After "What next?": a starred option output-format.md allows, numbered or bulleted, and
 // Refine anywhere after "What next?". It doesn't check that the starred option comes first.
 // This pattern, STARRED_NOT_FILL, MEDIA_MENU and the Save to file check read the menu from the
@@ -62,7 +68,7 @@ const OPTION = String.raw`(^|\s)(\d[.)]|[-*•])[ \t]*\**`;
 // output-format.md marks only the recommended option with ★, so a second ★ after the first
 // "What next?" fails MENU and MEDIA_MENU, and the eval graders' menu checks (step 1e).
 export const ONE_STAR = String.raw`(?!(?:(?!What next\?)[\s\S])*What next\?[^★]*★[^★]*★)`;
-export const MENU = new RegExp(String.raw`^${ONE_STAR}(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★`, 'i');
+export const MENU = new RegExp(String.raw`^${ONE_STAR}(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)${OPTION_STAR}`, 'i');
 // Whether placeholders other than secrets' are open, read from the start of the reply, as
 // (?=FILL_OPEN) or (?!FILL_OPEN): a Fill before running section, up to the next line that starts
 // with #, lists one; or the reply has no "#" Fill before running heading and its Full prompt holds
@@ -90,7 +96,7 @@ export const FILL_OPEN = String.raw`[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before ru
   String.raw`|(?![\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running)(?:(?!(?<!#)#+[ \t]*Full prompt)[\s\S])*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?!${OUTPUT_HEADING})[^\n]*)*?\n(?!${OUTPUT_HEADING})[^\n]*?` +
   String.raw`(?<!(?:such as|e\.g\.,?|for example,?|like|write|leave(?: an?)?|insert|put)[ \t]+\x60?)(?<!\]\]\x60?(?:,|[ \t]+or)[ \t]+\x60?)(?<![\w\])])\[\[(?!placeholders?\]\])(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]`;
 const fillOpen = new RegExp(`^(?:${FILL_OPEN})`, 'i');
-const STARRED_NOT_FILL = new RegExp(String.raw`^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)\**[ \t]*★`, 'i');
+const STARRED_NOT_FILL = new RegExp(String.raw`^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)${OPTION_STAR}`, 'i');
 // The score table, from its first row to its last; the row labels may be bold, as the eval
 // graders' score-table checks accept (finding 60). Read from the first Clear goal row on, as
 // there, which keeps the time linear.
@@ -117,8 +123,8 @@ export const STRUCTURE = [
 // starred Done option, or Fill placeholders ★ while placeholders other than secrets are open
 // (findings 5 and 22; D1). The pattern of image-midjourney-quick's 05 grader.
 export const MEDIA_MENU = new RegExp(String.raw`^${ONE_STAR}(?!(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Run it now)` +
-  String.raw`(?:(?=${FILL_OPEN})(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Fill (in )?(the )?placeholders\**[ \t]*★` +
-  String.raw`|(?!${FILL_OPEN})(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Done\b[^\n]{0,200}★)`, 'i');
+  String.raw`(?:(?=${FILL_OPEN})(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Fill (in )?(the )?placeholders${OPTION_STAR}` +
+  String.raw`|(?!${FILL_OPEN})(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Done${OPTION_STAR})`, 'i');
 export const DONE_NOT_RUN = ['Done ★ (Fill placeholders ★ while placeholders are open), not Run it now', has(MEDIA_MENU)];
 export const QUESTIONS = [
   // A first numbered question; the number may be bold or a heading, as coding-vague 01 accepts

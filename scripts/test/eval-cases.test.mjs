@@ -1569,6 +1569,35 @@ test('the menu graders fail a second ★ in the menu', () => {
   assert.deepEqual(failingRegex(gradersOf(PRIVATE), privateReply({ menu: '1. Run it now ★\n2. Refine ★' })), ['08-what-next-menu']);
 });
 
+// A starred option's ★ may follow a note on the option's own line, as in "Run it now — try it here
+// ★", up to 200 characters on and before the next numbered option on that line, so in "1. Run it
+// now 2. Refine ★" the ★ is option 2's. private-detail-redaction-quick's 08 has read it so since T1;
+// the text and media menu graders and the universal test read it so too (step 1e, B1.2.11).
+test('the menu graders read a ★ after a note on the option\'s line, but not past the next numbered option', () => {
+  const writing = graderOf('writing-quick-launch-email', '08-what-next-menu');
+  const media = graderOf('image-midjourney-quick', '05-done-not-run');
+  const closed = 'Write a launch email for Tidy, a productivity app.';
+  const signed = 'A cozy cabin in the snow at night, a wooden sign reading [[sign text]] --ar 3:2';
+  const unsigned = 'A cozy cabin in the snow at night --ar 3:2';
+  for (const [g, prompt, fill, menu, passes] of [
+    [writing, closed, '', '1. Run it now — try it here ★\n2. Refine', true],
+    [writing, closed, '', '1. Try it here — results there may differ ★\n2. Refine', true],
+    [writing, OPEN_TEXT, OPEN_LIST, '1. Fill placeholders — reply with the app name and the feature ★\n2. Refine', true],
+    // With placeholders open, a note doesn't let a starred Run it now or Try it here through.
+    [writing, OPEN_TEXT, OPEN_LIST, '1. Run it now — try it here ★\n2. Refine', false],
+    [writing, OPEN_TEXT, '', '1. Try it here — results there may differ ★\n2. Refine', false],
+    [writing, closed, '', '1. Run it now 2. Refine ★', false],
+    [media, unsigned, '', '1. Done — paste it into Midjourney ★\n2. Refine', true],
+    [media, signed, '- `[[sign text]]` — the words on the sign.', '1. Fill placeholders — reply with the sign text ★\n2. Refine', true],
+    [media, signed, '- `[[sign text]]` — the words on the sign.', '1. Done — paste it into Midjourney ★\n2. Refine', false],
+    [media, unsigned, '', '1. Done (paste it into Midjourney) 2. Refine ★', false],
+  ]) assert.equal(regexPasses(g, menuReply({ prompt, fill, menu })), passes, `${g.name}: ${menu}`);
+  assert.equal(graderOf('followup-change-assumption', '03-what-next-menu').pattern, writing.pattern);
+  assert.equal(graderOf('video-veo-quick', '05-done-menu').pattern, media.pattern);
+  assert.ok(regexPasses(graderOf(PRIVATE, '08-what-next-menu'), privateReply({ menu: '1. Try it here — results there may differ ★\n2. Refine' })));
+  assert.equal(regexPasses(graderOf(PRIVATE, '08-what-next-menu'), privateReply({ menu: '1. Try it here 2. Refine ★' })), false);
+});
+
 test('private-detail-redaction-quick 08 reads the Full prompt too when Fill before running is missing', () => {
   const graders = gradersOf(PRIVATE);
   const members = { contact: "tell them to text [[conductor's mobile number]]. The choir has [[number of members]] members", fill: '' };

@@ -70,6 +70,12 @@ const SHAPES = [
   // A fence opener's backticks, which the Midjourney aspect-ratio graders read again for every
   // shorter fence they tried (B1.2.3).
   ['a run of backticks under a Full prompt heading', '### Full prompt\n', '`', 40_000],
+  // A starred option's ★ is looked for up to 200 characters on from the option's label, which
+  // reads all 200 at every bulleted option on one line; the next numbered option stops it sooner.
+  // Without the bound it read the rest of the line from each option (step 1e, B1.2.11). The ★
+  // before What next? keeps V8 from returning at once, as it did on a reply with no ★ at all.
+  ['one line of bulleted Run it now options, after a ★', '★ What next? Refine', ' - Run it now', 8_000],
+  ['one line of bulleted Done options, after a ★', '★ What next? Refine', ' - Done', 10_000],
 ];
 const reply = ([, prefix, piece, n]) => prefix + piece.repeat(n);
 

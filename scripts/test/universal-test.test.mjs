@@ -91,6 +91,10 @@ test('what next menu: a starred option the method allows after What next?, numbe
     '1) Try it here ★ (results there may differ)\n2) Refine',
     '1) **Run it now** ★\n2) **Refine**',
     '- Run it now ★\n- Refine',
+    // The ★ may follow a note on the option's own line (step 1e, B1.2.11).
+    '1) Run it now — try it here ★\n2) Refine',
+    '1) Fill placeholders — reply with the values ★\n2) Refine',
+    '1) Done — paste it into Midjourney ★\n2) Refine',
   ]) assert.ok(menu(output({ menu: m })), m);
   for (const m of [
     'Let me know.',
@@ -101,6 +105,9 @@ test('what next menu: a starred option the method allows after What next?, numbe
     // One ★: output-format.md marks the recommended option only (step 1e).
     '1) Run it now ★\n2) Refine ★',
     '1) Fill placeholders ★ 2) Refine 3) Save to file ★',
+    // A ★ after the next numbered option on the same line is that option's.
+    '1) Run it now 2) Refine ★',
+    '1) Done (paste it into Midjourney) 2) Refine ★',
   ]) assert.ok(!menu(output({ menu: m })), m);
 });
 
@@ -175,7 +182,11 @@ test('Fill placeholders ★ while placeholders are open: no starred Run it now, 
     // Not a secret's placeholder: key doesn't end the name, and tokens isn't token.
     [['[[key feature]]'], '1) Run it now ★\n2) Refine'],
     [['[[max tokens]]'], '1) Run it now ★\n2) Refine'],
+    // A note before the ★ doesn't hide it, as 'what next menu' reads it (step 1e, B1.2.11).
+    [['[[app name]]'], '1) Run it now — try it here ★\n2) Refine'],
+    [['[[sign text]]'], '1) Done — paste it into Midjourney ★\n2) Refine'],
   ]) assert.ok(!fill(withFill(items, { menu })), `${items} ${menu}`);
+  assert.ok(fill(withFill(['[[app name]]'], { menu: '1) Fill placeholders — reply with the values ★\n2) Refine' })));
   assert.deepEqual(failing(U.STRUCTURE, withFill(['[[app name]]'], { menu: '1) Run it now ★\n2) Refine' })), ['Fill placeholders ★ while placeholders are open']);
 });
 
@@ -185,6 +196,11 @@ test('Done ★, not Run it now: the Midjourney case wants a starred Done option,
   const image = (menu, items) => (items ? withFill : (_, o) => output(o))(items, { menu, prompt: 'A cozy cabin in the snow at night --ar 3:2' });
   assert.deepEqual(failing(checks, image("1) Done ★ (paste it into Midjourney, since I can't generate images)\n2) Refine")), []);
   assert.ok(done(image('- **Done** ★ — paste it into Midjourney\n- Refine')));
+  // The ★ may follow a note on Done's line, as in 'what next menu', but not the next numbered
+  // option (step 1e, B1.2.11).
+  assert.deepEqual(failing(checks, image('1) Done — paste the full prompt into Midjourney ★\n2) Refine')), []);
+  assert.deepEqual(failing(checks, image('1) Fill placeholders — reply with the sign text ★\n2) Refine', ['[[sign text]]'])), []);
+  assert.deepEqual(failing(checks, image('1) Done 2) Refine ★')), ['what next menu', 'Done ★ (Fill placeholders ★ while placeholders are open), not Run it now']);
   assert.deepEqual(failing(checks, image('1) Fill placeholders ★ — reply with the sign text\n2) Refine', ['[[sign text]]'])), []);
   assert.deepEqual(failing(checks, image('1) Done ★ (paste it into Midjourney)\n2) Refine', ['[[api key]]'])), []);
   for (const m of [
@@ -224,6 +240,15 @@ test('menu patterns: the Midjourney check is the media graders\' pattern, and wr
     assert.ok(pattern(file).startsWith(`^${U.ONE_STAR}`), file);
   }
   assert.ok(U.MENU.source.startsWith(`^${U.ONE_STAR}`));
+  // Each reads a starred option's ★ as MENU does: on the option's line, after a note if any, and
+  // before the next numbered option (step 1e, B1.2.11).
+  const writing = pattern('writing-quick-launch-email/graders/08-what-next-menu.md');
+  assert.ok(writing.includes(`(Run it now|Try it here)${U.OPTION_STAR})`));
+  assert.ok(writing.endsWith(`(Run it now|Fill (in )?(the )?placeholders|Try it here)${U.OPTION_STAR}`));
+  const pd = pattern('private-detail-redaction-quick/graders/08-what-next-menu.md');
+  assert.ok(pd.includes(`Fill (in )?(the )?placeholders${U.OPTION_STAR}|`));
+  assert.ok(pd.endsWith(`(Run it now|Try it here)${U.OPTION_STAR})`));
+  for (const p of [U.MENU.source, U.MEDIA_MENU.source, writing, pd]) assert.ok(!p.includes(String.raw`\**[ \t]*★`), p);
 });
 
 test('menu patterns: private-detail-redaction-quick 08 holds the same open-placeholder condition, with the number\'s placeholder left out too (D46)', () => {
@@ -619,6 +644,11 @@ const TIMING_SHAPES = [
   ['fence openers with no closer', '', '```x\na', 40_000],
   ['a list item with many key sentences', 'Notes:\n- The mailbox.\n', '  The key is fine.\n', 4_000],
   ['ready put off again and again on one line', 'prompt ', 'not ready, ', 20_000],
+  // A starred option's ★, looked for up to 200 characters on its line (OPTION_STAR), which
+  // without the bound read the rest of the line from every bulleted option (step 1e, B1.2.11).
+  // The ★ before What next? keeps V8 from returning at once, as it did on a reply with no ★.
+  ['one line of bulleted Run it now options, after a ★', '★ What next? Refine', ' - Run it now', 8_000],
+  ['one line of bulleted Done options, after a ★', '★ What next? Refine', ' - Done', 10_000],
 ];
 test('every check stays fast on long repeated replies', () => {
   assert.ok(TIMED_CHECKS.size > 20, `only ${TIMED_CHECKS.size} checks`);
