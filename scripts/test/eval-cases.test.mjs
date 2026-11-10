@@ -1404,7 +1404,10 @@ test('the quick output cases fail a reply that also carries out the prompt, as s
 // D2: a critique or what's-missing request opens its question round with one sentence that names
 // the biggest gaps. SKILL.md: "open the question round with one sentence, not a list"; output-
 // format.md: "That line is one sentence, not a list". The two judges check that unit, so a second
-// sentence on the opening line gets one verdict (step 1e, B1.1.10).
+// sentence on the opening line gets one verdict (step 1e, B1.1.10). A sentence that only
+// introduces the questions may follow it on the same line, as Format B's own first line does in
+// questions.md and as whats-missing's kept passing run at f54bcdf did, so the judges don't count it
+// as a second sentence (step 1e).
 test('the gap-line judges check one sentence, as the method asks', () => {
   const skill = join(EVALS, '..', 'skills', 'prompt-engine');
   assert.ok(readFileSync(join(skill, 'SKILL.md'), 'utf8').includes('open the question round with one sentence, not a list, naming the biggest gaps'));
@@ -1412,7 +1415,9 @@ test('the gap-line judges check one sentence, as the method asks', () => {
   for (const c of ['critique-opens-with-gaps', 'whats-missing-opens-with-gaps']) {
     const body = graderOf(c, '01-gap-line-first').body;
     assert.ok(body.includes("PASS if the reply opens with one sentence, not a list, that names the prompt's biggest gaps"), c);
-    assert.ok(body.includes('if the comments on the prompt take more than one sentence, such as a second sentence, a list of gaps, a paragraph for each gap or a score'), c);
+    assert.ok(body.includes("A short sentence that only introduces the questions, such as 'A few questions first', may follow it, on the same line or on a line of its own before the questions."), c);
+    assert.ok(body.includes("if the comments on the prompt take more than one sentence (a sentence that only introduces the questions doesn't count), such as a second sentence about the prompt, a list of gaps, a paragraph for each gap or a score"), c);
+    assert.doesNotMatch(body, /may sit between the two/, c);
     assert.doesNotMatch(body, /\bone line that names\b|more than one line\b/, c);
   }
 });
