@@ -828,6 +828,14 @@ test('release.yml: mcp-publisher is checked against its pinned SHA-256 before it
 const REAL_TAR = NO_BASH ? '' : spawnSync('bash', ['-c', 'command -v tar'], { encoding: 'utf8' }).stdout.trim();
 const NO_ARCHIVE = NO_BASH || (!REAL_TAR && 'needs tar') || (spawnSync('sha256sum', ['--version']).error && 'needs sha256sum');
 
+// A step run that needs a tool this machine lacks is skipped (on Windows, every one is), and a skipped
+// test counts as passed. GitHub's Ubuntu runner, where CI runs these tests, has bash, jq, tar and
+// sha256sum, so there a missing one fails this test instead of switching the runs off unseen.
+const ON_CI_LINUX = process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_OS === 'Linux';
+test("on CI's Linux runner, no step run is skipped: bash, jq, tar and sha256sum are all there", { skip: !ON_CI_LINUX && "only on CI's Linux runner" }, () => {
+  assert.deepEqual([NO_BASH, NO_JQ, NO_ARCHIVE].filter(Boolean), [], 'the tools the step runs need');
+});
+
 // A stand-in for curl that reads the options these steps use as curl does: with -f (--fail) an HTTP
 // error exits 22, without it curl exits 0; -o writes the body to a file. It serves FAKE_ARCHIVE for
 // DOWNLOAD_URL, answers LOOKUP_URL with LOOKUP_STATUS (404 unless set; "down" fails to connect) and
