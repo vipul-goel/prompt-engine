@@ -92,7 +92,7 @@ Record the Claude Desktop version you tested and which bundle you installed (the
 
 ## Claude Code (interactive)
 
-The automated runs have no question dialogs, don't grant shell commands, and grant the Glob and Grep tools, which a default Claude Code session on macOS, Linux or WSL doesn't have. This check covers them by hand: the question dialogs, the "What next?" dialog, saving to a file, and a prompt that asks for shell commands. It's an interactive Claude Code session on your account, so it counts toward your plan's usage, or is billed, like any other session.
+The automated runs have no question dialogs, don't grant shell commands, and grant the Glob and Grep tools, which Claude Code's tools reference says a default session on macOS, Linux or WSL doesn't have (its changelog limited that to native builds, in 2.1.117). This check covers them by hand: the question dialogs, the "What next?" dialog, saving to a file, and a prompt that asks for shell commands. It's an interactive Claude Code session on your account, so it counts toward your plan's usage, or is billed, like any other session.
 
 Use a new configuration folder for every run, including a re-run after a fix. Claude Code keeps an installed plugin until its version number changes, and the number stays the same between releases, so a folder you used before can run an older copy. In a new folder, you may need to sign in again.
 
