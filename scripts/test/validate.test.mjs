@@ -553,9 +553,14 @@ const ROWS = [
     /spanish-quick\/prompt\.md:\d+: quote the value "a: b"/],
   ['rejects a double-quoted escape that YAML reads differently from a regex', (d) => put(d, `${VEO}/05-esc.md`, grader('regex', 'pattern: "\\bveo"\n')),
     /05-esc\.md:3: unsupported escape \\b/],
+  ['names the line of front matter that never closes, and of a "---" inside it', (d) => {
+    put(d, `${VEO}/05-open.md`, '---\ntype: regex\npattern: veo\n');
+    put(d, `${VEO}/05-dashes.md`, '---\ntype: regex\npattern: "veo --- 3"\n---\n');
+  }, [/^error: evals\/video-veo-quick\/graders\/05-open\.md:1: front matter without its closing "---"$/m,
+    /^error: evals\/video-veo-quick\/graders\/05-dashes\.md:3: "---" inside the front matter, where claude plugin eval ends it/m]],
   // Keys the CLI accepts but this repo doesn't use.
   ['rejects a graders list in case.yaml', (d) => edit(d, `${SPANISH}/case.yaml`, (t) => `${t}graders:\n  - name: x\n    type: regex\n`),
-    /spanish-quick\/case\.yaml: graders: write each grader as graders\/<name>\.md, which validate\.mjs checks \(repo rule\)/],
+    /spanish-quick\/case\.yaml:\d+: graders: write each grader as graders\/<name>\.md, which validate\.mjs checks \(repo rule\)/],
   ['rejects an undocumented execution key', (d) => edit(d, 'evals/writing-quick-launch-email/case.yaml', (t) => `${t}execution:\n  artifact_publish: false\n`),
     /case\.yaml: execution\.artifact_publish: not used in this repo; claude plugin eval accepts it, but its docs don't list it \(repo rule\)/],
   ['rejects an undocumented prompt.md key', (d) => edit(d, `${SPANISH}/prompt.md`, (t) => t.replace('max_turns: 16', 'max_turns: 16\ngrowthbook_overrides: {a: b}')),

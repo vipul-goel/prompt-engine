@@ -132,14 +132,23 @@ test('frontmatter reads the block after a BOM and CRLF, and trims the body', () 
 test('frontmatter ends at the first "---", as claude plugin eval does', () => {
   // On the closing line, text after "---" starts the body.
   assert.deepEqual(frontmatter('---\ntype: llm\n---more\n', 'g.md'), { data: { type: 'llm' }, body: 'more' });
-  assert.throws(() => frontmatter("---\npattern: 'a---b'\n---\n", 'g.md'), { message: 'g.md: "---" inside the front matter, where claude plugin eval ends it; keep "---" out of values and comments' });
-  assert.throws(() => frontmatter('---\n# see --- below\ntype: llm\n---\n', 'g.md'), /g\.md: "---" inside the front matter/);
-  assert.throws(() => frontmatter('---\ntype: llm\n', 'g.md'), { message: 'g.md: front matter without its closing "---"' });
+  assert.throws(() => frontmatter("---\npattern: 'a---b'\n---\n", 'g.md'), { message: 'g.md:2: "---" inside the front matter, where claude plugin eval ends it; keep "---" out of values and comments' });
+  assert.throws(() => frontmatter('---\n# see --- below\ntype: llm\n---\n', 'g.md'), /g\.md:2: "---" inside the front matter/);
+  assert.throws(() => frontmatter('---\ntype: llm\n', 'g.md'), { message: 'g.md:1: front matter without its closing "---"' });
 });
 
 test('frontmatter names the file line of a YAML error', () => {
   assert.throws(() => frontmatter('---\ntype: regex\npattern: "\\b"\n---\n', 'g.md'), /^Error: g\.md:3: unsupported escape \\b/);
   assert.throws(() => frontmatter('---\n\n\ntype: regex\nflags: True\n---\n', 'g.md'), /^Error: g\.md:5: quote the value "True"/);
+});
+
+// CONTRIBUTING.md says the check names the file and line of anything outside the YAML subset.
+test('frontmatter names the line of a "---" inside the front matter, and line 1 for one that never closes', () => {
+  assert.throws(() => frontmatter("---\ntype: regex\nflags: i\npattern: 'a---b'\n---\n", 'g.md'), { message: /^g\.md:4: "---" inside the front matter/ });
+  // Blank lines after the opening "---" and CRLF line endings don't shift the line.
+  assert.throws(() => frontmatter("---\n\n\npattern: 'a---b'\n---\n", 'g.md'), { message: /^g\.md:4: "---" inside the front matter/ });
+  assert.throws(() => frontmatter('---\r\ntype: regex\r\npattern: "a --- b"\r\n---\r\n', 'g.md'), { message: /^g\.md:3: "---" inside the front matter/ });
+  assert.throws(() => frontmatter('---\n\ntype: llm\nweight: 1\n', 'g.md'), { message: 'g.md:1: front matter without its closing "---"' });
 });
 
 // ---------- checkEvalCases on small trees ----------
@@ -408,6 +417,15 @@ test('checkEvalCases reports only the parse error of a file that does not parse'
     'evals/other/graders/01-x.md': '---\ntype: regex\npattern: "\\b"\n---\n',
   });
   assert.deepEqual(errors, ['evals/demo/case.yaml:2: duplicate key name', 'evals/other/graders/01-x.md:3: unsupported escape \\b; YAML reads it differently from a regex, so write \\\\ for a backslash']);
+});
+
+test('checkEvalCases names the line of a graders: list in case.yaml, which the subset can\'t read', () => {
+  const { errors } = check({
+    'evals/demo/case.yaml': 'schema_version: "1.1"\nname: demo\n\ngraders:\n  - type: regex\n    pattern: x\n',
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-x.md': REGEX,
+  });
+  assert.deepEqual(errors, ['evals/demo/case.yaml:4: graders: write each grader as graders/<name>.md, which validate.mjs checks (repo rule)']);
 });
 
 test('checkEvalCases reads a case.yaml with nothing but comments as no file, as claude plugin eval does', () => {

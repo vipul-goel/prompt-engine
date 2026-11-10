@@ -256,12 +256,13 @@ export function frontmatter(text, file) {
   const t = normalize(text);
   const m = t.match(FRONT);
   if (!m) {
-    if (/^---\s*\n/.test(t)) throw new Error(`${file}: front matter without its closing "---"`);
+    if (/^---\s*\n/.test(t)) throw new Error(`${file}:1: front matter without its closing "---"`);
     return { data: null, body: t.trim() };
   }
-  if (m[1] !== '' && !m[1].endsWith('\n')) throw new Error(`${file}: "---" inside the front matter, where claude plugin eval ends it; keep "---" out of values and comments`);
-  const opening = t.match(/^---\s*\n/)[0];
-  return { data: parseYaml(m[1], file, opening.split('\n').length), body: t.slice(m[0].length).trim() };
+  // The line the YAML starts on: blank lines can follow the opening "---".
+  const first = t.match(/^---\s*\n/)[0].split('\n').length;
+  if (m[1] !== '' && !m[1].endsWith('\n')) throw new Error(`${file}:${first + m[1].split('\n').length - 1}: "---" inside the front matter, where claude plugin eval ends it; keep "---" out of values and comments`);
+  return { data: parseYaml(m[1], file, first), body: t.slice(m[0].length).trim() };
 }
 
 // ---------- case files ----------
@@ -425,7 +426,8 @@ export function checkEvalCases(root, err, warn = () => {}) {
       const file = `${dir}/case.yaml`;
       const text = normalize(readFileSync(join(abs, 'case.yaml'), 'utf8'));
       // Named before parsing, since the subset can't read a list of mappings.
-      if (/^graders:/m.test(text)) err(`${file}: graders: write each grader as graders/<name>.md, which validate.mjs checks (repo rule)`);
+      const graders = text.match(/^graders:/m);
+      if (graders) err(`${file}:${text.slice(0, graders.index).split('\n').length}: graders: write each grader as graders/<name>.md, which validate.mjs checks (repo rule)`);
       else {
         try { c.caseYaml = parseYaml(text, file); caseParsed = true; } catch (e) { err(e.message); }
       }
