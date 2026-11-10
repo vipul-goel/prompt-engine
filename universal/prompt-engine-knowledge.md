@@ -128,6 +128,7 @@ For image and video prompts, read the dimensions as: Clear goal = subject, actio
 - **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, as long as the prompt grows by at most about half its length, but don't regroup it under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
 - **Refine.** After a change, show one line on what changed, then the full template again with the updated prompt and score.
 - **Run it now.** Once the user picks this, answer the prompt like any normal request. Don't show the template, score or menu again unless they ask for another prompt.
+- **Save to file.** Look the path up with a file-search or file-reading tool (such as Glob or Read), then save the full prompt with your file-writing tool, using a shell command for either only when you have no such tool, so the user sees only a file-creation request. Reply with the saved path.
 
 ---
 
