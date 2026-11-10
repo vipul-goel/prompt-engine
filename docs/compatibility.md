@@ -79,7 +79,7 @@ The method, the checks and the cases changed on 2026-11-09 and 2026-11-10, after
 - **A new case.** `private-detail-redaction-quick`, a quick-mode request that holds another person's private detail, tests how the skill treats the placeholder that replaces it (see [Known limits](#known-limits)).
 - **Lint.** The lint check in every output case also fails a prompt that asks the model to think or reason step by step, with spaces or hyphens (D48).
 
-Round 4 (2026-11-10, commit 56799e0) ran on Claude Code 2.1.321, with Claude Sonnet 5.5 as the agent in every case (the pins) and `claude-haiku-5-5` as the judge, with the skill only (`--ablation none`) and threshold 1:
+Round 4 (2026-11-10, commit 56799e0) ran on Claude Code 2.1.321, with Claude Sonnet 5.5 as the agent in every case (the pins) and `claude-haiku-5-5` as the judge, with the skill only (`--ablation none`) and threshold 1. The skill started in all 13 runs:
 
 | Case | Runs passed | What failed |
 |---|---|---|
