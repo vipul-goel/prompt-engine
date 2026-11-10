@@ -22,7 +22,7 @@ Priority = Impact × Uncertainty + Risk − Default quality. Ask items with prio
 - **Deep mode:** round 1 as in standard. Then re-check with the answers in hand and ask up to two more rounds of at most 4 questions each, covering gaps the answers opened or items just below the threshold. Stop when nothing qualifies or the user says go.
 
 Don't ask:
-- for facts you can find yourself — in a code workspace, read the repo; in a chat, check earlier messages and attachments;
+- for facts you can find yourself — in a code workspace, read the repo with your file tools, not shell commands or a subagent; in a chat, check earlier messages and attachments;
 - for things the prompt already says;
 - for a secret's value, such as an API key or password: the prompt names an environment variable or a `[[placeholder]]` instead, so never invite the user to paste one;
 - for another person's private detail you removed: the user fills in its placeholder where they use the prompt;
