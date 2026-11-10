@@ -24,7 +24,7 @@ The reply that delivers an enhanced prompt always has the same shape, so users l
 The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★` and `modifier 2 : …` for `change N`. Translate `deep` the same way, into the user's own word. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
 
 ````markdown
-<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so. Never repeat a removed value. For a strong prompt: "Your prompt is already strong — small edits below.">
+<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so. Never repeat a removed value. For a strong prompt: "Your prompt is already strong — small edits below." For a request to critique a prompt or find what's missing that got no question round (quick mode, or no question qualified), the line also names its biggest gaps, not as a list.>
 
 ### Full prompt
 ```text

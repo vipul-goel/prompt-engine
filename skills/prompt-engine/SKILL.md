@@ -75,7 +75,7 @@ Follow `references/blueprint.md` and the domain pack. In short:
 
 Use the structure in `references/output-format.md`, with every label in the user's language: the headings below, score rows, caveat line, menu options, `change N` and `deep` (a French reply has `### Prompt complet` and `modifier 2`; the tags, ★ and `[[` stay as written). Show these parts in this order and nothing else:
 
-1. One line saying what you made and for which tool.
+1. One line saying what you made and for which tool; after a request to critique a prompt or find what's missing that got no question round, it also names the biggest gaps.
 2. **Full prompt** in a fenced block.
 3. **Short version** in a fenced block, with a note on when to use each.
 4. **Fill before running** — only if placeholders remain.
