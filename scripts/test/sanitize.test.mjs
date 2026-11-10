@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { sanitize, scanText, publicText, machinePatterns, FIXED_SESSION, PRIVATE_PATTERNS } from '../eval/sanitize.mjs';
 import { refreshHistory } from '../build.mjs';
 
@@ -445,10 +446,20 @@ test('JWTs are found after a space, a quote, = or -, and with a header of a few 
   }
 });
 
+// The scan takes time in step with the text. Without its start rule and cap, the e-mail pattern
+// took more than two minutes on 200,000 a's, and without its cap the JWT one 25 s on 200,000
+// characters of eyJ-, quadratic in the length; the linear scan of all three texts below took about
+// half a second. The scan runs in a child process stopped after 20 seconds, which leaves room for a
+// busy machine, as validate.test.mjs's timing rows do: a limit of 2 seconds in this process failed
+// the test under load, and a quadratic pattern kept it busy past any limit.
 test('the scan stays fast on long runs without an @, and on long runs of eyJ-', () => {
+  const sanitizeUrl = pathToFileURL(join(repo, 'scripts', 'eval', 'sanitize.mjs')).href;
+  const code = `const { scanText } = await import(${JSON.stringify(sanitizeUrl)});
+scanText('a'.repeat(400_000));
+scanText('x@' + '1.'.repeat(200_000));
+scanText('eyJ-'.repeat(100_000));`;
   const t0 = performance.now();
-  scanText('a'.repeat(200_000));
-  scanText(`x@${'1.'.repeat(100_000)}`);
-  scanText('eyJ-'.repeat(50_000));
-  assert.ok(performance.now() - t0 < 2_000, `${Math.round(performance.now() - t0)} ms`);
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 20_000 });
+  assert.equal(r.signal, null, `stopped after ${Math.round(performance.now() - t0)} ms`);
+  assert.equal(r.status, 0, r.stderr);
 });
