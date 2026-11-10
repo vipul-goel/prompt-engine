@@ -359,9 +359,20 @@ test('fragments samples characters that two classes both match', () => {
 // step-by-step". Other wordings of the request pass, such as "Think it through
 // step by step", "Think carefully, step by step" and "Let's work this out in a
 // step by step way", and so does the phrase written with an en, em or figure
-// dash, or with a no-break space (check_prompt turns that into a plain space
-// first). Whether to widen the rule to them is left to step 1e, whose list in
+// dash. Whether to widen the rule to them is left to step 1e, whose list in
 // the review record's step_1d.follow_ups names these limits.
+// Written with a no-break space, two spaces or a tab between its words, the
+// phrase passes the eval lint graders and validate.mjs's self-lint, which match
+// the text as written, but not check_prompt, which turns each run of whitespace
+// into one plain space first. The same goes for every rule that spells the
+// space between two words as one space: magic-phrase ("take a deep breath"),
+// prefill-instruction ("prefill the response") and vague-quality-words ("best
+// quality"), which only the graders and check_prompt apply. Writing those
+// spaces as \s+ or \s{1,3} would close the gap in the graders and the
+// self-lint, but check_prompt's gate refuses \s+ in all four rules as an
+// unbounded repetition, and \s{1,3} in all but vague-quality-words as more than
+// 1,000 steps, so check_prompt would skip them; the rules stay as they are
+// (step 1e, B1.2.10).
 const reasoningRule = rules.find((r) => r.id === 'visible-reasoning-request');
 const asksForReasoning = (text) => new RegExp(reasoningRule.pattern, reasoningRule.flags).test(text);
 
