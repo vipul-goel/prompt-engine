@@ -265,6 +265,16 @@ test('after deep: 1-4 new question lines, the reply line and still no draft', ()
   assert.deepEqual(failing(U.DEEP_ROUND, continued), []);
   assert.deepEqual(failing(U.DEEP_ROUND, five), ['1-4 new questions']);
   assert.deepEqual(failing(U.DEEP_ROUND, output()), ['1-4 new questions', 'recommendation marker', 'ok reply line', 'no full prompt yet']);
+  // A question counts when its line goes on after the "?": a parenthetical, a note after a bold
+  // close or a dash, or its options (step 1e, B1.1.13). The four questions of step 1d's real deep
+  // round (0f65705), with a fifth.
+  const real = ['Which kind of remote work should it cover?', 'Which voice should it use?', 'How should it handle examples?', 'What should I deliver besides the post?'];
+  const round = (qs) => `Round 2 of 3.\n\n${qs.map((q, i) => `${i + 1}. ${q}\n   a) First ★ (reason)  b) Second`).join('\n\n')}\n\n${REPLY_LINE}`;
+  assert.deepEqual(failing(U.DEEP_ROUND, round(real)), []);
+  for (const last of ['Should it link to a resource? (optional)', '**Should it link to a resource?** (optional)', 'Should it link to a resource? — skip if unsure']) {
+    assert.deepEqual(failing(U.DEEP_ROUND, round([...real, last])), ['1-4 new questions'], last);
+  }
+  assert.deepEqual(failing(U.DEEP_ROUND, `1. Keep the public API? a) Yes ★ (callers rely on it)  b) No\n2. Add tests? a) Yes ★ (catches regressions)  b) No\n\n${REPLY_LINE}`), []);
 });
 
 test('after change 1: the section 5 reply again, menu included, with the change inside a fenced block', () => {

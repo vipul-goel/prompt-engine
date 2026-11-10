@@ -131,11 +131,13 @@ export const QUESTIONS = [
 ];
 // After ok or an override: the ★ answers the user accepted are tagged [your answer].
 export const ACCEPTED = [...STRUCTURE, ['accepted ★ tagged', has(/\[your answer\]/i)]];
-// After `deep`: one more round of at most 4 questions. Only numbered lines that end in "?"
-// count, so a round that restates the accepted answers as a list, or goes on numbering
-// from round 1, still passes; the 'numbered questions' check is left out for the same reason. The
-// number may be bold or a heading, as in 'numbered questions'.
-const questionLines = (t) => (t.match(/^[ \t]*(?:#+[ \t]*|\*\*)?\d+[.)](?:\*\*)?\s.*\?\**\s*$/gm) ?? []).length;
+// After `deep`: one more round of at most 4 questions. Only numbered lines that hold a "?" count,
+// so a round that restates the accepted answers as a list, or goes on numbering from round 1,
+// still passes; the 'numbered questions' check is left out for the same reason. The "?" may be
+// anywhere on the line, so a question followed by a note, a parenthetical or its options counts
+// too (step 1e). The number may be bold or a heading, as in 'numbered questions'. A heuristic: an
+// accepted answer restated with its question ("1. Who reads it? Team managers") counts as one.
+const questionLines = (t) => (t.match(/^[ \t]*(?:#+[ \t]*|\*\*)?\d+[.)](?:\*\*)?\s[^\n]*\?/gm) ?? []).length;
 export const DEEP_ROUND = [
   ['1-4 new questions', (t) => { const n = questionLines(t); return n >= 1 && n <= 4; }],
   ...QUESTIONS.filter(([n]) => n !== 'numbered questions'),
