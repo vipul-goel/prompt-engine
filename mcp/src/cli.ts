@@ -219,7 +219,8 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
   const serverOnerror = (error: Error) => {
     if (!(error instanceof SyntaxError)) onerror(error);
   };
-  const mcp = createMcpHandler(() => createServer({ onerror: serverOnerror }), { onerror, maxRequestBodySize: MAX_BODY_BYTES });
+  // Each request gets a server of its own, which ignores notifications/cancelled (see perRequest in server.ts).
+  const mcp = createMcpHandler(() => createServer({ onerror: serverOnerror, perRequest: true }), { onerror, maxRequestBodySize: MAX_BODY_BYTES });
   // createMcpHandler validates neither Host nor Origin. The request listener
   // checks both (DNS rebinding protection), and so does this, in case a
   // request ever reaches the handler another way. A request without an Origin

@@ -237,6 +237,41 @@ describe.concurrent('--http limits', () => {
     }
   });
 
+  // A 2025-era batch can hold a notifications/cancelled for one of its own requests, before or
+  // after it. The MCP SDK sends no answer for a cancelled request, and its transport ends a batch's
+  // answer only once every request in the batch has one, so that answer never ended: it wrote a
+  // keep-alive line every 15 s, which the stall check never saw waiting, and held its slot, and
+  // those of the requests behind it, for as long as the client kept the connection. Each request
+  // over HTTP gets a server of its own, so such a cancel can only name a request in the same body,
+  // which every handler answers at once; the server ignores it, as the protocol allows.
+  it('answers batches that cancel their own request, so 128 of them on one connection hold no slot', async ({ expect }) => {
+    const server = await startHttp();
+    const host = { host: `127.0.0.1:${server.port}` };
+    const sock = connect(server.port, '127.0.0.1');
+    let text = '';
+    sock.on('data', (d: Buffer) => (text += d.toString('latin1')));
+    sock.on('error', () => {});
+    const request = { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} };
+    const cancel = { jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } };
+    const answers = () => text.match(/^HTTP\/1\.1 \d+/gm) ?? [];
+    const results = () => text.match(/^data: \{"result":/gm)?.length ?? 0;
+    try {
+      await new Promise((resolve) => sock.once('connect', resolve));
+      sock.write(post(server.port, JSON.stringify([request, cancel])).repeat(64) + post(server.port, JSON.stringify([cancel, request])).repeat(64));
+      await waitFor(
+        () => results() === 128,
+        () => `${answers().length} answer(s), ${results()} result(s), ${text.match(/^: keepalive/gm)?.length ?? 0} keep-alive line(s)`,
+        10_000,
+      );
+      expect(new Set(answers())).toEqual(new Set(['HTTP/1.1 200']));
+      expect((await send(server.port, host)).status).toBe(200);
+      expect(server.stderr().split('\n').slice(1).join('')).toBe('');
+    } finally {
+      sock.destroy();
+      server.proc.kill('SIGTERM');
+    }
+  });
+
   it('closes a connection once a refusal is written, when requests admitted behind it can never be answered', async ({ expect }) => {
     const server = await startHttp();
     const held: Held[] = [];

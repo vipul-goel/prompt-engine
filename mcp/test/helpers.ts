@@ -50,7 +50,7 @@ function makeClient(era: Era, options: ConnectOptions) {
 
 /** A client talking to createMcpHandler in-process (stateless HTTP serving, as a deployment would). */
 export async function connectHttp(era: Era, options: ConnectOptions = {}): Promise<Connected> {
-  const handler = createMcpHandler(() => createServer());
+  const handler = createMcpHandler(() => createServer({ perRequest: true }));
   const { client, elicitCalls } = makeClient(era, options);
   const transport = new StreamableHTTPClientTransport(new URL('http://test.local/mcp'), {
     fetch: (url, init) => handler.fetch(new Request(url, init)),

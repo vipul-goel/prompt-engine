@@ -30,7 +30,8 @@ const MAX_BODY_BYTES = PROMPT_MAX_CHARS * 12 + 300_000;
 preloadSchemas();
 
 const jsonSchemaValidator = new CfWorkerJsonSchemaValidator();
-const mcp = createMcpHandler(() => createServer({ jsonSchemaValidator }), { maxRequestBodySize: MAX_BODY_BYTES });
+// Each request gets a server of its own, which ignores notifications/cancelled (see perRequest in server.ts).
+const mcp = createMcpHandler(() => createServer({ jsonSchemaValidator, perRequest: true }), { maxRequestBodySize: MAX_BODY_BYTES });
 
 // ALLOWED_HOSTS doesn't change within an isolate, so parse it (and warn about its entries) once.
 let parsed: { value: string | undefined; hosts: string[] } | undefined;

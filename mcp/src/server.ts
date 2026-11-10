@@ -317,6 +317,16 @@ export interface CreateServerOptions {
    * reports its transport's errors only here, so without it they are dropped.
    */
   onerror?: ((error: Error) => void) | undefined;
+  /**
+   * The instance serves one HTTP request, as createMcpHandler's factory makes it, so it ignores
+   * notifications/cancelled, as the protocol allows. Such a cancel can only name a request in the
+   * same body, a 2025-era batch, and every handler here answers at once. The MCP SDK sends no
+   * answer for a request it has cancelled, and its 2025-era transport ends a batch's answer only
+   * once every request in the batch has one, so the answer would never end and would hold its
+   * --http request slot for as long as the client kept the connection. Over stdio the cancel
+   * stays: a form can keep a request waiting there.
+   */
+  perRequest?: boolean;
 }
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
@@ -348,6 +358,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     },
   );
   if (options.onerror) server.server.onerror = options.onerror;
+  if (options.perRequest) server.server.setNotificationHandler('notifications/cancelled', () => {});
 
   server.registerTool(
     'enhance_prompt',

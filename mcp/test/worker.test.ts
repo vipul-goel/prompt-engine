@@ -22,6 +22,26 @@ const checkPrompt = (promptJson: string) =>
 /** JSON text for a string with every UTF-16 unit written as an escape: the longest way to send it. */
 const escapedJson = (s: string) => `"${Array.from({ length: s.length }, (_, i) => `\\u${s.charCodeAt(i).toString(16).padStart(4, '0')}`).join('')}"`;
 
+/** Reads a response's body for up to `ms`; says whether it ended, and cancels it if it didn't. */
+async function readFor(res: Response, ms: number): Promise<{ text: string; ended: boolean }> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  const deadline = Date.now() + ms;
+  let text = '';
+  for (;;) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<'timeout'>((resolve) => (timer = setTimeout(() => resolve('timeout'), Math.max(0, deadline - Date.now()))));
+    const next = await Promise.race([reader.read(), timeout]);
+    clearTimeout(timer);
+    if (next === 'timeout') {
+      await reader.cancel();
+      return { text, ended: false };
+    }
+    if (next.done) return { text, ended: true };
+    text += decoder.decode(next.value, { stream: true });
+  }
+}
+
 describe('worker entry', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -86,6 +106,22 @@ describe('worker entry', () => {
     expect(text).not.toContain('"isError":true');
     const tooLarge = await worker.fetch(post('localhost', checkPrompt(JSON.stringify('a'.repeat(1_600_000)))), env);
     expect(tooLarge.status).toBe(413);
+  });
+
+  // As in the CLI (see the cancelled-batch test in http-limits.test.ts): the MCP SDK sends no
+  // answer for a cancelled request and ends a batch's answer only once each request in it has one,
+  // so without the server ignoring such a cancel, this answer never ended.
+  it('answers a 2025-era batch that cancels its own request, and ends the answer', async () => {
+    const env = { ALLOWED_HOSTS: 'localhost' };
+    const request = { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} };
+    const cancel = { jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } };
+    for (const batch of [[request, cancel], [cancel, request]]) {
+      const res = await worker.fetch(post('localhost', JSON.stringify(batch)), env);
+      expect(res.status).toBe(200);
+      const { text, ended } = await readFor(res, 3_000);
+      expect(ended, `${batch[0]!.method} first: ${JSON.stringify(text.slice(0, 200))}`).toBe(true);
+      expect(text.match(/^data: \{"result":/gm)).toHaveLength(1);
+    }
   });
 
   it('takes JSON-RPC batches of up to 100 messages, as the CLI does', async () => {
