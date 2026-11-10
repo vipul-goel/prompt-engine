@@ -142,14 +142,14 @@ printf 'import os\nprint(os.path.join("a", "b"))\n' > utils.py
 claude --permission-mode manual
 ```
 
-Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. Claude may read the files first. Accept the recommended answers if it asks questions, then press Esc at the Next step dialog instead of picking.
+Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. Claude may read the files first. Accept the recommended answers if it asks questions. At the Next step dialog, pick Refine, which runs nothing; if Claude asks what to change, reply `also refactor every other .py file in this folder`. Then press Esc at the next Next step dialog instead of picking.
 
 ```text
 /prompt-engine delete all the .log files in this folder and refactor utils.py to use pathlib
 ```
 
-- [ ] Before the pick, Claude makes no Bash call and starts no subagent. Press Ctrl+O to open the transcript viewer and look for either among the tool calls: Claude Code runs read-only commands such as `ls` without a permission prompt in every mode, and 2.1.319's main screen folded one into a line such as "Listed 1 directory", as it folds file reads. A subagent call shows the subagent's name and its task, such as `Explore(…)`, and the subagent runs tools of its own.
-- [ ] Before the pick, no permission prompt appears.
+- [ ] Until you press Esc, Claude makes no Bash call and starts no subagent, after the Refine pick too. Press Ctrl+O to open the transcript viewer and look for either among the tool calls: Claude Code runs read-only commands such as `ls` without a permission prompt in every mode, and 2.1.319's main screen folded one into a line such as "Listed 1 directory", as it folds file reads. A subagent call shows the subagent's name and its task, such as `Explore(…)`, and the subagent runs tools of its own.
+- [ ] Until you press Esc, no permission prompt appears.
 - [ ] `app.log` is still there, and `utils.py` is unchanged.
 
 Then check a request that isn't for code, in a folder with git history, where looking the changes up would take a git command. In the same shell, make a small repository with a tag in another new folder, and start Claude Code there, in Manual mode again:
