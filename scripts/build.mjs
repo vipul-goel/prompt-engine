@@ -65,8 +65,11 @@ export const OS_JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 // In the skill folder, these and the AppleDouble files that macOS writes on some drives, such as
 // exFAT or FAT ones: "._" and the name of the file whose metadata they hold. Git ignores them too.
 // The one for SKILL.md or a reference ends in .md, so validate.mjs took it for a file of the skill.
-// validate.mjs's walk skips each name that isOsJunk matches, and release.mjs's zip leaves out each
-// path that ZIP_EXCLUDES matches (zip matches a -x pattern against the whole path in the archive).
+// validate.mjs's walk skips each plain file whose name isOsJunk matches, and checks a folder or link
+// of such a name like any other, since the operating system writes none. release.mjs's zip leaves
+// out each path that ZIP_EXCLUDES matches (zip matches a -x pattern against the whole path in the
+// archive), so it would take in the files of a folder named Thumbs.db, desktop.ini or .DS_Store;
+// release.mjs runs validate.mjs first, which refuses such a folder.
 export const isOsJunk = (name) => OS_JUNK.has(name) || name.startsWith('._');
 export const ZIP_EXCLUDES = [...[...OS_JUNK].map((f) => `*${f}`), '*/._*'];
 

@@ -974,6 +974,24 @@ const ROWS = [
     for (const f of ['skills/._prompt-engine', 'skills/prompt-engine/._SKILL.md', 'skills/prompt-engine/._references', `${REF}/._questions.md`,
       'evals/._spanish-quick', 'evals/spanish-quick/._prompt.md']) put(d, f, appleDouble);
   }, /validate: OK/, 0, /\._/],
+  // The operating system writes files of those names, never folders: a folder named Thumbs.db,
+  // desktop.ini, .DS_Store or ._<anything> is checked like any other, with what it holds. Skipped by
+  // name, such a folder hid a second skill in skills/, and a script and a second SKILL.md in the
+  // skill folder, which went into the skill zip.
+  ['checks a folder named like a file the operating system writes, and what it holds', (d) => {
+    put(d, 'skills/prompt-engine/Thumbs.db/run.sh', '#!/bin/sh\necho hi\n');
+    put(d, 'skills/prompt-engine/.DS_Store/SKILL.md', '# Notes\n\nYou MUST run $ARGUMENTS first.\n');
+    put(d, `${REF}/._extra/notes.md`, '# Notes\n');
+    for (const f of ['desktop.ini', '._extra']) put(d, `skills/${f}/SKILL.md`, '---\nname: extra\ndescription: "Another skill."\n---\n\n# Extra\n');
+  }, [
+    ...['Thumbs.db', '.DS_Store'].map((f) => new RegExp(`^error: skills/prompt-engine/${reEsc(f)}: only SKILL\\.md and the references folder belong at the top of the skill folder`, 'm')),
+    /^error: skills\/prompt-engine\/Thumbs\.db\/run\.sh: only Markdown files belong in the skill folder/m,
+    /^error: skills\/prompt-engine\/\.DS_Store\/SKILL\.md: a skill must contain exactly one SKILL\.md$/m,
+    /^error: skills\/prompt-engine\/\.DS_Store\/SKILL\.md: contains \$ARGUMENTS, which Claude Code substitutes in skill text$/m,
+    /^error: skills\/prompt-engine\/\.DS_Store\/SKILL\.md: "MUST" \(pressure-words\)/m,
+    /^error: skills\/prompt-engine\/references\/\._extra: keep references one level deep$/m,
+    ...['desktop.ini', '._extra'].map((f) => new RegExp(`^error: skills/${reEsc(f)}: only the prompt-engine folder belongs in skills/`, 'm')),
+  ]],
 ];
 
 // Rules on tracked files, which need a git copy: [name, mutate(dir, git), expected, code, unexpected].

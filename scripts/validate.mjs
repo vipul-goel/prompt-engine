@@ -201,8 +201,11 @@ if (!front) {
 // which the zip leaves out too), and without following links: the walk reports an entry
 // that is neither a plain file nor a folder, and leaves it out of the checks below. statSync
 // followed links, and stopped validate.mjs on one that leads nowhere, such as the lock file Emacs
-// keeps next to a file with unsaved changes.
-const entries = (dir) => readdirSync(join(root, dir), { withFileTypes: true }).filter((e) => !isOsJunk(e.name));
+// keeps next to a file with unsaved changes. Only a plain file of such a name is left out: the
+// operating system writes no folder or link by these names, and a folder skipped by name hid what
+// it held from every check below, a second skill in skills/ included, while the skill zip took in
+// the files of one named Thumbs.db, desktop.ini or .DS_Store.
+const entries = (dir) => readdirSync(join(root, dir), { withFileTypes: true }).filter((e) => !(e.isFile() && isOsJunk(e.name)));
 const walk = (dir) => entries(dir).flatMap((e) => {
   const p = `${dir}/${e.name}`;
   if (e.isDirectory()) return walk(p);
