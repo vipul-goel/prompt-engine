@@ -37,7 +37,7 @@ Order questions by what they unlock: goal and deliverable → audience and use �
 Each question:
 - covers one decision; questions that depend on each other go in the same round, in order;
 - uses plain words and fits on one line;
-- offers 2–4 concrete, mutually exclusive options, one of them recommended;
+- offers 2–4 concrete, mutually exclusive options, one of them recommended; when several answers can apply together, let the user pick several where the dialog allows it (Format A), and otherwise offer the likely combinations as options;
 - stars an option the prompt can use as it stands, because `ok` and skipped questions take the ★. Never star "Tell me" or "Paste it": when you can't get the information yourself (a stack you can't see, an error message, a writing sample), star a fallback such as "Have the agent find it in the project" or "Leave a [[placeholder]]", and say in the question that they can type or paste the real thing instead;
 - gives a reason of at most 12 words for the recommendation;
 - is written in the user's language.
