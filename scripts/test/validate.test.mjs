@@ -376,6 +376,23 @@ const ROWS = [
     return t.replace(`\n${KEY_LAST}\n`, () => `\n${KEY_LAST.replace(/\S+$/, 'Renamed')}\n`)
       .replace(`\n${first}`, () => `\n\`\`\`text\n${KEY_LAST}\n\`\`\`\n\n${first}`);
   }), new RegExp(`SKILL\\.md: missing section "${reEsc(KEY_LAST)}"`)],
+  // Fenced blocks as CommonMark reads them (fenceAfter in build.mjs): a fence indented up to three
+  // spaces opens one too, and only a line of the same character, as long or longer and with nothing
+  // after it, closes one. A copy of the heading line in such a block doesn't stand in for the section.
+  ...[['a fenced example indented one space', (h) => ` \`\`\`text\n${h}\n \`\`\``],
+    ['a ~~~ fence indented three spaces', (h) => `   ~~~\n${h}\n   ~~~`],
+    ['a fenced example that holds a "``` example" line', (h) => `\`\`\`text\n\`\`\` example\n${h}\n\`\`\``]].map(([what, block]) => [
+    `rejects a key section whose heading line is copied into ${what} near the top`, (d) => {
+      moveSection(KEY_LAST, KEY_LIMIT + 100)(d);
+      edit(d, SKILL, (t) => t.replace(`\n${BUDGETS.skillKeySections[0]}`, () => `\n${block(KEY_LAST)}\n\n${BUDGETS.skillKeySections[0]}`));
+    }, new RegExp(`SKILL\\.md: section "${reEsc(KEY_LAST)}" starts at char \\d+; keep it within the first ${KEY_LIMIT} `)]),
+  // And a heading after a block closed by a fence indented up to three spaces counts, as does one after
+  // a line of backticks that holds another backtick, which opens no block.
+  ...[['a fenced block closed by a fence indented three spaces', '```\nx\n   ```'], ['a line of backticks that holds another backtick', '``` a`b']].map(([what, lines]) => [
+    `accepts a key section right after ${what}`, (d) => {
+      edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n${lines}\n${KEY_LAST}\n`));
+      rebuild(d);
+    }, /validate: OK/, 0, /missing section|starts at char/]),
   // Nor does a copy of the heading line in an HTML comment: from a line that starts with <!-- to
   // the line that holds -->, as CommonMark reads such a block.
   ['rejects a key section whose heading line is copied into an HTML comment near the top', (d) => {

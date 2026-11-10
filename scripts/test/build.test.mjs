@@ -385,6 +385,24 @@ test('the knowledge file keeps a block open past a shorter fence inside it, and 
   assert.doesNotMatch(out, /^#{7}/m);
 });
 
+// CommonMark's fence rules (fenceAfter): a fence indented up to three spaces opens and closes a block,
+// a line that only starts with the opening run doesn't close it, and a line of backticks that holds
+// another backtick opens none.
+test('the knowledge file reads fenced blocks as CommonMark does: indented fences, closing lines and lines that open none', () => {
+  const refs = Object.fromEntries(KNOWLEDGE_ORDER.map((k) => [k, `# ${k}\n\nText.\n`]));
+  refs.coding = [
+    '# Coding', '',
+    ' ```text', '## in a fence indented one space', ' ```', '',
+    '   ~~~', '## in a ~~~ fence indented three spaces', '   ~~~', '',
+    '```text', '``` example', '## after a line that only starts with the opening fence', '```', '',
+    '```', 'x', '   ```', '## after a block closed three spaces in', '',
+    '``` not `a` fence', '## after a line that opens no block', '',
+  ].join('\n');
+  const lines = renderKnowledge(refs).split('\n');
+  for (const line of ['## in a fence indented one space', '## in a ~~~ fence indented three spaces', '## after a line that only starts with the opening fence',
+    '### after a block closed three spaces in', '### after a line that opens no block']) assert.ok(lines.includes(line), line);
+});
+
 // ---------- refreshHistory: the skill text and Read results inside recorded histories ----------
 const HEAD = 'Base directory for this skill: /plugin/skills/prompt-engine\n\n';
 const readText = (p) => normalize(readFileSync(join(repo, p), 'utf8'));

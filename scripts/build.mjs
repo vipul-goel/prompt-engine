@@ -119,17 +119,29 @@ export const KNOWLEDGE_ORDER = [
 
 const titleOf = (md) => (md.match(/^# (.+)$/m) || [, 'Untitled'])[1].trim();
 
+// Fenced code blocks as CommonMark (0.31.2) reads them. An opening fence is a run of three or more
+// backticks or tildes after up to three spaces; after a run of backticks, the rest of the line holds
+// no backtick. The block ends at a line of the same character, as long as the opening run or longer,
+// after up to three spaces and followed only by spaces or tabs, or at the end of the text. Given the
+// opening run of the block open before a line (null outside one), returns the one open after it.
+// demoteHeadings and validate.mjs's key-section check use it. Fences recognized only in the first
+// column, and closed by any line that started with the opening run, let a heading in an indented
+// fence, or after a line such as "``` example" inside one, count as outside it.
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})([\s\S]*)$/;
+export function fenceAfter(open, line) {
+  const f = line.match(FENCE_LINE);
+  if (!f) return open;
+  if (open === null) return f[1][0] === '`' && f[2].includes('`') ? null : f[1];
+  return f[1][0] === open[0] && f[1].length >= open.length && /^[ \t]*$/.test(f[2]) ? null : open;
+}
+
 // Shift markdown headings down one level outside fenced code blocks.
 function demoteHeadings(md) {
   let fence = null;
   return md.split('\n').map((line) => {
-    const f = line.match(/^(`{3,}|~{3,})/);
-    if (f) {
-      if (!fence) fence = f[1];
-      else if (line.startsWith(fence)) fence = null;
-      return line;
-    }
-    return !fence && /^#{1,5} /.test(line) ? `#${line}` : line;
+    const outside = fence === null;
+    fence = fenceAfter(fence, line);
+    return outside && /^#{1,5} /.test(line) ? `#${line}` : line;
   }).join('\n');
 }
 
