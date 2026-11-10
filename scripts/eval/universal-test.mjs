@@ -70,8 +70,10 @@ export const MENU = new RegExp(String.raw`What next\?(?=[\s\S]*Refine)[\s\S]*?${
 // as, e.g., for example or like, an example; one right after write, leave, insert or put, a marker
 // the prompt tells the model to write; one right after another placeholder and a comma or "or";
 // and one right after a letter, digit, ] or ), as in code such as df[["a", "b"]]. Residuals: a
-// real placeholder right after one of those words isn't counted, and a marker after other words
-// ("mark it [[TBD]]") is. The (?<!#) keeps a long run of # linear.
+// real placeholder right after one of those words isn't counted, and a [[...]] that the prompt
+// uses for something else is: a marker after other words ("mark it [[TBD]]"), a field of an
+// output template that the model fills, or code such as f([[1]]). The (?<!#) keeps a long run of
+// # linear.
 // writing-quick-launch-email's 08 and the media 05 graders hold the same text. The skill also
 // leaves out the placeholder of another person's private detail that it removed (D46). The core
 // has no room for that rule, so this check doesn't model it; private-detail-redaction-quick's 08
