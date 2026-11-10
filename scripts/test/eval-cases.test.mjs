@@ -7,7 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1291,4 +1291,26 @@ test('the mug cases\' no-invention judges skip, by quote, the counts that the re
   }
   const credited = graderOf(fill, '03-no-invention').body.match(/values those four assumptions set \(([^)]*)\)/)[1];
   assert.equal(credited, 'the word range, the three titles and their length limit, the language');
+});
+
+// The text no-invention rubrics (D30, literal: lengths, counts and limits as items of their own).
+// An Assumption covers a number only when it states it, as the media rubrics say ("A number is
+// mentioned only when the item states it."). Without that sentence, step 1d's judges read
+// "covered" both ways on the same miss: an item that named what a count measured ('Output is an
+// overview', 'párrafos cortos') passed the unlisted count in 2 of 4 kept runs and failed it in the
+// others (step 1e, B1.1.3). The example comes from none of the cases' requests.
+const NUMBER_RULE = "A number is covered only when an item states it: an item that names what the number measures, such as 'a guest list', doesn't cover '40 guests'.";
+test('the text no-invention rubrics cover a number only with an item that states it (D30)', () => {
+  const media = new Set(MEDIA_RUBRICS.map(([c, g]) => `${c}/${g}`));
+  const cases = readdirSync(EVALS).filter((c) => existsSync(join(EVALS, c, 'graders')));
+  const rubrics = cases.flatMap((c) => gradersOf(c).filter((g) => g.name.endsWith('-no-invention') && !media.has(`${c}/${g.name}`)).map((g) => [`${c}/${g.name}`, g.body]));
+  assert.equal(rubrics.length, 11, rubrics.map(([n]) => n).join(', '));
+  for (const [name, body] of rubrics) {
+    const pass = body.split('\n').find((l) => l.startsWith('PASS if each remaining value'));
+    assert.ok(pass?.includes(`minor values may share one item. ${NUMBER_RULE} FAIL if any remaining value`), name);
+  }
+  for (const c of cases) {
+    const prompt = join(EVALS, c, 'prompt.md');
+    if (existsSync(prompt)) assert.doesNotMatch(readFileSync(prompt, 'utf8'), /\bguests?\b/i, c);
+  }
 });
