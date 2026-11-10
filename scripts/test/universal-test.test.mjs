@@ -346,6 +346,16 @@ test('ok or thanks at the menu: the prompt is ready, and no fenced block or scor
     'Nothing runs until you pick one; the prompt is ready.',
     'Both prompts are ready: paste these into Midjourney whenever you like, or reply 2 to refine.',
     "The prompt is ready, and there's no need to send me anything else.",
+    // Without me or us: the prompt, an option or the number of one, changes, and a negated verb are
+    // no values, and paste, give or provide without a word for this chat say how to use the prompt.
+    'Your prompt is ready. Paste the prompt into ChatGPT or any chat app, or reply 2 to refine it.',
+    'Your prompt is ready. Share the short version with your team, or reply with the number of an option.',
+    'The prompt is ready. Reply with 1 to fill the placeholders or 2 to refine.',
+    'The prompt is ready. Reply with your pick: 1 or 2.',
+    'The prompt is ready. Option 1 asks you to share your app name and the launch date.',
+    "The prompt is ready. If you want changes, just send the changes you'd like.",
+    "Your prompt is ready. Please don't paste your API key here; set it in your shell.",
+    'The prompt is ready. When you run it, paste your interview notes after it.',
   ]) assert.deepEqual(failing(U.MENU_ACK, t), [], t);
   // What a run looks like instead: one live reply to ok at the menu (U3, 2026-11-03), shortened.
   assert.deepEqual(failing(U.MENU_ACK, "I can't run the full prompt yet, because it tells me to inspect your repo to find the stack.\n\nPlease send these:\n1. **Stack:** language and framework.\n2. **Tests:** your test command."), ['says the prompt is ready', ASKS]);
@@ -361,6 +371,21 @@ test('ok or thanks at the menu: the prompt is ready, and no fenced block or scor
     ['The prompt is ready. Send me the app name and the launch date, and I will fill them in.', [ASKS]],
     ['The prompt would be ready to run once you fill the placeholders.', ['says the prompt is ready']],
     ["Your prompt is ready. Here's the post:\n\nRemote work changed how managers lead.", [ASKS]],
+    // Asks without me or us (step 1e).
+    ['Your prompt is ready. Please share your app name and launch date so I can fill them in.', [ASKS]],
+    ['Your prompt is ready. Paste your app name and the launch date below and I will fill them in.', [ASKS]],
+    ['Your prompt is ready. Reply with the app name and the launch date, and I will fill them in.', [ASKS]],
+    ['Your prompt is ready. Can you send the app name and launch date?', [ASKS]],
+    ['Once I have them, your prompt is ready to paste. Send over the app name and launch date.', [ASKS]],
+    ['The prompt is ready. To fill it in, please share:\n- your app name\n- the launch date', [ASKS]],
+    ['Your prompt is ready. Pick 1, or send the app name and launch date now.', [ASKS]],
+    // Only the Subject: line shows the email written out.
+    ['Your prompt is ready.\n\nSubject: Meet Flowly\n\nHi there, meet Flowly, the app that gives you back an hour a day.', [ASKS]],
+    ['Your prompt is ready.\n\n**Subject:** Meet Flowly\n\nHi there, meet Flowly.', [ASKS]],
+    // A put-off in the ready's own clause: once, if, until.
+    ['Once you fill in the date your prompt is ready to paste.', ['says the prompt is ready']],
+    ['If you add the launch date the prompt is ready to run.', ['says the prompt is ready']],
+    ['Until you add the date the prompt is ready only as a draft.', ['says the prompt is ready']],
   ]) assert.deepEqual(failing(U.MENU_ACK, reply), want, reply);
   assert.deepEqual(failing(U.MENU_ACK, `Your prompt is ready.\n\n### Score\n${SCORE}`), ['no fenced block or score table']);
   assert.deepEqual(failing(U.MENU_ACK, output()), ['says the prompt is ready', 'no fenced block or score table']);

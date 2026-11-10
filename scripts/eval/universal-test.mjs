@@ -169,24 +169,42 @@ export const CHANGED = [
 // prompt again) and no score table. Running the prompt instead would write the code or the
 // email, or ask for what the run needs, as one live reply to ok did ("I can't run the full
 // prompt yet…"). The ready counts only when nothing before it in its clause, within 200
-// characters, negates it or puts it off ("isn't ready", "will be ready", "once I have them, …
-// ready"); a clause ends at . ! ? ; : , or a dash. The bound keeps the time linear on a line that
-// puts off many readys (step 1e). The reply also asks for no values and starts no task in prose
-// (step 1e). It fails on send, tell, give, share, paste or provide followed by me or us, unless to
-// comes right before the verb ("to give me the app name", which says what an option does), a
-// negation governs it ("doesn't tell me which option") or the next words are about the pick
-// ("tell me which", "what you'd like", a number); on send, give or provide followed by these or
-// the following; on a question that starts with what's your or what's the, unless it asks for the
-// pick ("What's your pick?"); on "here is the email" or another deliverable that isn't a prompt;
-// and on a line that starts with Subject:, an email written out. A heuristic: it misses an ask in
-// other words ("I need the app name", "Which app is it?") and a task started without such words,
-// and it flags a question about something other than values ("What are your thoughts?").
+// characters, negates it or puts it off ("isn't ready", "will be ready", "if you add the date it's
+// ready"); a clause ends at . ! ? ; : , or a dash, so a put-off in an earlier clause ("Once I have
+// them, it's ready") or after the ready ("ready once I have them") doesn't count. The bound keeps
+// the time linear on a line that puts off many readys (step 1e). The reply also asks for no values
+// and starts no task in prose (step 1e). It fails on send, tell, give, share, paste or provide
+// followed by me or us, unless to comes right before the verb ("to give me the app name", which
+// says what an option does), a negation governs it ("doesn't tell me which option") or the next
+// words are about the pick ("tell me which", "what you'd like", a number); on send, give or
+// provide followed by these or the following; on an ask without me or us for a value, which is
+// your or the and then a word other than prompt, version, option, pick, choice, number, changes,
+// edits, feedback, thoughts or questions, or else a colon: send or share, with over or along or
+// not, at the start of a clause ("Please share your app name", "Pick 1, or send the date"); paste,
+// give or provide there only with a word for this chat later in the sentence ("Paste your app
+// name below", "so I can fill them in"), since "paste your notes after it" says how to use the
+// prompt; any of these after can, could, would or will you; and reply with, which may also take a
+// or an; on a question that starts with what's your or what's the, unless it asks for the pick
+// ("What's your pick?"); on "here is the email" or another deliverable that isn't a prompt; and on
+// a line that starts with Subject:, an email written out. A heuristic: it misses an ask in other
+// words ("I need the app name", "Which app is it?", "What app is this for?"), a put-off ready as
+// above, an ask whose verb doesn't start its clause ("you could send the date"), and a task
+// started without such words ("Below is the email it writes"); and it flags a question about
+// something other than values ("What are your thoughts?") and a request to send the result on
+// ("Send the email to your list").
 const PUT_OFF = /\b(?:not|never|no longer|almost|nearly|once|until|after|as soon as|if|whether)\b|n['’]t\b|\b(?:will|would|could|should|might|may|shall|can)\s+(?:\w+\s+){0,2}?be\b/i;
 const saysReady = (t) => t.split('\n').some((line) => /\bprompts?\b/i.test(line) && [...line.matchAll(/\bready\b/gi)]
   .some((m) => !PUT_OFF.test(line.slice(Math.max(0, m.index - 200), m.index).split(/[.!?;:,—–]/).at(-1))));
 const UNGOVERNED = String.raw`(?<!\bto\s+)(?<!(?:\bnot|\bnever|n['’]t|\bno need to)\s+(?:\w+\s+){0,2})`;
+const NOT_A_VALUE = String.raw`(?:(?:full|short)\s+)?(?:prompts?|versions?)|options?|picks?|choices?|numbers?|changes?|edits?|feedback|thoughts?|questions?`;
+const VALUE = String.raw`(?:[ \t]*:|\s+(?:your|the)\s+(?!(?:${NOT_A_VALUE})\b)\w)`;
+const TO_CHAT = String.raw`(?=[^.!?\n]{0,120}?\b(?:below|here|in (?:this|the|our) (?:chat|conversation)|in your (?:next )?(?:reply|message)|so (?:that )?(?:I|we)|and (?:I|we)|for me|to me)\b)`;
+const CLAUSE_START = String.raw`(?:^|[\n.!?:;,—–]|\s(?:and|or|then)\s)\s*(?:(?:[-*•]|\d+[.)])\s+)?\**(?:(?:please|just|simply|kindly)\s+)?`;
 const ASKS_OR_STARTS = new RegExp(String.raw`${UNGOVERNED}\b(?:send|tell|give|share|paste|provide)\s+(?:me|us)\b(?!\s+(?:[\x60"']?\d|which|when|if|whether|how|what (?:to|you)|your (?:pick|choice))\b)` +
   String.raw`|${UNGOVERNED}\b(?:send|give|provide)\s+(?:these|the following)\b` +
+  String.raw`|${CLAUSE_START}(?:(?:send|share)(?:\s+(?:over|along))?|(?:paste|give|provide)${TO_CHAT}(?:\s+(?:in|below|here))?)${VALUE}` +
+  String.raw`|\b(?:can|could|would|will)\s+you\s+(?:please\s+|just\s+)?(?:send|share|paste|give|provide)(?:\s+(?:over|along|in|below|here))?${VALUE}` +
+  String.raw`|${UNGOVERNED}\breply\s+with(?:[ \t]*:|\s+(?:your|the|a|an)\s+(?!(?:${NOT_A_VALUE})\b)\w)` +
   String.raw`|\bwhat(?:['’]s| is| are)\s+(?:your|the)\s+(?!(?:pick|choice|option|preference|call|decision|next)\b)[^?\n]{1,80}\?` +
   String.raw`|\bhere(?:['’]s| is| are)\s+(?:the|your|a|an)\s+(?:[\w-]+\s+){0,3}?(?:email|post|article|code|script|draft|description|copy|story|essay|letter|report|function|tests?|listing|caption|ad|image|video)\b(?!\s+prompts?\b)` +
   String.raw`|(?:^|\n)[ \t]*\**Subject(?: line)?\**[ \t]*:`, 'i');
