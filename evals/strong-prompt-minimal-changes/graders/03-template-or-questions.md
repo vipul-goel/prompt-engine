@@ -6,6 +6,6 @@
 # heading must read "Full prompt" and a lower-case "full prompt" in a question round's prose
 # doesn't count.
 type: regex
-pattern: '#+\s*Full prompt\s*\n```|^(?![\s\S]*Full prompt)(?=[\s\S]*★)[\s\S]*\n[ \t]*(?:#+[ \t]*|\*\*)?[12][.)](?:\s|\*\*)[^\n]*\?'
+pattern: '#\s*Full prompt\s*\n```|^(?![\s\S]*Full prompt)(?=[\s\S]*★)[\s\S]*\n[ \t]*(?:#+[ \t]*|\*\*)?[12][.)](?:\s|\*\*)[^\n]*\?'
 weight: 1
 ---

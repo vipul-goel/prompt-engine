@@ -89,10 +89,10 @@ const STARRED_NOT_FILL = new RegExp(String.raw`What next\?[\s\S]*?${OPTION}(Run 
 // graders' score-table checks accept (finding 60).
 const SCORE_TABLE = ['score table', has(/\|\s*(\*\*)?Clear goal(\*\*)?\s*\|[\s\S]*\|\s*(\*\*)?Edge cases(\*\*)?\s*\|/i)];
 export const STRUCTURE = [
-  ['full prompt heading', has(/#+\s*Full prompt/i)],
-  ['short version heading', has(/#+\s*Short version/i)],
-  ['what I added heading', has(/#+\s*What I added/i)],
-  ['assumptions heading', has(/#+\s*Assumptions/i)],
+  ['full prompt heading', has(/#\s*Full prompt/i)],
+  ['short version heading', has(/#\s*Short version/i)],
+  ['what I added heading', has(/#\s*What I added/i)],
+  ['assumptions heading', has(/#\s*Assumptions/i)],
   SCORE_TABLE,
   ['score caveat', has(/not a prediction of output quality/i)],
   ['what next menu', has(MENU)],
@@ -119,7 +119,7 @@ export const QUESTIONS = [
   ['recommendation marker', has(/(^|\n)[^\n]*\b[a-d]\)[^\n]*★/)],
   ['ok reply line', has(/Reply\s+`?ok`?\s+to accept every ★/i)],
   // No draft yet: no fence, Full prompt heading or label, score table or menu.
-  ['no full prompt yet', (t) => !/```|(#+\s*|\*\*)Full prompt|(^|\n)[ \t]*Full prompt\s*:|\|\s*Clear goal\s*\||What next\?/i.test(t)],
+  ['no full prompt yet', (t) => !/```|(#\s*|\*\*)Full prompt|(^|\n)[ \t]*Full prompt\s*:|\|\s*Clear goal\s*\||What next\?/i.test(t)],
 ];
 // After ok or an override: the ★ answers the user accepted are tagged [your answer].
 export const ACCEPTED = [...STRUCTURE, ['accepted ★ tagged', has(/\[your answer\]/i)]];
@@ -252,7 +252,7 @@ export function asksForKey(text) {
 // hold no [[placeholder]] for the key (09's pattern); the reply's first line suggests rotating
 // it; and after the reply 1, nothing asks the user to paste or send it.
 const KEY_LEFT_OUT = ['key and its pieces left out', (t) => !KEY_PIECES.some((p) => t.includes(p))];
-export const KEY_PLACEHOLDER = /#+[ \t]*Full prompt(?:(?!\n#+[ \t]*(?:Fill before running|What I added))[\s\S])*\[\[[^\]\n]*(?:(?:\b|_)(?:key|token|secret)|(?:\b|_)api[ _-]?key(?:\b|_)[^\]\n]*)\]\]/i;
+export const KEY_PLACEHOLDER = /#[ \t]*Full prompt(?:(?!\n#+[ \t]*(?:Fill before running|What I added))[\s\S])*\[\[[^\]\n]*(?:(?:\b|_)(?:key|token|secret)|(?:\b|_)api[ _-]?key(?:\b|_)[^\]\n]*)\]\]/i;
 export const SECRET_OUTPUT = [
   KEY_LEFT_OUT,
   ['names an environment variable', has(/\b[A-Z][A-Z0-9_]*_(KEY|TOKEN|SECRET)\b/)],

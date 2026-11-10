@@ -1,0 +1,114 @@
+// Times every regex grader of the eval cases on long replies that repeat one piece, the way claude
+// plugin eval runs a grader: s.match(new RegExp(pattern, flags + 'g')) and then
+// new RegExp(pattern, flags).test(s), synchronously and with no time limit (read in Claude Code
+// 2.1.321's code). A pattern that backtracks too much on such a reply holds up the whole eval run,
+// so each piece below is one that made some grader take seconds at 56799e0 (step 1e). Real
+// replies take milliseconds either way.
+// Two legs: Node's engine (V8), and JavaScriptCore, the engine of the Bun runtime that Claude Code
+// runs in, through macOS's jsc shell or a bun on PATH. Some patterns that V8 runs fast are
+// quadratic in JavaScriptCore, so the second leg matters; it is skipped where neither is there.
+// A pattern fails when one reply takes LIMIT_MS or more in each of three tries (one try when it
+// takes more than three times that), so a pause on a busy machine doesn't fail a linear pattern.
+// Graders that share a pattern and flags are timed once. No model calls.
+// Run with: node --test scripts/test/*.test.mjs
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { frontmatter } from '../eval-cases.mjs';
+
+const EVALS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'evals');
+const LIMIT_MS = 1_000;
+
+// Every regex grader, one entry per pattern and flags, named by the graders that use it.
+const byPattern = new Map();
+for (const c of readdirSync(EVALS).sort()) {
+  const dir = join(EVALS, c, 'graders');
+  if (!existsSync(dir)) continue;
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.md')).sort()) {
+    const { data, body } = frontmatter(readFileSync(join(dir, f), 'utf8'), `evals/${c}/graders/${f}`);
+    if (data?.type !== 'regex') continue;
+    const pattern = data.pattern ?? body;
+    const flags = data.flags ?? '';
+    const key = JSON.stringify([pattern, flags]);
+    if (!byPattern.has(key)) byPattern.set(key, { ids: [], pattern, flags });
+    byPattern.get(key).ids.push(`${c}/${f.replace(/\.md$/, '')}`);
+  }
+}
+const PATTERNS = [...byPattern.values()].map((p) => ({ ...p, name: p.ids.length > 1 ? `${p.ids[0]} (and ${p.ids.length - 1} more)` : p.ids[0] }));
+
+// [label, prefix, piece, repeats]: the reply is the prefix, then the piece repeated.
+const SHAPES = [
+  // An unanchored search that starts with #+ reads the rest of the run from every # of it
+  // (B1.2.1): 35 graders, among them every Full prompt heading check, took seconds at 40,000.
+  ['a run of #', '', '#', 40_000],
+  ['a line, then a run of #', 'x\n', '#', 40_000],
+];
+const reply = ([, prefix, piece, n]) => prefix + piece.repeat(n);
+
+test('the timing test reads the regex graders', () => {
+  assert.ok(PATTERNS.length > 40, `only ${PATTERNS.length} regex patterns found`);
+});
+
+test('every regex grader takes linear time on long repeated replies (V8)', () => {
+  const run = new vm.Script("s.match(new RegExp(p, f.includes('g') ? f : f + 'g')); new RegExp(p, f).test(s)");
+  const slow = [];
+  for (const shape of SHAPES) {
+    const s = reply(shape);
+    for (const { name, pattern, flags } of PATTERNS) {
+      let fast = false;
+      for (let i = 0; i < 3 && !fast; i++) {
+        try {
+          run.runInNewContext({ p: pattern, f: flags, s }, { timeout: LIMIT_MS });
+          fast = true;
+        } catch (e) {
+          if (e?.code !== 'ERR_SCRIPT_EXECUTION_TIMEOUT') throw e;
+        }
+      }
+      if (!fast) slow.push(`${name} on ${shape[0]}`);
+    }
+  }
+  assert.deepEqual(slow, []);
+});
+
+const JSC = '/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc';
+const engine = existsSync(JSC) ? [JSC] : spawnSync('bun', ['--version']).status === 0 ? ['bun', 'run'] : null;
+test('every regex grader takes linear time on long repeated replies (JavaScriptCore)', { skip: !engine && 'no jsc shell or bun here' }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-grader-time-'));
+  try {
+    const file = join(dir, 'time.js');
+    // print and preciseTime are the jsc shell's; console.log and performance.now are Bun's.
+    writeFileSync(file, `var P = ${JSON.stringify(PATTERNS)}, S = ${JSON.stringify(SHAPES)}, LIMIT = ${LIMIT_MS};
+var now = typeof preciseTime === 'function' ? function () { return preciseTime() * 1000; } : function () { return performance.now(); };
+var say = typeof print === 'function' ? print : function (x) { console.log(x); };
+for (var i = 0; i < S.length; i++) {
+  var s = S[i][1] + S[i][2].repeat(S[i][3]);
+  for (var j = 0; j < P.length; j++) {
+    var p = P[j], ms = 0;
+    say('RUN\\t' + p.name + ' on ' + S[i][0]);
+    for (var k = 0; k < 3; k++) {
+      var t0 = now();
+      s.match(new RegExp(p.pattern, p.flags.indexOf('g') >= 0 ? p.flags : p.flags + 'g'));
+      new RegExp(p.pattern, p.flags).test(s);
+      ms = now() - t0;
+      if (ms < LIMIT || ms > 3 * LIMIT) break;
+    }
+    if (ms >= LIMIT) say('SLOW\\t' + p.name + ' on ' + S[i][0] + '\\t' + Math.round(ms) + ' ms');
+  }
+}
+say('DONE');
+`);
+    const r = spawnSync(engine[0], [...engine.slice(1), file], { encoding: 'utf8', timeout: 600_000, maxBuffer: 16 * 1024 * 1024 });
+    const lines = (r.stdout ?? '').split('\n');
+    const slow = lines.filter((l) => l.startsWith('SLOW\t')).map((l) => l.split('\t').slice(1).join(': '));
+    if (!lines.includes('DONE')) slow.push(`stopped in ${lines.findLast((l) => l.startsWith('RUN\t'))?.slice(4) ?? 'no grader'}: ${r.error ?? r.stderr}`);
+    assert.deepEqual(slow, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

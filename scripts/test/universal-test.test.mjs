@@ -493,6 +493,37 @@ test('secret case, after 1: the check stays fast on a long sentence with many as
   assert.ok(performance.now() - t0 < 1_000, `${Math.round(performance.now() - t0)} ms`);
 });
 
+// Every check of every turn, once each, timed on long replies that repeat one piece. Each piece
+// made some check take seconds in Node 24 at 56799e0 (step 1e); real replies take milliseconds.
+// The script runs the checks in Node, so V8 is the engine that matters here; the eval graders
+// that share these patterns are timed in JavaScriptCore too (eval-grader-time.test.mjs).
+const TIMED_CHECKS = new Map([...U.CASES.flatMap((c) => c.checks.flat()), ['asksForKey', U.asksForKey]].map(([name, ok]) => [name, ok]));
+const TIMING_SHAPES = [
+  // An unanchored search that starts with #+ reads the rest of the run from every # of it (B1.2.1).
+  ['a run of #', '', '#', 40_000],
+  ['a line, then a run of #', 'x\n', '#', 40_000],
+];
+test('every check stays fast on long repeated replies', () => {
+  assert.ok(TIMED_CHECKS.size > 20, `only ${TIMED_CHECKS.size} checks`);
+  const slow = [];
+  for (const [label, prefix, piece, n] of TIMING_SHAPES) {
+    const t = prefix + piece.repeat(n);
+    for (const [name, ok] of TIMED_CHECKS) {
+      // The fastest of three tries (one try over 3 s), so one pause on a busy machine doesn't
+      // fail a check.
+      let ms = Infinity;
+      for (let i = 0; i < 3; i++) {
+        const t0 = performance.now();
+        ok(t);
+        ms = Math.min(ms, performance.now() - t0);
+        if (ms < 1_000 || ms > 3_000) break;
+      }
+      if (ms >= 1_000) slow.push(`${name} on ${label}: ${Math.round(ms)} ms`);
+    }
+  }
+  assert.deepEqual(slow, []);
+});
+
 test('cases: seven cases; ok, an override, deep and change 1 after the first turn, ok or thanks at the menu, and 1 after a key', () => {
   assert.deepEqual(U.CASES.map((c) => c.name), ['coding-standard-then-ok', 'writing-standard-then-override', 'writing-standard-then-deep', 'writing-quick-then-thanks', 'writing-quick-then-change', 'midjourney-quick', 'secret-quick-then-1']);
   for (const c of U.CASES) assert.equal(c.checks.length, c.turns.length, c.name);

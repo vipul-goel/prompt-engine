@@ -4,7 +4,7 @@
 # "What I added & why."). A tagged line is matched at its first tag, so a reply with an
 # untagged bullet fails in linear time, however many tags its lines hold.
 type: regex
-pattern: '#+\s*What I added[^\n]*\n(?:(?!#)(?:[ \t]*[-*•][ \t](?:(?!\[(?:you|your answer|best practice)\])[^\n])*\[(?:you|your answer|best practice)\][^\n]*|(?![ \t]*[-*•][ \t])[^\n]*)(?:\n|$))*(?:#|$)'
+pattern: '#\s*What I added[^\n]*\n(?:(?!#)(?:[ \t]*[-*•][ \t](?:(?!\[(?:you|your answer|best practice)\])[^\n])*\[(?:you|your answer|best practice)\][^\n]*|(?![ \t]*[-*•][ \t])[^\n]*)(?:\n|$))*(?:#|$)'
 flags: i
 weight: 1
 ---

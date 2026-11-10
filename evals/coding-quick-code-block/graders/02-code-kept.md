@@ -4,6 +4,6 @@
 # added or in the Short version, or retold in prose, doesn't count. 01 and 03 check the fence
 # around the full prompt; 06 checks the Short version's.
 type: regex
-pattern: '#+[ \t]*Full prompt(?:(?!\n#+[ \t]*(?:Full prompt|Short version|Fill before running|What I added|Assumptions|Score|What next))[\s\S])*def last_items\(items, n\):[ \t]*\n[ \t]*return items\[-n:\]'
+pattern: '#[ \t]*Full prompt(?:(?!\n#+[ \t]*(?:Full prompt|Short version|Fill before running|What I added|Assumptions|Score|What next))[\s\S])*def last_items\(items, n\):[ \t]*\n[ \t]*return items\[-n:\]'
 weight: 1
 ---

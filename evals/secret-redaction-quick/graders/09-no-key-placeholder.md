@@ -6,7 +6,7 @@
 # [[your_api_key]], or when it says api key anywhere, so [[max tokens]] or [[token budget]] don't
 # count (the test finding 58's audit gave 02 before D5).
 type: regex
-pattern: '#+[ \t]*Full prompt(?:(?!\n#+[ \t]*(?:Fill before running|What I added))[\s\S])*\[\[[^\]\n]*(?:(?:\b|_)(?:key|token|secret)|(?:\b|_)api[ _-]?key(?:\b|_)[^\]\n]*)\]\]'
+pattern: '#[ \t]*Full prompt(?:(?!\n#+[ \t]*(?:Fill before running|What I added))[\s\S])*\[\[[^\]\n]*(?:(?:\b|_)(?:key|token|secret)|(?:\b|_)api[ _-]?key(?:\b|_)[^\]\n]*)\]\]'
 flags: i
 match: not_contains
 weight: 1

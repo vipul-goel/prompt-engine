@@ -4,7 +4,7 @@
 # Full prompt heading, blank lines allowed, whose text reaches an inner fence with a language tag:
 # that block's closing fence would end the prompt early. Residual: an inner fence without a tag.
 type: regex
-pattern: '#+[ \t]*Full prompt[ \t]*\n(?:[ \t]*\n)*```(?!`)[^\n]*\n(?:(?!```)[\s\S])*\n```[A-Za-z]'
+pattern: '#[ \t]*Full prompt[ \t]*\n(?:[ \t]*\n)*```(?!`)[^\n]*\n(?:(?!```)[\s\S])*\n```[A-Za-z]'
 match: not_contains
 weight: 1
 ---

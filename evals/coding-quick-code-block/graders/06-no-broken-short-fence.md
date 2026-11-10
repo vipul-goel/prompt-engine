@@ -6,7 +6,7 @@
 # passes, as does one with a [[placeholder]]. The heading may carry a suffix. Residual: an inner
 # fence without a tag.
 type: regex
-pattern: '#+[ \t]*Short version[^\n]*\n(?:[ \t]*\n)*```(?!`)[^\n]*\n(?:(?!```)[\s\S])*\n```[A-Za-z]'
+pattern: '#[ \t]*Short version[^\n]*\n(?:[ \t]*\n)*```(?!`)[^\n]*\n(?:(?!```)[\s\S])*\n```[A-Za-z]'
 flags: i
 match: not_contains
 weight: 1
