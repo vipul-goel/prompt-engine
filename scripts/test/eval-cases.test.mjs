@@ -1408,7 +1408,7 @@ const CARRIES_OUT = [
   ['writing-quick-launch-email', '15-writing-must-haves', 'writing the launch email', "the prompt's own instructions don't count"],
   ['research-quick-vector-databases', '05-research-must-haves', 'writing the comparison of vector databases', "the prompt's own instructions don't count"],
   ['secret-redaction-quick', '07-coding-must-haves', 'writing or running the script that summarizes the emails', "the prompt's own instructions and checks don't count"],
-  ['coding-quick-code-block', '04-no-invention', 'writing the fixed function or its test', "the user's code quoted in the prompt doesn't count"],
+  ['coding-quick-code-block', '04-no-invention', 'writing the fixed function or its test', "the prompt's own instructions don't count, and neither does the user's code quoted in them"],
   ['spanish-quick', '01-spanish-throughout', 'writing the LinkedIn post', "the prompt's own instructions don't count"],
   ['private-detail-redaction-quick', '03-told-not-asked', "answering a member's question as the GPT would", "the prompt's own instructions don't count, and neither does a sample exchange inside them"],
 ];
@@ -1600,6 +1600,8 @@ test('the media menu graders see an open placeholder in the Full prompt, with or
 // a second ★ after the first What next?; a ★ before it, such as in What I added, doesn't count
 // (step 1e, B1.1.9). Every kept reply has one ★ after What next?.
 test('the menu graders fail a second ★ in the menu', () => {
+  // japanese-midjourney-quick's menu is read by a judge, whose rubric says so too (step 1e).
+  assert.ok(graderOf('japanese-midjourney-quick', '08-done-menu').body.includes('if more than one option is marked ★,'));
   const writing = graderOf('writing-quick-launch-email', '08-what-next-menu');
   const media = graderOf('image-midjourney-quick', '05-done-not-run');
   const fillMenu = (second) => `1. Fill placeholders ★ — reply with the app name and the feature\n2. Refine — change any assumption\n3. Save to file${second} — \`prompts/launch-email.md\``;
