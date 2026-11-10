@@ -351,6 +351,15 @@ describe('budgets and self-lint', () => {
   // As in scripts/validate.mjs, text in `code spans` is skipped, because it names a pattern, often
   // to warn against it (D11). Double-quoted text is still checked.
   const unquoted = (t: string) => t.replace(/`[^`\n]*`/g, ' ');
+  // check_prompt sends each lint rule's message, which may name what its own rule flags (such as
+  // "think step by step"): that describes a finding rather than asking for it. So wherever a
+  // message appears, its own rule's matches in it are left out; the other rules still apply to it,
+  // and every rule to the rest of the text.
+  const withoutOwnMatches = (t: string) =>
+    LINT_RULES.reduce(
+      (text, r) => (r.message ? text.split(r.message).join(r.message.replace(new RegExp(r.pattern, `${r.flags.replace(/[gy]/g, '')}g`), ' ')) : text),
+      t,
+    );
 
   it('keeps the server instructions under 3,500 characters', () => {
     expect(INSTRUCTIONS.length).toBeGreaterThan(200);
@@ -442,7 +451,7 @@ describe('budgets and self-lint', () => {
     }
     for (const [where, texts] of sent) {
       expect(texts.length, where).toBeGreaterThan(0);
-      for (const text of texts) for (const [id, re] of rules) expect(unquoted(text).match(re)?.[0], `${id} in ${where}`).toBeUndefined();
+      for (const text of texts) for (const [id, re] of rules) expect(unquoted(withoutOwnMatches(text)).match(re)?.[0], `${id} in ${where}`).toBeUndefined();
     }
   });
 
