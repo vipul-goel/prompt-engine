@@ -370,6 +370,14 @@ test('ok or thanks at the menu: the prompt is ready, and no fenced block or scor
     'Nothing runs until you pick one; the prompt is ready.',
     'Both prompts are ready: paste these into Midjourney whenever you like, or reply 2 to refine.',
     "The prompt is ready, and there's no need to send me anything else.",
+    // Other words for the pick after tell, give or send me: the option's number, a digit, your
+    // preference, the go-ahead and the word (step 1e, B2.2.7).
+    'Your prompt is ready. Tell me the number of the option you want.',
+    'The prompt is ready. Give me the word and I will run it.',
+    'The prompt is ready. Give me the go-ahead when you want to run it.',
+    'Your prompt is ready. Send me a 1 to run it or a 2 to refine it.',
+    'The prompt is ready. Tell me your preference: 1 or 2.',
+    'Your prompt is ready. Just tell me the option number.',
     // Without me or us: the prompt, an option or the number of one, changes, and a negated verb are
     // no values, and paste, give or provide without a word for this chat say how to use the prompt.
     'Your prompt is ready. Paste the prompt into ChatGPT or any chat app, or reply 2 to refine it.',
@@ -393,6 +401,12 @@ test('ok or thanks at the menu: the prompt is ready, and no fenced block or scor
     ['Prompt ready, so here is the launch email it asks for.\n\nSubject: Meet [[app name]]\n\nHi there, we built [[app name]] to give you back an hour a day.', [ASKS]],
     ['The prompt is not ready yet, so I tightened the subject line rule and cut the preview text to 60 characters.', ['says the prompt is ready']],
     ['The prompt is ready. Send me the app name and the launch date, and I will fill them in.', [ASKS]],
+    // The same words for the pick, but asking for a value (step 1e, B2.2.7).
+    ['The prompt is ready. Tell me the number of emails to summarize.', [ASKS]],
+    ['The prompt is ready. Tell me your preference for the tone.', [ASKS]],
+    ['The prompt is ready. Give me the word count you want.', [ASKS]],
+    ['The prompt is ready. Send me a 10-word tagline.', [ASKS]],
+    ['Your prompt is ready. Send me the number of seats you need.', [ASKS]],
     ['The prompt would be ready to run once you fill the placeholders.', ['says the prompt is ready']],
     ["Your prompt is ready. Here's the post:\n\nRemote work changed how managers lead.", [ASKS]],
     // Asks without me or us (step 1e).

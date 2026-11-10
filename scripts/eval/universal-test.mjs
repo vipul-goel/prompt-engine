@@ -194,8 +194,9 @@ export const CHANGED = [
 // and starts no task in prose (step 1e). It fails on send, tell, give, share, paste or provide
 // followed by me or us, unless to comes right before the verb ("to give me the app name", which
 // says what an option does), a negation governs it ("doesn't tell me which option") or the next
-// words are about the pick ("tell me which", "what you'd like", a number); on send, give or
-// provide followed by these or the following; on an ask without me or us for a value, which is
+// words name the pick, as PICK lists them ("tell me which", "what you'd like", "the option
+// number", a digit); on send, give or provide followed by these or the following; on an ask
+// without me or us for a value, which is
 // your or the and then a word other than prompt, version, option, pick, choice, number, changes,
 // edits, feedback, thoughts or questions, or else a colon: send or share, with over or along or
 // not, at the start of a clause ("Please share your app name", "Pick 1, or send the date"); paste,
@@ -212,7 +213,8 @@ export const CHANGED = [
 // an ask whose verb doesn't start its clause ("you could send the date"), and a task started
 // without such words ("Below is the email it writes"); and it flags a question about something
 // other than values ("What are your thoughts?") and a request to send the result on ("Send the
-// email to your list").
+// email to your list"), and takes a value named after your choice for the pick ("tell me your
+// choice of tone").
 const PUT_OFF = /\b(?:not|never|no longer|almost|nearly|once|until|after|as soon as|if|whether)\b|n['’]t\b|\b(?:will|would|could|should|might|may|shall|can)\s+(?:\w+\s+){0,2}?be\b/i;
 const saysReady = (t) => t.split('\n').some((line) => /\bprompts?\b/i.test(line) && [...line.matchAll(/\bready\b/gi)]
   .some((m) => !PUT_OFF.test(line.slice(Math.max(0, m.index - 200), m.index).split(/[.!?;:,—–]/).at(-1))));
@@ -221,7 +223,17 @@ const NOT_A_VALUE = String.raw`(?:(?:full|short)\s+)?(?:prompts?|versions?)|opti
 const VALUE = String.raw`(?:[ \t]*:|\s+(?:your|the)\s+(?!(?:${NOT_A_VALUE})\b)\w)`;
 const TO_CHAT = String.raw`(?=[^.!?\n]{0,120}?\b(?:below|here|in (?:this|the|our) (?:chat|conversation)|in your (?:next )?(?:reply|message)|so (?:that )?(?:I|we)|and (?:I|we)|for me|to me)\b)`;
 const CLAUSE_START = String.raw`(?:^|[\n.!?:;,—–]|\s(?:and|or|then)\s)[^\S\n]*(?:(?:[-*•]|\d+[.)])\s+)?\**(?:(?:please|just|simply|kindly)\s+)?`;
-const ASKS_OR_STARTS = new RegExp(String.raw`${UNGOVERNED}\b(?:send|tell|give|share|paste|provide)\s+(?:me|us)\b(?!\s+(?:[\x60"']?\d|which|when|if|whether|how|what (?:to|you)|your (?:pick|choice))\b)` +
+// The pick, as the words after send, tell, give, share, paste or provide and me or us name it: a
+// digit, alone or after a or an ("a 1", not "a 10-word tagline"); which, when, if, whether, how,
+// what to or what you; your pick or your choice; the, your, a or an and then number, option, pick,
+// choice or preference, also with option or menu before number ("the option number"), unless for,
+// on, about or regarding follows, or of and anything but the options ("the number of the option",
+// not "the number of emails"); the or your go-ahead; and the word, but not the word count or limit
+// (step 1e, B2.2.7).
+const PICK = String.raw`[\x60"']?\d|an?\s+[\x60"']?\d[\x60"']?(?![\w-])|which|when|if|whether|how|what (?:to|you)|your (?:pick|choice)` +
+  String.raw`|(?:the|your|an?)\s+(?:(?:option|menu)\s+)?(?:number|options?|picks?|choices?|preference)\b(?!\s+(?:for|on|about|regarding)\b)(?!\s+of\s+(?!(?:the|an?|your)\s+(?:options?|choices?|picks?|one)\b))` +
+  String.raw`|(?:the|your)\s+go-ahead|the\s+word\b(?!\s+(?:count|limit)\b)`;
+const ASKS_OR_STARTS = new RegExp(String.raw`${UNGOVERNED}\b(?:send|tell|give|share|paste|provide)\s+(?:me|us)\b(?!\s+(?:${PICK})\b)` +
   String.raw`|${UNGOVERNED}\b(?:send|give|provide)\s+(?:these|the following)\b` +
   String.raw`|${CLAUSE_START}(?:(?:send|share)(?:\s+(?:over|along))?|(?:paste|give|provide)${TO_CHAT}(?:\s+(?:in|below|here))?)${VALUE}` +
   String.raw`|\b(?:can|could|would|will)\s+you\s+(?:please\s+|just\s+)?(?:send|share|paste|give|provide)(?:\s+(?:over|along|in|below|here))?${VALUE}` +
