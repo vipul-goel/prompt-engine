@@ -65,7 +65,7 @@ If the prompt is already strong, don't rebuild it on this skeleton: keep the use
 - **Keep one term per concept and one delimiter style.** Mixing "users", "customers" and "clients", or switching between headings and tags, makes the prompt harder to parse.
 - **Ask for evidence, not visible deliberation.** If the user needs to check the work, ask for the result plus a brief explanation, sources or the commands run. Don't ask the model to write out its internal reasoning or to fill a dedicated reasoning section; current Claude models may refuse such requests, and reasoning models don't need them.
 - **Leave runtime settings out of the prompt text.** Effort or reasoning level, temperature, prefilled assistant turns and token budgets are API settings, not prose. Prefilled answers are not supported on current Claude models.
-- **Don't promise what the model can't see.** If the prompt depends on today's date or recent events, include the date and tell the model to check recent facts or say it can't.
+- **Don't promise what the model can't see.** If the prompt depends on today's date or recent events, write today's date when you know it from your context, and list it under Assumptions so the user can update it for a later run; if you don't know it, use `[[today's date]]`. Tell the model to check recent facts or say it can't.
 
 ## Adapting to the target model
 
@@ -103,7 +103,7 @@ Fix anything that fails:
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
-- No capitalized pressure words, generic personas, magic phrases (`take a deep breath`), requests for visible reasoning (`think step by step`, `show your reasoning`), prefill instructions or API settings. That includes a step-by-step line in the user's own prompt: take it out, and say so in one [best practice] bullet under What I added & why.
+- No capitalized pressure words, generic personas, magic phrases (`take a deep breath`), requests for visible reasoning (`think step by step`, `show your reasoning`), prefill instructions or API settings. That includes a line in the user's own prompt that asks the model to `think step by step`, reason that way or lay out its own reasoning step by step: take it out, and say so in one [best practice] bullet under What I added & why; if the user wants to check the work, ask for the result plus a brief explanation instead. Step-by-step material about the task's subject, such as instructions or a tutorial the prompt asks for, and the reasoning of someone the model guides, such as a student, are content: keep them.
 - Scope is explicit, and the output format and length are stated.
 - Every placeholder is listed under "Fill before running", and no template leftovers remain (such as an empty `{{variable}}`).
 - The full prompt is as long as the task needs and no longer, and the short version fits its budget.

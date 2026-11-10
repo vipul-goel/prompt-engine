@@ -4,8 +4,8 @@ These files let you use Prompt Engine in any chat app by pasting `prompt-engine.
 
 | File | What it is | Size |
 |---|---|---|
-| [`prompt-engine.md`](prompt-engine.md) | The instructions. Works on its own. | just under 7,500 characters |
-| [`prompt-engine-knowledge.md`](prompt-engine-knowledge.md) | Optional detailed checklists for coding, writing, research, image and video prompts | about 70,000 characters |
+| [`prompt-engine.md`](prompt-engine.md) | The instructions. Works on its own. | at most 7,500 characters |
+| [`prompt-engine-knowledge.md`](prompt-engine-knowledge.md) | Optional detailed checklists for coding, writing, research, image and video prompts | about 74,000 characters |
 
 ## Quickest: paste into any chat
 
@@ -26,7 +26,7 @@ Most apps let you save instructions so every chat starts with them. Menu names c
 3. Optionally, upload `prompt-engine-knowledge.md` under **Knowledge**.
 4. Suggested conversation starters: `prompt-engine: write a blog post about remote work`, `quick: a Midjourney prompt for a cozy cabin at night`, `deep: instructions for an agent that refactors my billing module`.
 
-In a GPT made only for this, every message is treated as a rough prompt to improve. Creating GPTs may depend on your ChatGPT plan.
+In a GPT made only for this, each new request is treated as a rough prompt to improve, without `prompt-engine:`. Answers to its questions, menu picks, `change N` replies and follow-ups after "Run it now" aren't new requests, and when it can't tell whether you want a task done or a prompt improved, it asks once. Creating GPTs may depend on your ChatGPT plan.
 
 **ChatGPT: a Project**
 Paste `prompt-engine.md` into the project's instructions and add the knowledge file to the project's files.
@@ -45,11 +45,12 @@ Use the app's custom instructions or space or agent instructions field, and atta
 
 ## Good to know
 
-- **Instruction limits.** Limits differ by app and change over time. `prompt-engine.md` is kept under 7,500 characters so it fits common limits of 8,000; the 8,000-character limit is confirmed for Microsoft 365 Copilot agents. Other apps' limits haven't been confirmed. If an app rejects the instructions as too long, paste them as the first chat message instead.
+- **Instruction limits.** Limits differ by app and change over time. `prompt-engine.md` is kept within 7,500 characters so it fits common limits of 8,000; the 8,000-character limit is confirmed for Microsoft 365 Copilot agents. Other apps' limits haven't been confirmed. If an app rejects the instructions as too long, paste them as the first chat message instead.
 - **What's different outside Claude.**
   - Questions arrive as a numbered list rather than clickable dialogs.
   - "Run it now" carries out the prompt in the same chat.
   - "Save to file" appears only when the app has a tool that saves files on your computer; most chat apps don't.
+  - Some of the skill's rules don't fit in `prompt-engine.md`, so its replies can differ from the skill's in places. [Known limits](../docs/compatibility.md#known-limits) lists the main ones and says which of them the knowledge file has.
 - **Other people's private details.** With these instructions, on Claude too, secrets such as API keys are kept out of the prompt, but there is no rule for other people's private details, which the skill replaces with placeholders. [Known limits](../docs/compatibility.md#known-limits) has the details.
 - **Privacy.** Prompt Engine is just instructions: your prompts go only to the AI app you're already using.
 - **Testing status.** A conversation test checks these instructions on Claude through `claude -p`, with no tools or MCP servers loaded. It makes billed calls and is run by hand; [docs/compatibility.md](../docs/compatibility.md) has the date and result of the last run. Results in other apps may differ.

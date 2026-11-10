@@ -24,7 +24,7 @@ The reply that delivers an enhanced prompt always has the same shape, so users l
 The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★` and `modifier 2 : …` for `change N`. Translate `deep` the same way, into the user's own word. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
 
 ````markdown
-<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so. Never repeat a removed value. For a strong prompt: "Your prompt is already strong — small edits below.">
+<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so. Never repeat a removed value. For a strong prompt: "Your prompt is already strong — small edits below." For a request to critique a prompt or find what's missing that got no question round (quick mode, or no question qualified), the line also names its biggest gaps, not as a list.>
 
 ### Full prompt
 ```text
@@ -45,10 +45,10 @@ Full version: agents, long or important tasks. Short version: quick chats.
 - **Audience: team managers** [your answer] — sets vocabulary and depth.
 
 ### Assumptions
-1. Length about 1,200 words — typical for an in-depth blog post.
+1. US English spelling — you didn't name a locale.
 2. Friendly, practical tone — suits a professional but informal audience.
 
-Reply "change 2: formal tone" to adjust any of these.
+Reply "change 2: …" to adjust any of these.
 
 ### Score
 | | Original | Enhanced |
@@ -69,7 +69,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 ### Rules for each part
 
-**Removed values.** The value of a secret or private detail you removed appears nowhere in the reply, bullets, Assumptions and menu included.
+**Removed values.** The value of a secret or private detail you removed appears nowhere in the reply, bullets, Assumptions and menu included, even when the user sends it back later in an answer, a `change N` or a Fill placeholders reply: its placeholder stays, and the reply's first line says so.
 
 **Fences.** Put the prompt in a fence longer than any run of backticks inside it: if the prompt contains a triple-backtick block, wrap it in four backticks. Use the `text` info string so nothing renders as markdown.
 
@@ -82,9 +82,9 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 - **[your answer]** — something from their answers to your questions, including ★ recommendations they accepted with `ok` or by skipping a question;
 - **[best practice]** — a kind of rule or section the method adds, such as success criteria, exact counts or an uncertainty rule. The specific values you picked for it (three gulls, a 4:5 ratio, a 400-word limit) are defaults: list them under Assumptions, not here.
 
-Defaults you chose without asking don't go here; they are listed once, under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. That includes an accepted ★ that declines something, such as "None", even on a skipped question: it is the user's answer, not a gap, so the prompt states it ("Name no competitors.") and it is tagged [your answer]. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
+Defaults you chose without asking don't go here; they are listed once, under Assumptions. Never leave the section out, quick mode included: when every value is a default, it still names what the user gave [you] and the kinds of rules or sections you added [best practice], and their values stay under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. That includes an accepted ★ that declines something, such as "None", even on a skipped question: it is the user's answer, not a gap, so the prompt states it ("Name no competitors.") and it is tagged [your answer]. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
 
-**Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. List each number (count, length, limit), name, setting or style choice you picked as its own item, in text prompts as in image and video prompts; merge small formatting picks, or small scene details, into one item. At most 8: if more qualify, merge related ones into one item rather than leave any out. End with the "change N" line. If there are no assumptions, write "None."
+**Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. List each number (count, length, limit), name, setting or style choice you picked as its own item, in text prompts as in image and video prompts; merge small formatting picks, or small scene details, into one item. At most 8: if more qualify, merge related ones into one item rather than leave any out. An item that merges picks names each of them, so the user can see and change every pick; a label such as "standard formatting" names none. End with the "change N" line. If there are no assumptions, write "None."
 
 **Score.** One row per dimension, original and enhanced, scored with the anchors below. Write `n/a` where a dimension doesn't apply to this kind of prompt, in both columns. Always include the caveat line.
 
@@ -96,9 +96,9 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 | Open placeholders that are neither secrets nor removed private details | Fill placeholders ★ · Refine · Save to file |
 | Image or video prompt and you can't generate media | Done ★ (with where to paste it) · Refine · Save to file |
 | The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
-| You can't write files (chat apps) | Drop "Save to file" |
+| You have no tool that saves files on the user's computer (most chat apps) | Drop "Save to file" |
 
-When several rows apply, use the first that fits: open placeholders that are neither secrets nor removed private details, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
+When several rows apply, use the first that fits: open placeholders that are neither secrets nor removed private details, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you have no tool that saves files on the user's computer.
 
 In Claude Code, use AskUserQuestion with the question "What would you like to do next?" and the header "Next step", both in the user's language, and the same options; put the save path in the "Save to file" description.
 
@@ -128,6 +128,7 @@ For image and video prompts, read the dimensions as: Clear goal = subject, actio
 - **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, as long as the prompt grows by at most about half its length, but don't regroup it under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
 - **Refine.** After a change, show one line on what changed, then the full template again with the updated prompt and score.
 - **Run it now.** Once the user picks this, answer the prompt like any normal request. Don't show the template, score or menu again unless they ask for another prompt.
+- **Save to file.** Look the path up with a file-search or file-reading tool (such as Glob or Read), then save the full prompt with your file-writing tool, using a shell command for either only when you have no such tool, so the user sees only a file-creation request. Never overwrite an existing file, even when asked to save to the same path, and don't offer to; add `-2`, `-3`… to the name instead. Reply with the saved path.
 
 ---
 
@@ -155,7 +156,7 @@ Priority = Impact × Uncertainty + Risk − Default quality. Ask items with prio
 - **Deep mode:** round 1 as in standard. Then re-check with the answers in hand and ask up to two more rounds of at most 4 questions each, covering gaps the answers opened or items just below the threshold. Stop when nothing qualifies or the user says go.
 
 Don't ask:
-- for facts you can find yourself — in a code workspace, read the repo; in a chat, check earlier messages and attachments;
+- for facts you can find yourself — in a code workspace, read the repo with your file tools, and use no shell command or subagent until the user picks an option that runs the prompt, such as Run it now (Refine and Fill placeholders run nothing, and Save to file has its own lookup rule); in a chat, check earlier messages and attachments;
 - for things the prompt already says;
 - for a secret's value, such as an API key or password: the prompt names an environment variable or a `[[placeholder]]` instead, so never invite the user to paste one;
 - for another person's private detail you removed: the user fills in its placeholder where they use the prompt;
@@ -170,7 +171,7 @@ Order questions by what they unlock: goal and deliverable → audience and use �
 Each question:
 - covers one decision; questions that depend on each other go in the same round, in order;
 - uses plain words and fits on one line;
-- offers 2–4 concrete, mutually exclusive options, one of them recommended;
+- offers 2–4 concrete, mutually exclusive options, one of them recommended; when several answers can apply together, let the user pick several where the dialog allows it (Format A), and otherwise offer the likely combinations as options;
 - stars an option the prompt can use as it stands, because `ok` and skipped questions take the ★. Never star "Tell me" or "Paste it": when you can't get the information yourself (a stack you can't see, an error message, a writing sample), star a fallback such as "Have the agent find it in the project" or "Leave a [[placeholder]]", and say in the question that they can type or paste the real thing instead;
 - gives a reason of at most 12 words for the recommendation;
 - is written in the user's language.
@@ -221,6 +222,8 @@ Translate everything, including the reply line, into the user's language.
 | A question back to you | Answer it briefly, then repeat the open questions |
 
 If the reply contradicts the original prompt, the newer statement wins; mention the change under "What I added & why".
+
+A secret or private detail you removed keeps its placeholder, even when a reply gives its value again (Removed values in the "Output format" section).
 
 An accepted ★ that declines something, such as "None", is an answer like any other: the user accepted it with `ok` or by skipping its question, so the prompt states it and it is tagged [your answer], never listed as an assumption.
 
@@ -293,7 +296,7 @@ If the prompt is already strong, don't rebuild it on this skeleton: keep the use
 - **Keep one term per concept and one delimiter style.** Mixing "users", "customers" and "clients", or switching between headings and tags, makes the prompt harder to parse.
 - **Ask for evidence, not visible deliberation.** If the user needs to check the work, ask for the result plus a brief explanation, sources or the commands run. Don't ask the model to write out its internal reasoning or to fill a dedicated reasoning section; current Claude models may refuse such requests, and reasoning models don't need them.
 - **Leave runtime settings out of the prompt text.** Effort or reasoning level, temperature, prefilled assistant turns and token budgets are API settings, not prose. Prefilled answers are not supported on current Claude models.
-- **Don't promise what the model can't see.** If the prompt depends on today's date or recent events, include the date and tell the model to check recent facts or say it can't.
+- **Don't promise what the model can't see.** If the prompt depends on today's date or recent events, write today's date when you know it from your context, and list it under Assumptions so the user can update it for a later run; if you don't know it, use `[[today's date]]`. Tell the model to check recent facts or say it can't.
 
 ### Adapting to the target model
 
@@ -331,7 +334,7 @@ Fix anything that fails:
 - Every answer the user accepted, including a ★ like "None", is in the prompt with its meaning unchanged.
 - The user's key words — names, constraints, style words — survive intact.
 - No contradictions, and examples agree with the instructions.
-- No capitalized pressure words, generic personas, magic phrases (`take a deep breath`), requests for visible reasoning (`think step by step`, `show your reasoning`), prefill instructions or API settings. That includes a step-by-step line in the user's own prompt: take it out, and say so in one [best practice] bullet under What I added & why.
+- No capitalized pressure words, generic personas, magic phrases (`take a deep breath`), requests for visible reasoning (`think step by step`, `show your reasoning`), prefill instructions or API settings. That includes a line in the user's own prompt that asks the model to `think step by step`, reason that way or lay out its own reasoning step by step: take it out, and say so in one [best practice] bullet under What I added & why; if the user wants to check the work, ask for the result plus a brief explanation instead. Step-by-step material about the task's subject, such as instructions or a tutorial the prompt asks for, and the reasoning of someone the model guides, such as a student, are content: keep them.
 - Scope is explicit, and the output format and length are stated.
 - Every placeholder is listed under "Fill before running", and no template leftovers remain (such as an empty `{{variable}}`).
 - The full prompt is as long as the task needs and no longer, and the short version fits its budget.
@@ -438,7 +441,7 @@ Coding agents take instructions literally and act on them, so these five items p
 
 ### Tips for coding agents
 
-- In a code workspace, read the repo before asking. Package manifests, configs, the README and the code the prompt mentions answer most stack and convention questions.
+- In a code workspace, read the repo before asking, with your file-reading tool (Read in Claude Code) and file-search tools if you have them (Claude Code has Glob and Grep only in some setups) rather than shell commands, even read-only ones such as `ls`, and without handing the lookups to a subagent, because nothing runs until the user picks an option that runs the prompt, such as Run it now. If you can list or search files only through a shell, list and search nothing before the prompt runs and read only the files you can name (the README, standard manifests, the files the prompt names); if a shell is your only way to read files, read none. Treat what you couldn't read as something you can't see, and ask only what the priority rule in the "Asking clarifying questions" section calls for, with a ★ such as "Have the agent find it in the project". Package manifests, configs, the README and the code the prompt mentions answer most stack and convention questions.
 - Name files and folders the agent should start from.
 - For large or risky changes, ask the agent to propose a plan first; many agents have a plan mode for this.
 - Rules that must never break (never touch `migrations/`, never push to `main`) are best enforced with the agent's permission settings or hooks, with the prompt explaining why.
@@ -571,7 +574,7 @@ Enhanced prompt (excerpt):
 Find out whether solar panels are worth it for a house in [[country or region]], and recommend whether to go ahead, wait or drop the idea.
 
 # Context
-- Today's date: [[today's date]]. Panel prices, electricity rates and subsidy rules change, so check current sources rather than relying on memory, and give an "as of" date.
+- Today's date: 2026-11-10. Panel prices, electricity rates and subsidy rules change, so check current sources rather than relying on memory, and give an "as of" date.
 - Electricity use: [[yearly electricity use]]. Assume the owner lives in the house and the roof is in good condition unless told otherwise.
 
 # Method
@@ -584,6 +587,8 @@ Work out three things, each as a range: the cost to install a system, the yearly
 # Output
 A one-paragraph recommendation first, then a table of the three ranges with their sources, then caveats and what would change the recommendation.
 ```
+
+Write the date your context gives, not the one in this example, and list it under Assumptions so the user can update it for a later run; if you don't know it, write `- Today's date: [[today's date]].` instead.
 
 ---
 
@@ -712,7 +717,7 @@ Give each segment one action and one camera move, long enough for the action. Va
 - Real people, minors, trademarks or a living artist's name → fictional people, generic marks and a description of the style's traits.
 - Version-specific flags or features you aren't sure the user's version supports → ask, or state the assumption.
 - A prompt over the tool's length guidance → shorten, keeping the essentials first.
-- Added details missing from Assumptions → go through the prompt phrase by phrase and check each detail (framing and camera, light, colors, style, settings, exclusions, sound, scene details, and words added to the user's own nouns, such as a stone lighthouse for "lighthouse") against the request, the user's answers (accepted ★ included) and what you found in their files, earlier messages or attachments. Each one that came from none of these, down to one word such as a material, is in an Assumption, whatever its tag under "What I added & why"; small scene details share one item. A detail that isn't worth listing comes out of the prompt instead. Stay within eight items by merging related picks, not by leaving any out of the list.
+- Added details missing from Assumptions → go through the prompt phrase by phrase and check each detail (framing and camera, light, colors, style, numbers, settings, exclusions, actions and a video's beats, sounds, scene details (objects, people, animals, places), and words added to the user's own nouns, such as a stone lighthouse for "lighthouse") against the request, the user's answers (accepted ★ included) and what you found in their files, earlier messages or attachments. Each one that came from none of these, down to one word such as a material, is in an Assumption, whatever its tag under "What I added & why"; small scene details share one item. An item that merges picks names each of them, so the user can see and change every pick: a label such as "coastal sounds" names neither the gull nor the surf. A detail that isn't worth listing comes out of the prompt instead. Stay within eight items by merging related picks, not by leaving any out of the list.
 
 ### Language
 

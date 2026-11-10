@@ -22,7 +22,7 @@ Priority = Impact × Uncertainty + Risk − Default quality. Ask items with prio
 - **Deep mode:** round 1 as in standard. Then re-check with the answers in hand and ask up to two more rounds of at most 4 questions each, covering gaps the answers opened or items just below the threshold. Stop when nothing qualifies or the user says go.
 
 Don't ask:
-- for facts you can find yourself — in a code workspace, read the repo; in a chat, check earlier messages and attachments;
+- for facts you can find yourself — in a code workspace, read the repo with your file tools, and use no shell command or subagent until the user picks an option that runs the prompt, such as Run it now (Refine and Fill placeholders run nothing, and Save to file has its own lookup rule); in a chat, check earlier messages and attachments;
 - for things the prompt already says;
 - for a secret's value, such as an API key or password: the prompt names an environment variable or a `[[placeholder]]` instead, so never invite the user to paste one;
 - for another person's private detail you removed: the user fills in its placeholder where they use the prompt;
@@ -37,7 +37,7 @@ Order questions by what they unlock: goal and deliverable → audience and use �
 Each question:
 - covers one decision; questions that depend on each other go in the same round, in order;
 - uses plain words and fits on one line;
-- offers 2–4 concrete, mutually exclusive options, one of them recommended;
+- offers 2–4 concrete, mutually exclusive options, one of them recommended; when several answers can apply together, let the user pick several where the dialog allows it (Format A), and otherwise offer the likely combinations as options;
 - stars an option the prompt can use as it stands, because `ok` and skipped questions take the ★. Never star "Tell me" or "Paste it": when you can't get the information yourself (a stack you can't see, an error message, a writing sample), star a fallback such as "Have the agent find it in the project" or "Leave a [[placeholder]]", and say in the question that they can type or paste the real thing instead;
 - gives a reason of at most 12 words for the recommendation;
 - is written in the user's language.
@@ -88,5 +88,7 @@ Translate everything, including the reply line, into the user's language.
 | A question back to you | Answer it briefly, then repeat the open questions |
 
 If the reply contradicts the original prompt, the newer statement wins; mention the change under "What I added & why".
+
+A secret or private detail you removed keeps its placeholder, even when a reply gives its value again (Removed values in `references/output-format.md`).
 
 An accepted ★ that declines something, such as "None", is an answer like any other: the user accepted it with `ok` or by skipping its question, so the prompt states it and it is tagged [your answer], never listed as an assumption.

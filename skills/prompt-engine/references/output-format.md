@@ -7,7 +7,7 @@ The reply that delivers an enhanced prompt always has the same shape, so users l
 The labels in this template are in English; write each of them in the user's language, like the rest of the reply: headings, score rows and columns, the caveat line, the note under the short version, menu options and reply keywords (`change N`, `deep`). A French reply, for example, has `### Prompt complet`, `### Hypothèses`, the row `Objectif clair`, the column `Amélioré`, the option `1. Lancer maintenant ★` and `modifier 2 : …` for `change N`. Translate `deep` the same way, into the user's own word. The tags [you], [your answer] and [best practice] and the ★ and `[[` markers stay as written, whatever the language.
 
 ````markdown
-<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so. Never repeat a removed value. For a strong prompt: "Your prompt is already strong — small edits below.">
+<One line: what you made, for which tool, and the mode; if you removed a secret, say so and suggest rotating it; if you removed another person's private detail, say so. Never repeat a removed value. For a strong prompt: "Your prompt is already strong — small edits below." For a request to critique a prompt or find what's missing that got no question round (quick mode, or no question qualified), the line also names its biggest gaps, not as a list.>
 
 ### Full prompt
 ```text
@@ -28,10 +28,10 @@ Full version: agents, long or important tasks. Short version: quick chats.
 - **Audience: team managers** [your answer] — sets vocabulary and depth.
 
 ### Assumptions
-1. Length about 1,200 words — typical for an in-depth blog post.
+1. US English spelling — you didn't name a locale.
 2. Friendly, practical tone — suits a professional but informal audience.
 
-Reply "change 2: formal tone" to adjust any of these.
+Reply "change 2: …" to adjust any of these.
 
 ### Score
 | | Original | Enhanced |
@@ -52,7 +52,7 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 
 ## Rules for each part
 
-**Removed values.** The value of a secret or private detail you removed appears nowhere in the reply, bullets, Assumptions and menu included.
+**Removed values.** The value of a secret or private detail you removed appears nowhere in the reply, bullets, Assumptions and menu included, even when the user sends it back later in an answer, a `change N` or a Fill placeholders reply: its placeholder stays, and the reply's first line says so.
 
 **Fences.** Put the prompt in a fence longer than any run of backticks inside it: if the prompt contains a triple-backtick block, wrap it in four backticks. Use the `text` info string so nothing renders as markdown.
 
@@ -65,9 +65,9 @@ Self-assessed coverage of five areas, not a prediction of output quality.
 - **[your answer]** — something from their answers to your questions, including ★ recommendations they accepted with `ok` or by skipping a question;
 - **[best practice]** — a kind of rule or section the method adds, such as success criteria, exact counts or an uncertainty rule. The specific values you picked for it (three gulls, a 4:5 ratio, a 400-word limit) are defaults: list them under Assumptions, not here.
 
-Defaults you chose without asking don't go here; they are listed once, under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. That includes an accepted ★ that declines something, such as "None", even on a skipped question: it is the user's answer, not a gap, so the prompt states it ("Name no competitors.") and it is tagged [your answer]. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
+Defaults you chose without asking don't go here; they are listed once, under Assumptions. Never leave the section out, quick mode included: when every value is a default, it still names what the user gave [you] and the kinds of rules or sections you added [best practice], and their values stay under Assumptions. Answers the user accepted are not assumptions, so don't repeat them there. That includes an accepted ★ that declines something, such as "None", even on a skipped question: it is the user's answer, not a gap, so the prompt states it ("Name no competitors.") and it is tagged [your answer]. Write each reason as an explanation for the user ("gives the model a finish line"), not as a description of your own deliberation.
 
-**Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. List each number (count, length, limit), name, setting or style choice you picked as its own item, in text prompts as in image and video prompts; merge small formatting picks, or small scene details, into one item. At most 8: if more qualify, merge related ones into one item rather than leave any out. End with the "change N" line. If there are no assumptions, write "None."
+**Assumptions.** Number every default that shaped the prompt: what you assumed and, briefly, why. List each number (count, length, limit), name, setting or style choice you picked as its own item, in text prompts as in image and video prompts; merge small formatting picks, or small scene details, into one item. At most 8: if more qualify, merge related ones into one item rather than leave any out. An item that merges picks names each of them, so the user can see and change every pick; a label such as "standard formatting" names none. End with the "change N" line. If there are no assumptions, write "None."
 
 **Score.** One row per dimension, original and enhanced, scored with the anchors below. Write `n/a` where a dimension doesn't apply to this kind of prompt, in both columns. Always include the caveat line.
 
@@ -79,9 +79,9 @@ Defaults you chose without asking don't go here; they are listed once, under Ass
 | Open placeholders that are neither secrets nor removed private details | Fill placeholders ★ · Refine · Save to file |
 | Image or video prompt and you can't generate media | Done ★ (with where to paste it) · Refine · Save to file |
 | The prompt is for another tool | Try it here ★ (results there may differ) · Refine · Save to file |
-| You can't write files (chat apps) | Drop "Save to file" |
+| You have no tool that saves files on the user's computer (most chat apps) | Drop "Save to file" |
 
-When several rows apply, use the first that fits: open placeholders that are neither secrets nor removed private details, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you can't write files.
+When several rows apply, use the first that fits: open placeholders that are neither secrets nor removed private details, then an image or video prompt you can't generate, then a prompt for another tool. Drop "Save to file" from any of them when you have no tool that saves files on the user's computer.
 
 In Claude Code, use AskUserQuestion with the question "What would you like to do next?" and the header "Next step", both in the user's language, and the same options; put the save path in the "Save to file" description.
 
@@ -111,3 +111,4 @@ For image and video prompts, read the dimensions as: Clear goal = subject, actio
 - **Already strong.** First line says so. Keep the user's wording and the order of their sentences, and list the edits and additions under "What I added & why", merging small ones. Short additions are fine, as long as the prompt grows by at most about half its length, but don't regroup it under new headings or into the blueprint's sections. Ask at most two questions, and only if they matter.
 - **Refine.** After a change, show one line on what changed, then the full template again with the updated prompt and score.
 - **Run it now.** Once the user picks this, answer the prompt like any normal request. Don't show the template, score or menu again unless they ask for another prompt.
+- **Save to file.** Look the path up with a file-search or file-reading tool (such as Glob or Read), then save the full prompt with your file-writing tool, using a shell command for either only when you have no such tool, so the user sees only a file-creation request. Never overwrite an existing file, even when asked to save to the same path, and don't offer to; add `-2`, `-3`… to the name instead. Reply with the saved path.

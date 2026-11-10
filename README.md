@@ -28,11 +28,11 @@ You:   ok
 ## Why use it
 
 - **It asks before it guesses.** It asks only questions whose answers would change the prompt, up to 8. Each comes with a recommended answer, so `ok` takes one second. Start with `quick:` to skip the questions, or with `deep:` for a more thorough interview.
-- **It never invents facts.** Anything only you know, such as your product name, prices or dates, becomes a `[[placeholder]]` to fill in. Choices it made for you are listed as assumptions you can change.
-- **It explains itself.** Every addition is listed with its reason and tagged as coming from you, from your answers, or from best practice.
+- **It's built not to invent facts.** Anything only you know, such as your product name, prices or dates, becomes a `[[placeholder]]` to fill in, and the choices it makes for you are listed as assumptions you can change. Tests still find small picks left off that list in some replies, mostly in image and video prompts ([Known limits](docs/compatibility.md#known-limits)).
+- **It's built to explain itself.** It lists the main things it added, each with its reason and a tag saying whether it came from you, from your answers or from best practice. In one of three test runs of a Japanese image prompt on 2026-11-10, the reply left this list out; the skill has been changed since, and that test hasn't run again ([Known limits](docs/compatibility.md#known-limits)).
 - **It follows current prompting guidance.** Prompts state their goal and success criteria and give reasons instead of shouting rules in capitals. They don't ask the model to show its reasoning, which the newest Claude models may refuse, and they don't rely on tricks that newer models reject.
 - **It knows the domain.** There are dedicated checklists for coding agents, writing and marketing, research and analysis, and image and video generation. Image and video prompts come out in the target tool's own syntax, such as Midjourney parameters or Veo sound cues.
-- **Nothing runs until you choose.** You get the prompt first. You decide whether to run it, refine it or save it.
+- **It's built so nothing runs until you choose.** You get the prompt first. You decide whether to run it, refine it or save it. In a rehearsal of the manual Claude Code check on 2026-11-09, a read-only shell command listed the folder's files before anything was chosen, though no file changed; the skill has been changed since, and no run since is recorded ([Known limits](docs/compatibility.md#known-limits)).
 
 ## Install: pick one
 
@@ -45,7 +45,7 @@ You:   ok
 | **MCP clients** (Claude Desktop, Claude Code, Cursor, VS Code, Zed…) | `npx -y prompt-engine-mcp` as a local MCP server, or the one-click `.mcpb` file for Claude Desktop from the releases page (not yet tested in Claude Desktop). [MCP server guide](mcp/README.md) |
 | **Claude API or Agent SDK** | Upload the skill folder with the Skills API, or place it in `.claude/skills/`. See [docs/install.md](docs/install.md) |
 
-**Don't install it twice.** A plugin or skill you add on Claude.ai also loads in Claude Code when you sign in there with the same account, and several agents read the same skill folders, so a second install can leave you with two copies; [Install it once](docs/install.md#install-it-once) says which copies overlap and what to do about them. Step-by-step instructions for every option are in [docs/install.md](docs/install.md). The release files appear with the first release. Until then, `npx -y prompt-engine-mcp` runs version 0.0.1, a placeholder published by hand on 2026-11-09 to claim the package name: a full build of the server from that day, without npm's provenance statement. The marketplace, `npx skills add` and the files in this repo don't wait for a release.
+**Don't install it twice.** A plugin or skill you add on Claude.ai also loads in Claude Code when you sign in there with the same account, and several agents read the same skill folders, so a second install can leave you with two copies; [Install it once](docs/install.md#install-it-once) says which copies overlap and what to do about them. Step-by-step instructions for every option are in [docs/install.md](docs/install.md). The release files appear with the first release. Until then, `npx -y prompt-engine-mcp` runs version 0.0.1, a placeholder published by hand on 2026-11-09 to claim the package name: a full build of the server at commit 60f4ef1, without npm's provenance statement. Its method is older than the one these docs describe: for example, it has no rules for other people's private details, and its `check_prompt` doesn't flag `think step-by-step`. The first release brings the current method. The marketplace, `npx skills add` and the files in this repo don't wait for a release.
 
 ## Use it
 

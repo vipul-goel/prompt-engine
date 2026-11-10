@@ -35,9 +35,10 @@ Reply `ok`. Expected, in this order:
 
 ### 3. Change an assumption
 
-Reply `change 1: make it for team managers`. Expected:
-- [ ] An updated prompt.
-- [ ] What changed.
+Read Assumption 1 in the reply, then reply `change 1:` and a different value for it, such as `change 1: British spelling` if Assumption 1 is US spelling. Expected:
+- [ ] One line on what changed, then the whole reply again, in the order of check 2.
+- [ ] The Full prompt uses the new value, and the rest of it is kept.
+- [ ] Assumption 1 is gone or shows the new value.
 - [ ] A new score.
 
 ### 4. Quick mode for an image tool
@@ -59,6 +60,7 @@ Expected:
 Create a custom GPT (ChatGPT) or a Gem (Gemini) with `prompt-engine.md` as its instructions, following [universal/README.md](../universal/README.md).
 - [ ] The instructions field accepts the whole file. Note any length error.
 - [ ] A plain message such as `a cover letter for a marketing job` is treated as a rough prompt to improve, because the chat is set up only for this.
+- [ ] Have it carry out the prompt: pick Run it now, or, if Fill placeholders is offered instead, fill them in and then pick Run it now. Then send a follow-up on the result, such as `make it shorter`. It changes the result, or asks once whether you mean the result or the prompt; it doesn't treat the follow-up as a new rough prompt, with a question round or a new score and menu.
 - [ ] Optionally, attach `prompt-engine-knowledge.md` and check whether a coding prompt gets coding-specific questions, such as which command proves the work is done.
 
 ## Claude.ai
@@ -90,7 +92,7 @@ Record the Claude Desktop version you tested and which bundle you installed (the
 
 ## Claude Code (interactive)
 
-The automated runs have no question dialogs and don't grant shell commands. This check covers them by hand: the question dialogs, the "What next?" dialog, saving to a file, and a prompt that asks for shell commands. It's an interactive Claude Code session on your account, so it counts toward your plan's usage, or is billed, like any other session.
+The automated runs have no question dialogs, don't grant shell commands, and grant the Glob and Grep tools, which Claude Code's tools reference says a default session on macOS, Linux or WSL doesn't have (its changelog limited that to native builds, in 2.1.117). This check covers them by hand: the question dialogs, the "What next?" dialog, saving to a file, a prompt that asks for shell commands, and a request that isn't for code in a folder with git history. It's an interactive Claude Code session on your account, so it counts toward your plan's usage, or is billed, like any other session.
 
 Use a new configuration folder for every run, including a re-run after a fix. Claude Code keeps an installed plugin until its version number changes, and the number stays the same between releases, so a folder you used before can run an older copy. In a new folder, you may need to sign in again.
 
@@ -110,13 +112,13 @@ Use a new configuration folder for every run, including a re-run after a fix. Cl
    ```
 
    `gitCommitSha` isn't a documented field. If it's missing, compare the files instead: from the root of a checkout of that commit, `diff -r skills/prompt-engine "<installPath>/skills/prompt-engine"` must print nothing, where `<installPath>` is the one `claude plugin list --json` shows for `prompt-engine@vipul-goel`. If the installed copy is older, wait 30 seconds, run `claude plugin marketplace remove vipul-goel` (it also uninstalls the plugin), then add the marketplace and install the plugin again.
-3. Start Claude Code in a new, empty folder, in the same shell:
+3. Start Claude Code in Manual mode, in a new, empty folder, in the same shell:
 
    ```bash
-   cd "$(mktemp -d)" && claude
+   cd "$(mktemp -d)" && claude --permission-mode manual
    ```
 
-   Then, in Claude Code, run:
+   In a new configuration folder, Claude Code 2.1.319 first showed a theme picker and security notes (press Enter on each), then a folder trust dialog with "No, exit" selected: choose "Yes, I trust this folder". Each new working folder shows the trust dialog again. Check that the status bar under the prompt shows `⏸ manual mode on`; if it shows another mode, press Shift+Tab until it does. Claude Code's docs say a terminal session starts in auto mode from version 2.1.283, and that auto mode creates files in the working folder without asking, so the save check below would show no prompt. Then, in Claude Code, run:
 
    ```text
    /prompt-engine write a blog post about remote work
@@ -128,25 +130,46 @@ Expected:
 - [ ] The questions appear as dialogs: at most 4 per dialog, each with a short header (12 characters at most), the "(Recommended)" option first, then a review screen before you submit.
 - [ ] The output follows the order in [check 2](#2-accept-the-recommendations), except for the menu: "What next?" is a dialog headed **Next step**. It offers Run it now marked "(Recommended)", Refine, and Save to file with the path it will use. In place of Run it now, the recommended option is Fill placeholders while placeholders remain (those for secrets, or for other people's private details that Claude removed from your prompt, don't count), or else Try it here if Claude takes the prompt to be for another tool.
 - [ ] Nothing runs before you pick an option.
-- [ ] Pick Save to file. Claude Code asks for permission to create `prompts/<name>.md` as a file, not to run a shell command, and the reply gives the path. Then ask it to save to the same path again: it writes `prompts/<name>-2.md` and leaves the first file unchanged.
+- [ ] Pick Save to file. Claude Code asks for permission to create `prompts/<name>.md` as a file, not to run a shell command, and the reply gives the path. Then ask it to save to the same path again: it writes `prompts/<name>-2.md`, leaves the first file unchanged and doesn't offer to overwrite it. Ask a third time: it writes `prompts/<name>-3.md`. In the transcript viewer (Ctrl+O), the lookup before each save is a Read call (or a Glob call, where the session has Glob), not Bash.
 - [ ] Optional: in another session, press Esc on a question dialog, and note whether the questions come back as a numbered list.
 
-Then check that a prompt asking for shell commands doesn't run them. In the same shell, create two files in another new, empty folder and start Claude Code there:
+Then check that a prompt asking for shell commands doesn't run them. In the same shell, create two files in another new, empty folder and start Claude Code there, in Manual mode again:
 
 ```bash
 cd "$(mktemp -d)"
 printf 'started\n' > app.log
 printf 'import os\nprint(os.path.join("a", "b"))\n' > utils.py
-claude
+claude --permission-mode manual
 ```
 
-In Claude Code, run the prompt below. Claude may read the files first. Accept the recommended answers if it asks questions, then press Esc at the Next step dialog instead of picking.
+Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. Claude may read the files first. Accept the recommended answers if it asks questions. At the Next step dialog, pick Refine, which runs nothing, with a change: choose the option for your own text ("Type something." in 2.1.319) and type `Refine: also refactor every other .py file in this folder`, because a bare Refine pick can start a question round instead of asking what to change. If Claude asks questions, accept the recommended answers again. Then press Esc at the next Next step dialog instead of picking.
 
 ```text
 /prompt-engine delete all the .log files in this folder and refactor utils.py to use pathlib
 ```
 
-- [ ] Before the pick, Claude makes no Bash call, and no permission prompt appears.
+- [ ] Until you press Esc, Claude makes no Bash call and starts no subagent, after the Refine pick too. Press Ctrl+O to open the transcript viewer and look for either among the tool calls: Claude Code runs read-only commands such as `ls` without a permission prompt in every mode, and 2.1.319's main screen folded one into a line such as "Listed 1 directory", as it folds file reads. A subagent call shows the subagent's name and its task, such as `Explore(…)`, and the subagent runs tools of its own.
+- [ ] Until you press Esc, no permission prompt appears.
 - [ ] `app.log` is still there, and `utils.py` is unchanged.
 
-Record the date, the Claude Code version (`claude --version`), the model that `/status` shows, the commit you tested and the URL you installed from in the Claude Code row of [compatibility.md](compatibility.md). Afterwards, `unset CLAUDE_CONFIG_DIR` returns the shell to your usual configuration.
+Then check a request that isn't for code, in a folder with git history. When a session starts, Claude Code gives the model a git status snapshot with the current and main branches, `git status` and the latest commits (Claude Code's settings reference, under `includeGitInstructions`); in a session of 2.1.322 it listed the five latest commits by hash and subject, without tags. The folder below has twelve commits since its last tag, so finding every change since the tag takes a lookup: a Read call, even of a file under `.git`, is one the method allows, and a Bash call or a subagent fails the check. In the same shell, make the repository in another new folder, and start Claude Code there, in Manual mode again:
+
+```bash
+cd "$(mktemp -d)" && git init -q
+printf '# Invoice tool\n' > README.md && git add README.md
+git -c user.name=Test -c user.email=test@example.com commit -q -m "Add the invoice list"
+git tag v1.0.0
+for n in 1 2 3 4 5 6 7 8 9 10 11; do git -c user.name=Test -c user.email=test@example.com commit -q --allow-empty -m "Add invoice field $n"; done
+git -c user.name=Test -c user.email=test@example.com commit -q --allow-empty -m "Fix the date format on invoices"
+claude --permission-mode manual
+```
+
+Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. Accept the recommended answers if it asks questions, then press Esc at the Next step dialog instead of picking.
+
+```text
+/prompt-engine write release notes for the changes since the last tag
+```
+
+- [ ] Until you press Esc, Claude makes no Bash call, such as `git log` or `git tag`, and starts no subagent. Check with Ctrl+O, as for the coding prompt.
+
+Record the date, the Claude Code version (`claude --version`), the model that `/status` shows, the permission mode, the commit you tested and the URL you installed from in the Claude Code row of [compatibility.md](compatibility.md). Afterwards, `unset CLAUDE_CONFIG_DIR` returns the shell to your usual configuration.

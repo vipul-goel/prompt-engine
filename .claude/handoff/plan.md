@@ -72,7 +72,7 @@ The repo review's owner decisions were accepted as recommended: D1-D26 on 2026-1
    6. **What next?** (AskUserQuestion in Claude Code):
       - **Run it now ★** executes the full version as a new request and then drops the prompt-engine format. It is relabelled "Try it here (results on <target> may differ)" for other tools. While placeholders are open, other than those for secrets or for other people's private details removed from the rough prompt, the ★ moves to "Fill placeholders", which collects the values, shows the filled prompt and shows the menu again (D1, D46); a secret is set where the tool reads it, never asked for (D5), and a private detail is filled in where the prompt is used, never asked for again (D46).
       - **Refine**: change items or reply `deep:`.
-      - **Save to file** is only offered in Claude Code and other local coding agents. It shows the `prompts/<slug>.md` path, which you can change, and never overwrites.
+      - **Save to file** is only offered in Claude Code and other local coding agents. It shows the `prompts/<slug>.md` path, which you can change, and never overwrites. As applied, the test is a tool that saves files on the user's computer, such as Write in Claude Code (the universal prompt since finding 1's fix in step 1d, the skill since step 1e): a session without one leaves the option out, and an app with one, such as a chat app with a local file connector, offers it.
       - Only an explicit pick runs anything: the option's number or name, "run it", or a dialog choice. `ok`, 👍 or thanks gets "the prompt is ready", and a dismissed menu means it stops and waits (D1).
 7. **Strong prompts** get "already strong" first, then your text with small edits marked, and 0–2 questions. Short additions are fine if your sentences stay in order and each one is listed under "What I added & why"; the prompt isn't regrouped under new headings (D29).
 
@@ -149,7 +149,7 @@ Each phase is a workflow with independent reviewers and ends in a commit.
    - Platform smoke tests: `npx skills add . --list`, plus Codex and Gemini CLI if they install without accounts.
 5. **Finish.**
    1. Description tuning: `run_loop` from a scratch directory, with at least half the eval set being near-miss task requests and a length cap from Phase 0.
-   2. The full `claude plugin eval`. The README's real example is then replaced with that run's `image-midjourney-quick` reply, naming the model and date the results record (D52).
+   2. The full `claude plugin eval`. The README's real example is then replaced with that run's `image-midjourney-quick` reply, naming the model and date the results record (D52). The date is the day the run started on the clock of the machine that ran it, as `docs/compatibility.md` dates runs; the UTC date in `startedAt` can be a day off.
    3. A smoke test from a fresh marketplace install: one run by hand is recorded, on 2026-10-29, before 998e0c8; no tmux script was written, and since D25 re-runs follow the manual Claude Code checklist in docs/manual-checks.md (handoff step 4).
    4. Multi-agent code review, fixes, every check re-run.
    5. Push.
