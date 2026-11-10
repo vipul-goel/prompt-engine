@@ -36,9 +36,10 @@ const MAX_BODY_BYTES = PROMPT_MAX_CHARS * 12 + 300_000;
 // bodies they declare add up to BODY_BUDGET_BYTES or less; past either, a
 // request gets 503 before its body is read. A connection that hasn't sent a
 // request, or whose request was refused, takes no slot. Stalled uploads still
-// hold their slots until the 30 s request timeout, and answers a client doesn't
-// read until the stall check below closes the connection, so a client that
-// keeps enough of either going can shut out every other client.
+// hold their slots until the 30 s request timeout, answers a client doesn't
+// read until the stall check below closes the connection, and large answers a
+// client reads slowly for as long as it reads them, so a client that keeps
+// enough of these going can shut out every other client.
 const MAX_REQUESTS = 128;
 // The SDK can keep a request's parsed body in memory until its answer has been
 // sent (it does for a batch), and parsed JSON is much larger than its text: a
@@ -51,8 +52,14 @@ const BODY_BUDGET_BYTES = 8_000_000;
 // socket has no idle timeout, so an answer a client doesn't read would wait in
 // the socket's buffer, holding its request's slot, for as long as the
 // connection stays open. Every 5 s, each connection with a request in flight is
-// checked: once a write has waited for the client for 15 s without the socket's
-// buffer going down, the connection is closed, which ends every request on it.
+// checked: once a write has waited for the client for 15 s while the socket
+// handed no more bytes to the operating system, the connection is closed, which
+// ends every request on it. The count of bytes handed on is compared, not the
+// length of the socket's buffer, which the next write can refill to the same
+// length. The operating system takes the bytes in bursts, as the client's reads
+// free its buffers, which can hold hundreds of kilobytes, so a client reading a
+// large answer slowly can go 15 s without a burst: on macOS, a client reading a
+// 2.2 MB batch answer at 30 KB/s got all of it, and one at 25 KB/s was closed.
 const STALL_CHECK_MS = 5_000;
 const STALL_LIMIT_MS = 15_000;
 // A backstop on open sockets: connections past it are closed at once.
@@ -225,15 +232,17 @@ function serveOverHttp(host: string, port: number, allowedHosts: string[]): void
 
   // See STALL_LIMIT_MS. A response waiting behind another on the same connection
   // has no socket yet; the one being written does.
-  const stalls = new WeakMap<Socket, { length: number; since: number }>();
+  const stalls = new WeakMap<Socket, { handedOn: number; since: number }>();
   const stallCheck = setInterval(() => {
     const now = Date.now();
     for (const res of inFlight) {
       const socket = res.socket;
       if (!socket) continue;
+      // What the socket has been given, less what still waits in it.
+      const handedOn = socket.bytesWritten - socket.writableLength;
       const seen = stalls.get(socket);
       if (!socket.writableNeedDrain) stalls.delete(socket);
-      else if (seen?.length !== socket.writableLength) stalls.set(socket, { length: socket.writableLength, since: now });
+      else if (seen?.handedOn !== handedOn) stalls.set(socket, { handedOn, since: now });
       else if (now - seen.since >= STALL_LIMIT_MS) socket.destroy();
     }
   }, STALL_CHECK_MS);

@@ -319,6 +319,35 @@ describe.concurrent('--http limits', () => {
     }
   });
 
+  // The answer leaves the socket in bursts, as the operating system's buffers make room, and
+  // each burst refills the socket's buffer to the same length. A check that compared that
+  // length every 5 s closed this reader after about 35 s, with 75 of the 100 answers.
+  it('lets a client that reads a 2.2 MB answer steadily at 50 KB/s read all of it', { timeout: 90_000 }, async ({ expect }) => {
+    const server = await startHttp();
+    const sock = connect(server.port, '127.0.0.1');
+    let text = '';
+    let closed = false;
+    sock.on('error', () => {});
+    sock.on('close', () => (closed = true));
+    sock.pause();
+    // 5,000 bytes every 100 ms, and what is left once fewer than 2,048 bytes wait.
+    const reader = setInterval(() => {
+      for (let n = 0, chunk: Buffer | null; n < 5_000 && (chunk = sock.read(Math.min(2_048, 5_000 - n))) !== null; n += chunk.length) text += chunk.toString('latin1');
+      if (sock.readableLength < 2_048) text += sock.read()?.toString('latin1') ?? '';
+    }, 100);
+    try {
+      await new Promise((resolve) => sock.once('connect', resolve));
+      sock.write(post(server.port, BATCH, 'Connection: close\r\n'));
+      await waitFor(() => closed, () => `still reading, ${text.length} bytes so far`, 80_000);
+      expect(text.match(/^data: /gm)?.length, `${text.length} bytes read`).toBe(100);
+      expect(text).toMatch(/\r\n0\r\n\r\n$/);
+    } finally {
+      clearInterval(reader);
+      sock.destroy();
+      server.proc.kill('SIGTERM');
+    }
+  });
+
   it('answers 408 and closes a connection whose headers stall, after 10-15 s', async ({ expect }) => {
     const server = await startHttp();
     try {
