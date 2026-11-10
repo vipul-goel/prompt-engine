@@ -6,8 +6,9 @@
 // against its output schema. ask_user also runs the question checks, the reading of the
 // client's capabilities and, since this client can't show forms, the questions written out for
 // the chat. Then it fetches the enhance prompt, which manifest.json's prompts_generated lets
-// Claude Desktop list, with its completable argument, and reads two resources: the method, and
-// a checklist through the resource template.
+// Claude Desktop list, asks for completions of its completable mode argument and of the
+// checklist template's domain, lists the resources, which runs the template's list callback, and
+// reads three: the method, a reference (questions), and a checklist through the template.
 
 /** Runs one request; an error says which. */
 async function step(label, request) {
@@ -23,8 +24,8 @@ const BRIEF = /^Prompt Engine brief from the prompt-engine MCP server\b/;
 /**
  * Checks the server a connected MCP client talks to against manifest.json: its tools are
  * exactly the manifest's, it lists no prompt the manifest doesn't cover, each tool answers, and
- * so do the enhance prompt and the resources. Throws an Error that says what is wrong; returns a
- * one-line summary.
+ * so do the enhance prompt, the completions and the resources. Throws an Error that says what is
+ * wrong; returns a one-line summary.
  */
 export async function checkServer(client, manifest) {
   const { tools } = await client.listTools();
@@ -71,18 +72,36 @@ export async function checkServer(client, manifest) {
   if (!BRIEF.test(promptText) || !/\nRequested mode: quick\b/.test(promptText)) {
     throw new Error(`the packed server's enhance prompt {mode: "quick"} returned ${shown(prompt)}`);
   }
-  // A static resource, the brief, and one read through the checklist template.
+  // Completions: the prompt's mode, which needs its completable() wrapper to survive bundling, and
+  // the checklist template's domain.
+  for (const [label, ref, name, value, values] of [
+    ["the enhance prompt's mode", { type: 'ref/prompt', name: 'enhance' }, 'mode', 'q', ['quick']],
+    ["the checklist template's domain", { type: 'ref/resource', uri: 'prompt-engine://checklists/{domain}' }, 'domain', 'c', ['coding']],
+  ]) {
+    const done = await step(`completion/complete of ${label} "${value}"`, () => client.complete({ ref, argument: { name, value } }));
+    if (JSON.stringify(done.completion?.values) !== JSON.stringify(values)) {
+      throw new Error(`the packed server's completion/complete of ${label} "${value}" returned ${shown(done)}`);
+    }
+  }
+  // resources/list, which runs the checklist template's list callback.
+  const { resources } = await step('resources/list', () => client.listResources());
+  const listed = (uri) => resources?.find((r) => r.uri === uri);
+  const unlisted = ['prompt-engine://method', 'prompt-engine://questions', 'prompt-engine://checklists/coding'].filter((uri) => !listed(uri));
+  if (unlisted.length) throw new Error(`the packed server's resources/list doesn't list ${unlisted.join(', ')}: ${shown(resources)}`);
+  // Reads of a static resource, the brief; of a reference, which buildReference adapts for MCP and
+  // which has its listed title as a heading; and of a checklist, through the template.
   for (const [uri, expected] of [
-    ['prompt-engine://method', BRIEF],
-    ['prompt-engine://checklists/coding', /coding/i],
+    ['prompt-engine://method', (text) => BRIEF.test(text)],
+    ['prompt-engine://questions', (text) => text.split('\n').includes(`# ${listed('prompt-engine://questions').title}`)],
+    ['prompt-engine://checklists/coding', (text) => /coding/i.test(text)],
   ]) {
     const read = await step(`resources/read ${uri}`, () => client.readResource({ uri }));
     const text = read.contents?.[0]?.uri === uri && typeof read.contents[0].text === 'string' ? read.contents[0].text : '';
-    if (!expected.test(text)) throw new Error(`the packed server's resources/read ${uri} returned ${shown(read)}`);
+    if (!expected(text)) throw new Error(`the packed server's resources/read ${uri} returned ${shown(read)}`);
   }
   return (
     `the packed server starts, lists: ${names}; prompts: ${prompts.map((p) => p.name).join(', ') || 'none'}; ` +
-    'and answers get_checklist, check_prompt, enhance_prompt and ask_user, the enhance prompt, ' +
-    'and reads of prompt-engine://method and prompt-engine://checklists/coding'
+    "and answers get_checklist, check_prompt, enhance_prompt and ask_user, the enhance prompt, completions of its mode and of a checklist's domain, " +
+    'resources/list, and reads of prompt-engine://method, prompt-engine://questions and prompt-engine://checklists/coding'
   );
 }

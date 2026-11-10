@@ -1,12 +1,12 @@
 // scripts/check-server.mjs: the check pack-mcpb.mjs runs on the server of the packed .mcpb
 // bundle, the only gate that runs the bundle's own code. Here it runs against servers in this
-// process: this one, and stand-ins whose tools fail as a bundling fault could make them fail.
+// process: this one, and stand-ins whose parts fail as a bundling fault could make them fail.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
-import { InMemoryTransport, McpServer, ResourceTemplate } from '@modelcontextprotocol/server';
+import { completable, InMemoryTransport, McpServer, ResourceTemplate } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -39,27 +39,57 @@ const fault = (): never => {
   throw new Error('bundle-only fault');
 };
 
+/** What a stand-in's prompt, completions and resources answer with. */
+interface Parts {
+  prompt: () => PromptAnswer;
+  /** Completes the enhance prompt's mode argument. */
+  modes: (value: string) => string[];
+  method: () => string;
+  questions: () => string;
+  checklist: () => string;
+  /** The domains the checklist template lists. */
+  checklists: () => string[];
+  /** Completes the checklist template's domain argument. */
+  domains: (value: string) => string[];
+}
+
+/** Parts that answer as this server's do, so the check gets past them. */
+const answeringParts: Parts = {
+  prompt: () => ({ messages: [{ role: 'user', content: { type: 'text', text: `${BRIEF}\nImprove the rough prompt.` } }] }),
+  modes: (value) => ['quick', 'standard', 'deep'].filter((m) => m.startsWith(value)),
+  method: () => BRIEF,
+  questions: () => '# Asking clarifying questions\n\nGood questions are the main tool.',
+  checklist: () => '# Coding checklist',
+  checklists: () => ['coding', 'writing'],
+  domains: (value) => ['coding', 'writing'].filter((d) => d.startsWith(value)),
+};
+
 /**
- * A server with the manifest's tools and an enhance prompt; each tool answers with its handler, or
- * with plain text, and the prompt with `prompt`. `resources` adds prompt-engine://method and the
- * checklist template, whose reads answer with these texts.
+ * A server with the manifest's tools, an enhance prompt, prompt-engine://method,
+ * prompt-engine://questions and the checklist template. Each tool answers with its handler, or
+ * with plain text; the other parts answer with `parts`, by default as this server's do.
  */
-function standIn(
-  handlers: Record<string, Handler> = {},
-  { prompt = () => ({ messages: [] }), resources }: { prompt?: () => PromptAnswer; resources?: { method: () => string; checklist: () => string } } = {},
-): McpServer {
+function standIn(handlers: Record<string, Handler> = {}, parts: Partial<Parts> = {}): McpServer {
+  const { prompt, modes, method, questions, checklist, checklists, domains } = { ...answeringParts, ...parts };
   const server = new McpServer({ name: 'stand-in', version: '0.0.0' });
   for (const { name } of manifest.tools as Array<{ name: string }>) {
     server.registerTool(name, { description: name, inputSchema: z.object({}).passthrough() }, async () =>
       (handlers[name] ?? (() => ({ content: [{ type: 'text' as const, text: `${name}: coding` }] })))(),
     );
   }
-  server.registerPrompt('enhance', { description: 'enhance', argsSchema: z.object({ mode: z.string().optional() }) }, prompt);
-  if (resources) {
-    const read = (text: () => string) => (uri: URL) => ({ contents: [{ uri: uri.href, mimeType: 'text/markdown', text: text() }] });
-    server.registerResource('method', 'prompt-engine://method', { description: 'method' }, read(resources.method));
-    server.registerResource('checklists', new ResourceTemplate('prompt-engine://checklists/{domain}', { list: undefined }), { description: 'checklists' }, read(resources.checklist));
-  }
+  server.registerPrompt('enhance', { description: 'enhance', argsSchema: z.object({ mode: completable(z.string(), (value) => modes(value ?? '')).optional() }) }, prompt);
+  const read = (text: () => string) => (uri: URL) => ({ contents: [{ uri: uri.href, mimeType: 'text/markdown', text: text() }] });
+  server.registerResource('method', 'prompt-engine://method', { description: 'method' }, read(method));
+  server.registerResource('questions', 'prompt-engine://questions', { title: 'Asking clarifying questions', description: 'questions' }, read(questions));
+  server.registerResource(
+    'checklists',
+    new ResourceTemplate('prompt-engine://checklists/{domain}', {
+      list: () => ({ resources: checklists().map((domain) => ({ uri: `prompt-engine://checklists/${domain}`, name: domain })) }),
+      complete: { domain: (value) => domains(value) },
+    }),
+    { description: 'checklists' },
+    read(checklist),
+  );
   return server;
 }
 
@@ -69,38 +99,39 @@ const answering: Record<string, Handler> = {
   enhance_prompt: () => ({ content: [{ type: 'text', text: BRIEF }] }),
   ask_user: () => ({ content: [{ type: 'text', text: 'Who is the prompt for?' }], structuredContent: { status: 'ask_in_chat', questionsText: 'Who is the prompt for?' } }),
 };
-const promptAnswer = (): PromptAnswer => ({ messages: [{ role: 'user', content: { type: 'text', text: `${BRIEF}\nImprove the rough prompt.` } }] });
-const resourcesAnswer = { method: () => BRIEF, checklist: () => '# Coding checklist' };
 
 describe("pack-mcpb.mjs's check of the packed server", () => {
-  it('passes this server, and says it called every tool, fetched the prompt and read two resources', async () => {
+  it('passes this server, and says it called every tool, fetched the prompt, asked for completions, listed the resources and read three', async () => {
     expect(await check(() => createServer())).toMatch(
-      /and answers get_checklist, check_prompt, enhance_prompt and ask_user, the enhance prompt, and reads of prompt-engine:\/\/method and prompt-engine:\/\/checklists\/coding$/,
+      /and answers get_checklist, check_prompt, enhance_prompt and ask_user, the enhance prompt, completions of its mode and of a checklist's domain, resources\/list, and reads of prompt-engine:\/\/method, prompt-engine:\/\/questions and prompt-engine:\/\/checklists\/coding$/,
     );
     // So does a stand-in that answers each of these as this server does.
-    await expect(check(() => standIn(answering, { prompt: promptAnswer, resources: resourcesAnswer }))).resolves.toMatch(/the enhance prompt/);
+    await expect(check(() => standIn(answering))).resolves.toMatch(/the enhance prompt/);
   });
 
-  // The bundle's prompt handler (with its completable argument), its resource template matching
-  // and its resource reads run in no other gate.
-  it('fails a server whose enhance prompt or resources fail', async () => {
+  // The bundle's prompt handler, the completions (the prompt's needs its completable() wrapper),
+  // the resource template's list and its matching, and the resource reads run in no other gate.
+  it('fails a server whose enhance prompt, completions or resources fail', async () => {
     // The prompt answers without the brief, or throws.
-    await expect(check(() => standIn(answering, { resources: resourcesAnswer }))).rejects.toThrow(/enhance prompt \{mode: "quick"\} returned/);
-    await expect(check(() => standIn(answering, { prompt: fault, resources: resourcesAnswer }))).rejects.toThrow(/enhance prompt \{mode: "quick"\} failed: .*bundle-only fault/);
-    // No resources, resources that throw, and a checklist that isn't one.
-    await expect(check(() => standIn(answering, { prompt: promptAnswer }))).rejects.toThrow(/prompt-engine:\/\/method failed/);
-    await expect(check(() => standIn(answering, { prompt: promptAnswer, resources: { ...resourcesAnswer, method: fault } }))).rejects.toThrow(
-      /prompt-engine:\/\/method failed: .*bundle-only fault/,
-    );
-    await expect(check(() => standIn(answering, { prompt: promptAnswer, resources: { ...resourcesAnswer, checklist: fault } }))).rejects.toThrow(
-      /prompt-engine:\/\/checklists\/coding failed: .*bundle-only fault/,
-    );
-    await expect(check(() => standIn(answering, { prompt: promptAnswer, resources: { ...resourcesAnswer, method: () => 'not the brief' } }))).rejects.toThrow(
-      /prompt-engine:\/\/method returned/,
-    );
-    await expect(check(() => standIn(answering, { prompt: promptAnswer, resources: { ...resourcesAnswer, checklist: () => '# Writing' } }))).rejects.toThrow(
-      /prompt-engine:\/\/checklists\/coding returned/,
-    );
+    await expect(check(() => standIn(answering, { prompt: () => ({ messages: [] }) }))).rejects.toThrow(/enhance prompt \{mode: "quick"\} returned/);
+    await expect(check(() => standIn(answering, { prompt: fault }))).rejects.toThrow(/enhance prompt \{mode: "quick"\} failed: .*bundle-only fault/);
+    // The prompt's mode doesn't complete, or its completion throws.
+    await expect(check(() => standIn(answering, { modes: () => [] }))).rejects.toThrow(/completion\/complete of the enhance prompt's mode "q" returned/);
+    await expect(check(() => standIn(answering, { modes: fault }))).rejects.toThrow(/completion\/complete of the enhance prompt's mode "q" failed: .*bundle-only fault/);
+    // The template lists no coding checklist, or its list throws.
+    await expect(check(() => standIn(answering, { checklists: () => [] }))).rejects.toThrow(/resources\/list doesn't list prompt-engine:\/\/checklists\/coding/);
+    await expect(check(() => standIn(answering, { checklists: fault }))).rejects.toThrow(/resources\/list failed: .*bundle-only fault/);
+    // A checklist's domain doesn't complete, or its completion throws.
+    await expect(check(() => standIn(answering, { domains: () => [] }))).rejects.toThrow(/completion\/complete of the checklist template's domain "c" returned/);
+    await expect(check(() => standIn(answering, { domains: fault }))).rejects.toThrow(/completion\/complete of the checklist template's domain "c" failed: .*bundle-only fault/);
+    // Reads that throw, and answers that aren't the resource.
+    await expect(check(() => standIn(answering, { method: fault }))).rejects.toThrow(/prompt-engine:\/\/method failed: .*bundle-only fault/);
+    await expect(check(() => standIn(answering, { questions: fault }))).rejects.toThrow(/prompt-engine:\/\/questions failed: .*bundle-only fault/);
+    await expect(check(() => standIn(answering, { checklist: fault }))).rejects.toThrow(/prompt-engine:\/\/checklists\/coding failed: .*bundle-only fault/);
+    await expect(check(() => standIn(answering, { method: () => 'not the brief' }))).rejects.toThrow(/prompt-engine:\/\/method returned/);
+    // A reference whose heading isn't its listed title.
+    await expect(check(() => standIn(answering, { questions: () => '# Output format\n\nThe reply.' }))).rejects.toThrow(/prompt-engine:\/\/questions returned/);
+    await expect(check(() => standIn(answering, { checklist: () => '# Writing' }))).rejects.toThrow(/prompt-engine:\/\/checklists\/coding returned/);
   });
 
   it('fails a server whose tools only list', async () => {

@@ -11,8 +11,9 @@
 // - its server, started as manifest.json's mcp_config describes
 //   (node ${__dirname}/server/index.js), lists exactly the manifest's tools, and no
 //   prompt the manifest doesn't cover, answers a call to each tool, answers the
-//   enhance prompt, and reads prompt-engine://method and prompt-engine://checklists/coding
-//   (scripts/check-server.mjs).
+//   enhance prompt and completions of its mode and of a checklist's domain, lists the
+//   resources, and reads prompt-engine://method, prompt-engine://questions and
+//   prompt-engine://checklists/coding (scripts/check-server.mjs).
 // Claude Desktop is reported to run some Node extensions in its own host instead
 // (anthropics/claude-code#35175); that isn't checked here. If a check fails, the
 // bundle is deleted.
