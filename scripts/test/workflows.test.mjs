@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -232,6 +232,15 @@ test('the reader reads all four workflows, and every step runs an action or a sc
     assert.throws(() => readYaml(`jobs:\n  a:\n    steps:\n      # note${c}      - run: echo hidden\n      - run: echo shown\n`, 'x.yml'), new RegExp(`x\\.yml:4: .*${code}`));
   }
   assert.deepEqual(readYaml('a:\r\n  b: c\r\n', 'x.yml'), { a: { b: 'c' } }, 'CRLF line ends read as LF');
+});
+
+// GitHub runs every .yml or .yaml file in .github/workflows, and CI's actionlint step lints only
+// *.yml. So a workflow that these tests don't read would escape all of them, and actionlint too as
+// .yaml. The folder holds the four files above and nothing else, apart from the files an operating
+// system leaves in a folder, which .gitignore lists.
+test('.github/workflows holds only the four workflows these tests read, so a new one needs tests of its own', () => {
+  const found = readdirSync(join(repo, '.github', 'workflows')).filter((f) => !['.DS_Store', 'Thumbs.db', 'desktop.ini'].includes(f));
+  assert.deepEqual(found.sort(), [...FILES].sort(), 'GitHub runs every .yml and .yaml file in .github/workflows: a new workflow needs tests here');
 });
 
 test('no run: script holds a ${{ }} expression; values reach scripts through env: (finding 30)', () => {
