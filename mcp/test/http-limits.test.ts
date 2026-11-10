@@ -261,7 +261,7 @@ describe.concurrent('--http limits', () => {
     }
   });
 
-  it('stays up with a 512 MB heap while 32 clients send dense batches of the largest size at once', async ({ expect }) => {
+  it('takes five of 32 dense batches of the largest size offered at once, and stays up with a 512 MB heap while they arrive', async ({ expect }) => {
     // Each call's _meta nests arrays thousands deep: about 28 bytes of heap for each byte of
     // the body while the request is in flight (about 40 MiB for this 1.5 MB body, measured
     // in Node 24), so 128 of them at once would need about 5 GiB.
@@ -273,23 +273,42 @@ describe.concurrent('--http limits', () => {
     expect(body.length).toBeLessThanOrEqual(1_500_000);
     const server = await startHttp([], { ...ENV, NODE_OPTIONS: '--max-old-space-size=512' });
     const host = { host: `127.0.0.1:${server.port}` };
-    // A response cut off by a crash never settles send(), so race the requests against the exit.
+    // An answer cut off by a crash never closes its connection, so race them against the exit.
     const exited = new Promise<string>((resolve) =>
       server.proc.on('exit', (code, signal) => resolve(`server exited (${code ?? signal}): ${/FATAL ERROR[^\n]*/.exec(server.stderr())?.[0] ?? ''}`)),
     );
+    const clients: Array<Held & { closed: Promise<void> }> = [];
     try {
-      // A refused upload gets 503 before its body is read, and reads it while still sending the
-      // body: 'reset' here would mean the server reset the connection instead.
-      const all = Promise.all(Array.from({ length: 32 }, () => send(server.port, host, { body }).then((r) => r.status, () => 'reset')));
-      expect(await Promise.race([all.then(() => 'all answered'), exited])).toBe('all answered');
-      const statuses = await all;
-      expect(statuses.filter((s) => s !== 200 && s !== 503), statuses.join()).toEqual([]);
-      expect(statuses, statuses.join()).toContain(200);
-      expect(statuses.filter((s) => s !== 200).length, statuses.join()).toBeGreaterThan(0);
+      // Every head goes first, asking for 100 Continue, so the server decides before any body
+      // arrives: it takes the five whose bodies fit in 8,000,000 bytes and refuses the rest. Node
+      // writes 100 Continue to each before the server's handler runs, so a refused one gets its
+      // 503 right after it.
+      for (let i = 0; i < 32; i++) {
+        const sock = connect(server.port, '127.0.0.1');
+        const client = { sock, text: '', closed: new Promise<void>((resolve) => sock.on('close', () => resolve())) };
+        sock.on('data', (d) => (client.text += d));
+        sock.on('error', () => {});
+        sock.write(
+          `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
+            `MCP-Protocol-Version: 2025-11-25\r\nExpect: 100-continue\r\nConnection: close\r\nContent-Length: ${body.length}\r\n\r\n`,
+        );
+        clients.push(client);
+      }
+      await waitFor(() => clients.every((c) => c.text.startsWith('HTTP/1.1 100 Continue\r\n\r\n')), () => clients.map((c) => c.text.slice(0, 40)).join('\n'));
+      await sleep(200);
+      const admitted = clients.filter((c) => c.text === 'HTTP/1.1 100 Continue\r\n\r\n');
+      const neither = clients.filter((c) => !admitted.includes(c) && !/^HTTP\/1\.1 100 Continue\r\n\r\nHTTP\/1\.1 503 /.test(c.text));
+      expect(neither.map((c) => c.text.slice(0, 60))).toEqual([]);
+      expect(admitted.length).toBe(5);
+      // Then the five send their bodies at once.
+      for (const c of admitted) c.sock.write(body);
+      expect(await Promise.race([Promise.all(admitted.map((c) => c.closed)).then(() => 'all answered'), exited])).toBe('all answered');
+      for (const c of admitted) expect(c.text.slice(0, 60)).toMatch(/^HTTP\/1\.1 100 Continue\r\n\r\nHTTP\/1\.1 200 /);
       await sleep(200);
       expect(server.proc.exitCode ?? server.proc.signalCode, server.stderr()).toBeNull();
       expect((await send(server.port, host)).status).toBe(200);
     } finally {
+      for (const { sock } of clients) sock.destroy();
       server.proc.kill('SIGTERM');
     }
   });
