@@ -56,7 +56,10 @@ const has = (re) => (t) => re.test(t);
 const OPTION = String.raw`(^|\s)(\d[.)]|[-*•])[ \t]*\**`;
 // After "What next?": a starred option output-format.md allows, numbered or bulleted, and
 // Refine anywhere after "What next?". It doesn't check that the starred option comes first.
-export const MENU = new RegExp(String.raw`What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★`, 'i');
+// This pattern, STARRED_NOT_FILL, MEDIA_MENU and the Save to file check read the menu from the
+// first "What next?" on, as the eval graders' menu checks do: the same verdicts as reading from
+// any of them, in time linear in the reply's length (step 1e).
+export const MENU = new RegExp(String.raw`^(?:(?!What next\?)[\s\S])*What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★`, 'i');
 // Whether placeholders other than secrets' are open, read from the start of the reply, as
 // (?=FILL_OPEN) or (?!FILL_OPEN): a Fill before running section, up to the next line that starts
 // with #, lists one; or the reply has no "#" Fill before running heading and its Full prompt holds
@@ -84,10 +87,11 @@ export const FILL_OPEN = String.raw`[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before ru
   String.raw`|(?![\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running)(?:(?!(?<!#)#+[ \t]*Full prompt)[\s\S])*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?!${OUTPUT_HEADING})[^\n]*)*?\n(?!${OUTPUT_HEADING})[^\n]*?` +
   String.raw`(?<!(?:such as|e\.g\.,?|for example,?|like|write|leave(?: an?)?|insert|put)[ \t]+\x60?)(?<!\]\]\x60?(?:,|[ \t]+or)[ \t]+\x60?)(?<![\w\])])\[\[(?!placeholders?\]\])(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]`;
 const fillOpen = new RegExp(`^(?:${FILL_OPEN})`, 'i');
-const STARRED_NOT_FILL = new RegExp(String.raw`What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)\**[ \t]*★`, 'i');
+const STARRED_NOT_FILL = new RegExp(String.raw`^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)\**[ \t]*★`, 'i');
 // The score table, from its first row to its last; the row labels may be bold, as the eval
-// graders' score-table checks accept (finding 60).
-const SCORE_TABLE = ['score table', has(/\|\s*(\*\*)?Clear goal(\*\*)?\s*\|[\s\S]*\|\s*(\*\*)?Edge cases(\*\*)?\s*\|/i)];
+// graders' score-table checks accept (finding 60). Read from the first Clear goal row on, as
+// there, which keeps the time linear.
+const SCORE_TABLE = ['score table', has(/^(?=([\s\S]*?\|\s*(\*\*)?Clear goal(\*\*)?\s*\|))\1[\s\S]*\|\s*(\*\*)?Edge cases(\*\*)?\s*\|/i)];
 export const STRUCTURE = [
   ['full prompt heading', has(/#\s*Full prompt/i)],
   ['short version heading', has(/#\s*Short version/i)],
@@ -102,21 +106,22 @@ export const STRUCTURE = [
   // Every tool is off, and the core offers Save to file only with a tool that saves files on the
   // user's computer (finding 1). Only an option of the menu counts, with MENU's prefix, so a
   // sentence after the menu that says why Save was left out still passes (finding 5's audit).
-  ['no Save to file (tools disabled)', (t) => !/What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Save to file/i.test(t)],
+  ['no Save to file (tools disabled)', (t) => !/^(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Save to file/i.test(t)],
 ];
 // An image prompt, which can't be generated here: no Run it now option after "What next?", and a
 // starred Done option, or Fill placeholders ★ while placeholders other than secrets are open
 // (findings 5 and 22; D1). The pattern of image-midjourney-quick's 05 grader.
-export const MEDIA_MENU = new RegExp(String.raw`^(?![\s\S]*What next\?[\s\S]*?${OPTION}Run it now)` +
-  String.raw`(?:(?=${FILL_OPEN})[\s\S]*?What next\?[\s\S]*?${OPTION}Fill (in )?(the )?placeholders\**[ \t]*★` +
-  String.raw`|(?!${FILL_OPEN})[\s\S]*?What next\?[\s\S]*?${OPTION}Done\b[^\n]*★)`, 'i');
+export const MEDIA_MENU = new RegExp(String.raw`^(?!(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Run it now)` +
+  String.raw`(?:(?=${FILL_OPEN})(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Fill (in )?(the )?placeholders\**[ \t]*★` +
+  String.raw`|(?!${FILL_OPEN})(?:(?!What next\?)[\s\S])*What next\?[\s\S]*?${OPTION}Done\b[^\n]{0,200}★)`, 'i');
 export const DONE_NOT_RUN = ['Done ★ (Fill placeholders ★ while placeholders are open), not Run it now', has(MEDIA_MENU)];
 export const QUESTIONS = [
   // A first numbered question; the number may be bold or a heading, as coding-vague 01 accepts
   // (finding 60). The \s or ** after it keeps a line such as "1.5 GB" from counting.
   ['numbered questions', has(/(^|\n)[ \t]*(#+[ \t]*|\*\*)?1[.)](\s|\*\*)/)],
-  // A ★ on an a) to d) option line, as in coding-vague 03; the reply line holds a ★ too.
-  ['recommendation marker', has(/(^|\n)[^\n]*\b[a-d]\)[^\n]*★/)],
+  // A ★ on an a) to d) option line, as in coding-vague 03; the reply line holds a ★ too. A line
+  // is read from its first a) to d), as there, which keeps the time linear.
+  ['recommendation marker', has(/(?:^|\n)(?=([^\n]*?\b[a-d]\)))\1[^\n]*★/)],
   ['ok reply line', has(/Reply\s+`?ok`?\s+to accept every ★/i)],
   // No draft yet: no fence, Full prompt heading or label, score table or menu.
   ['no full prompt yet', (t) => !/```|(#\s*|\*\*)Full prompt|(^|\n)[ \t]*Full prompt\s*:|\|\s*Clear goal\s*\||What next\?/i.test(t)],

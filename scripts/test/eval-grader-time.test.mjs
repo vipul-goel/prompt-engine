@@ -53,6 +53,16 @@ const SHAPES = [
   ['Full prompt headings after [[', '', '# Full prompt\n[[', 6_000],
   // [^\]\n]* read from every [[ to the end of the line (B1.2.2).
   ['one line of [[x under a Full prompt heading', '# Full prompt\n', '[[x', 15_000],
+  // [\s\S]*What next\? and [\s\S]*?What next\? read the rest of the reply from every What next?;
+  // Done\b[^\n]*★ the rest of the line from every Done; [^\n]*\b[a-d]\)[^\n]*★ the rest of the
+  // line from every a) to d); [\s\S]* the rest of the reply from every Clear goal row; and the
+  // aspect-ratio graders the rest of the line from every --ar (B1.2.3). Only JavaScriptCore was
+  // slow on the first three.
+  ['What next? repeated', '', 'What next?', 13_000],
+  ['one line of Done options after What next?', 'What next?', ' 1. Done', 5_000],
+  ['one line of a)', '', 'a) ', 43_000],
+  ['| Clear goal | repeated', '', '| Clear goal |', 9_000],
+  ['one line of --ar 1:1 under a Full prompt heading', '### Full prompt\n```text\nx', ' --ar 1:1', 5_000],
 ];
 const reply =([, prefix, piece, n]) => prefix + piece.repeat(n);
 

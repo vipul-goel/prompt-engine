@@ -510,6 +510,13 @@ const TIMING_SHAPES = [
   // headings start mid-line, and the rest of the line from every [[ (B1.2.2).
   ['Full prompt headings after [[', '', '# Full prompt\n[[', 6_000],
   ['one line of [[x under a Full prompt heading', '# Full prompt\n', '[[x', 15_000],
+  // The menu, recommendation and score-table patterns, which the eval graders share (B1.2.3).
+  // V8 runs most of them fast where JavaScriptCore doesn't; the Save to file check took 2.4 s on
+  // 400,000 characters of What next?.
+  ['What next? repeated', '', 'What next?', 40_000],
+  ['one line of Done options after What next?', 'What next?', ' 1. Done', 5_000],
+  ['one line of a)', '', 'a) ', 43_000],
+  ['| Clear goal | repeated', '', '| Clear goal |', 9_000],
 ];
 test('every check stays fast on long repeated replies', () => {
   assert.ok(TIMED_CHECKS.size > 20, `only ${TIMED_CHECKS.size} checks`);

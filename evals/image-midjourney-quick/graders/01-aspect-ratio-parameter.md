@@ -7,9 +7,11 @@
 # parameters on a line of their own fail, and a right Short version doesn't make up for a wrong
 # Full prompt (step 1e). Residuals: the Short version's parameters aren't checked, and an --ar
 # inside the description passes when the line also ends with parameters. The (?<!#) keeps a long
-# run of # linear.
+# run of # linear, and a lookahead finds an --ar that the line's end or another parameter follows,
+# so the line is read once and a long line of --ar stays linear too
+# (scripts/test/eval-grader-time.test.mjs).
 type: regex
-pattern: '(?<!#)#+[ \t]*Full prompt[^\n]*\n\s*(?<f>`{3,})[^\n]*\n[ \t]*[^\s`-][^\n]*[ \t]--(ar|aspect)[ \t]+\d+:\d+([ \t]+--?[a-z][^\n]*)?(?<![,;.])[ \t]*\n(\s*\n)?\k<f>'
+pattern: '(?<!#)#+[ \t]*Full prompt[^\n]*\n\s*(?<f>`{3,})[^\n]*\n[ \t]*[^\s`-](?=[^\n]*?[ \t]--(?:ar|aspect)[ \t]+\d+:\d+(?:[ \t]+--?[a-z]|[ \t]*\n))[^\n]*(?<![,;.])\n(\s*\n)?\k<f>'
 flags: i
 weight: 1
 ---
