@@ -6,7 +6,7 @@ Read `docs/architecture.md` first for the map. The approved build plan, with the
 
 - **The repo root is also the Claude Code plugin root.** Never add a root `package.json`, lockfile, `node_modules/`, `bin/`, root `CLAUDE.md`, `.mcp.json`, `commands/`, `agents/` or `hooks/`. `node scripts/validate.mjs` enforces this.
 - **Single source.** The method lives in `skills/prompt-engine/SKILL.md` and `references/`.
-  - `universal/prompt-engine.md` is a hand-written mirror (at most 7,500 characters) that must stay in step with it, except for gaps accepted for lack of room, such as D46's rule for other people's private details; `docs/compatibility.md` lists them under Known limits.
+  - `universal/prompt-engine.md` is a hand-written mirror (at most 7,500 characters) that must stay in step with it, except for gaps accepted for lack of room, such as D46's rule for other people's private details; `docs/compatibility.md` lists the main ones under Known limits.
   - Generated files: never edit them by hand; run `node scripts/build.mjs`. They are:
     - `universal/prompt-engine-knowledge.md`
     - `references/media-targets.md`
