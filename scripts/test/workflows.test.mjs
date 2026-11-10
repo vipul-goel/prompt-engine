@@ -5,6 +5,8 @@
 // run under bash, with stand-ins for gh, npm and curl, so nothing reaches GitHub, npm or the network:
 // the on-main, CHANGELOG and tag checks, the release build's MCP tests, the npm, MCP Registry and
 // GitHub release steps, the two steps that download a tool, and the data check's filter and issue.
+// Those runs can't stand in for a release, so each workflow is also pinned, job by job, by the SHA-256
+// of what it holds: any change to one fails here until its pin changes too.
 // Run with: node --test scripts/test/*.test.mjs
 
 import { test } from 'node:test';
@@ -346,6 +348,60 @@ test('every action is pinned to a full commit SHA, with its version in a comment
     }
   }
   assert.deepEqual([...pins.keys()].sort(), ['actions/checkout', 'actions/download-artifact', 'actions/setup-node', 'actions/upload-artifact']);
+});
+
+// The step runs further down can't stand in for a release, and a step can tell them apart from one:
+// they have no tag ref, no push event and no OIDC token, and they run with stand-ins first on PATH
+// and STUB_LOG set. So a line that acts only in a release, such as
+// `[ "${GITHUB_REF_TYPE:-}" != tag ] || exit 0` or an ERR trap that checks the ref, passes them, and
+// so does a trap or an early exit in a step that they don't run; the rules above find only the plain
+// forms. That's why each workflow is pinned here by the SHA-256 of what the YAML reader gives for each
+// of its jobs, steps included, and for its other settings, with each action's version left out, since
+// the test above checks those. Any other change, a new job or step included, fails this test until
+// its pin changes in the same commit. Before you change a pin, read the change for what it does in a
+// release: the runs show that the pinned steps work, and the rules catch common mistakes, but neither
+// finds every way to switch a safeguard off.
+const PINS = {
+  'ci.yml': {
+    workflow: 'a5a13d45f4d299766d062316c2042d4cf104b72504ba9ffeb8132daca8ba0d7f',
+    'job skill': '85ce540ef3ebf1db43530ef0c3cc1bfb9167538a2e843f37b4a797abc4a03da3',
+    'job windows': '855ab7d046fd03f703483ef441bd90398f807c5a179b97cb75ad52b744f3d8be',
+    'job mcp': 'a5a064a0bcfe815f8537821d6f5ca85dd1e189b1c42a907d52b8339e205bc9e9',
+  },
+  'release.yml': {
+    workflow: '798fde9a7cfeb57b77888c35b0c7170f730eed106523e475eda00290670126ef',
+    'job build': '0bb57101ff781d02a1007ada8e0ab410acc68c8ca95559df2cf57567fceec5c8',
+    'job pack-check': '1701521963736deef91fad8bb96fb6aaaebb07ab63d8efdb9d9096f5241b61a6',
+    'job github-release': '0082f0d6f3735009ae1a03330199ab026cfd2ee937c3e32d60affaaea444c88e',
+    'job npm': '7d8b04db85f32c6b475f9ef7346f0a28a4894da9ecd06ce02e85f55c99745aed',
+    'job registry': 'b2eb9211ce5828a7a685195ba2643019009247cbdf791fa681b72d116a380e3b',
+  },
+  'evals.yml': {
+    workflow: '863ee69c8369582ab509ef9070c10b449969dcf0e3911703773ec226dedfda64',
+    'job evals': 'c4563b3761e1750b5555ceffae456cb627ad0adbd6a581993c80b735886ad9af',
+  },
+  'verify-data.yml': {
+    workflow: '05e219bbe8fac52eb8a2ffdee035236e53e8469798f94c19dae06994d41c8ef9',
+    'job stale': 'ce32f290850e0cafe93b1ca9d79260ff05da818fc3630cff4e0dd68c97182470',
+  },
+};
+// With keys sorted, so that only what a part holds counts, and owner/repo@<sha> read as owner/repo.
+const canonical = (v) => (Array.isArray(v) ? v.map(canonical) : v !== null && typeof v === 'object'
+  ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, k === 'uses' && typeof v[k] === 'string' ? v[k].replace(/@.*$/, '') : canonical(v[k])]))
+  : v);
+const digest = (v) => createHash('sha256').update(JSON.stringify(canonical(v))).digest('hex');
+test('each workflow is pinned by the SHA-256 of each job and of its other settings, so a change to it fails until its pin changes in the same commit', () => {
+  assert.deepEqual(Object.keys(PINS), FILES);
+  // Only an action's version is left out, and the order of keys doesn't count.
+  assert.equal(digest({ uses: 'a/b@1', with: { x: '1', y: '2' } }), digest({ with: { y: '2', x: '1' }, uses: 'a/b@2' }));
+  assert.notEqual(digest({ uses: 'a/b@1' }), digest({ uses: 'a/c@1' }));
+  assert.notEqual(digest({ run: 'exit 1\n' }), digest({ run: 'exit 0\n' }));
+  for (const f of FILES) {
+    const { jobs: all, ...settings } = wf[f];
+    const found = { workflow: digest(settings), ...Object.fromEntries(Object.entries(all).map(([n, j]) => [`job ${n}`, digest(j)])) };
+    const changed = [...new Set([...Object.keys(found), ...Object.keys(PINS[f])])].filter((k) => found[k] !== PINS[f][k]);
+    assert.deepEqual(changed, [], `${f}: ${changed.map((k) => (found[k] === undefined ? `${k} is gone` : `${k} is now ${found[k]}`)).join('; ')}. Read each change for what it does in a release (see the comment above this test), then pin the new SHA-256 here`);
+  }
 });
 
 test('release.yml runs only for a pushed v* tag, and with no secrets (D15)', () => {
