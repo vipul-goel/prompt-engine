@@ -92,7 +92,7 @@ Record the Claude Desktop version you tested and which bundle you installed (the
 
 ## Claude Code (interactive)
 
-The automated runs have no question dialogs, don't grant shell commands, and grant the Glob and Grep tools, which Claude Code's tools reference says a default session on macOS, Linux or WSL doesn't have (its changelog limited that to native builds, in 2.1.117). This check covers them by hand: the question dialogs, the "What next?" dialog, saving to a file, and a prompt that asks for shell commands. It's an interactive Claude Code session on your account, so it counts toward your plan's usage, or is billed, like any other session.
+The automated runs have no question dialogs, don't grant shell commands, and grant the Glob and Grep tools, which Claude Code's tools reference says a default session on macOS, Linux or WSL doesn't have (its changelog limited that to native builds, in 2.1.117). This check covers them by hand: the question dialogs, the "What next?" dialog, saving to a file, a prompt that asks for shell commands, and a request that isn't for code in a folder with git history. It's an interactive Claude Code session on your account, so it counts toward your plan's usage, or is billed, like any other session.
 
 Use a new configuration folder for every run, including a re-run after a fix. Claude Code keeps an installed plugin until its version number changes, and the number stays the same between releases, so a folder you used before can run an older copy. In a new folder, you may need to sign in again.
 
@@ -151,5 +151,24 @@ Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. C
 - [ ] Before the pick, Claude makes no Bash call and starts no subagent. Press Ctrl+O to open the transcript viewer and look for either among the tool calls: Claude Code runs read-only commands such as `ls` without a permission prompt in every mode, and 2.1.319's main screen folded one into a line such as "Listed 1 directory", as it folds file reads. A subagent call shows the subagent's name and its task, such as `Explore(…)`, and the subagent runs tools of its own.
 - [ ] Before the pick, no permission prompt appears.
 - [ ] `app.log` is still there, and `utils.py` is unchanged.
+
+Then check a request that isn't for code, in a folder with git history, where looking the changes up would take a git command. In the same shell, make a small repository with a tag in another new folder, and start Claude Code there, in Manual mode again:
+
+```bash
+cd "$(mktemp -d)" && git init -q
+printf '# Invoice tool\n' > README.md && git add README.md
+git -c user.name=Test -c user.email=test@example.com commit -q -m "Add the invoice list"
+git tag v1.0.0
+git -c user.name=Test -c user.email=test@example.com commit -q --allow-empty -m "Fix the date format on invoices"
+claude --permission-mode manual
+```
+
+Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. Accept the recommended answers if it asks questions, then press Esc at the Next step dialog instead of picking.
+
+```text
+/prompt-engine write release notes for the changes since the last tag
+```
+
+- [ ] Before the pick, Claude makes no Bash call, such as `git log` or `git tag`, and starts no subagent. Check with Ctrl+O, as for the coding prompt.
 
 Record the date, the Claude Code version (`claude --version`), the model that `/status` shows, the permission mode, the commit you tested and the URL you installed from in the Claude Code row of [compatibility.md](compatibility.md). Afterwards, `unset CLAUDE_CONFIG_DIR` returns the shell to your usual configuration.
