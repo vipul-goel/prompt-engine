@@ -218,9 +218,28 @@ test('a folder inside a longer path or a URL is never rewritten, and the scan re
     const out = midPath(text, { home });
     assert.ok(refusedAs(out, kind), `home ${home}: ${JSON.stringify(text)} gave ${JSON.stringify(out)}`);
   }
-  // Where a path starts: at the start, after a space, a quote, a bracket, = or :, and after the
-  // second / of file:///.
-  assert.equal(midPath('/root/a, "/root/b" (/root/c) --dir=/root/d PATH=/bin:/root/e file:///root/f', { home: '/root' }), '~/a, "~/b" (~/c) --dir=~/d PATH=/bin:~/e file://~/f');
+  // Where a path starts: at the start, after a space, a quote, a bracket, = or :, after the second /
+  // of file:///, and after the ** of Markdown's bold.
+  assert.equal(midPath('/root/a, "/root/b" (/root/c) --dir=/root/d PATH=/bin:/root/e file:///root/f **/root/g**', { home: '/root' }), '~/a, "~/b" (~/c) --dir=~/d PATH=/bin:~/e file://~/f **~/g**');
+});
+
+// A name goes on through letters, digits and marks of any script, so /café/root and /root\u{301}
+// hold another folder; and the host of a URL, as in https://root/x, isn't a path. The rewrite read
+// only ASCII as part of a name, and wrote /café~/x and https:/~/x without a word.
+test('a folder after or before a letter outside ASCII, or as the host of a URL, is never rewritten', () => {
+  for (const [text, kind, over] of [
+    ['Open /café/root/x now.', 'this machine\'s home folder', { home: '/root' }],
+    ['Open /cafe\u{301}/root/x now.', 'this machine\'s home folder', { home: '/root' }],
+    ['Open /root\u{301}/x now.', 'this machine\'s home folder', { home: '/root' }],
+    ['Open /rootä/x now.', 'this machine\'s home folder', { home: '/root' }],
+    ['Fetch https://root/x now.', 'this machine\'s home folder', { home: '/root' }],
+    ['Saved to café/srv/tmp/pe-history-abc/out.md.', 'this machine\'s working folder'],
+  ]) {
+    const out = midPath(text, over);
+    assert.ok(refusedAs(out, kind), `${JSON.stringify(text)} gave ${JSON.stringify(out)}`);
+  }
+  // A letter outside ASCII before a space, and the path after it, are as they were.
+  assert.equal(midPath('Café /root/a', { home: '/root' }), 'Café ~/a');
 });
 
 // The plugin and working folders the same way. Neither is under the home folder here, so the scan

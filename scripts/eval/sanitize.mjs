@@ -166,11 +166,14 @@ export function scanText(text, { extra = [], allowText = '' } = {}) {
 }
 
 // One folder's rewrite. The folder matches with either separator (and in any case, for a
-// Windows drive path), and only at a path boundary at both ends. It starts where a path starts,
-// not after an ASCII letter or digit, _, ., ~ or -: so a home of /root rewrites /root/a,
-// file:///root/a and PATH=/bin:/root/bin, but not https://github.com/acme/root or /var/root,
-// which are other paths. And it ends where a name ends, so /srv/people/al doesn't rewrite
-// /srv/people/alex.
+// Windows drive path), and only at a path boundary at both ends. It starts where a path starts:
+// not after a letter, digit or mark of any script, _, ., ~ or -, nor right after :/, where a URL's
+// host starts. So a home of /root rewrites /root/a, file:///root/a and PATH=/bin:/root/bin, but
+// not https://github.com/acme/root, /var/root, /café/root or https://root/a, which are other
+// paths. }, * and # still start one, so /root in ${HOME}/root, src/**/root or #/root is
+// rewritten; a * rule would take in Markdown's bold, **/root/a**. And it ends where a name ends,
+// through letters of any script too, so /srv/people/al doesn't rewrite /srv/people/alex or
+// /srv/people/alé.
 // It becomes `to` followed by the rest of its path; for a Windows path, the rest's
 // backslashes become "/", so build.mjs recognises a /plugin/... Read. A file-system root
 // (isRoot) is left as it is.
@@ -183,9 +186,9 @@ function prefixRule(prefix, to) {
   const folder = prefix.replace(/[\\/]+$/, '');
   const windows = /^[A-Za-z]:[\\/]/.test(folder);
   const source = folder.split(/[\\/]/).map(esc).join('[\\\\/]');
-  const end = '(?![\\w-]|\\.\\w)';
-  const re = new RegExp(`(?<![\\w.~-])${source}((?:[\\\\/][^\\s"'<>|*?]*)?)${end}`, windows ? 'gi' : 'g');
-  const anywhere = new RegExp(`${source}${end}`, windows ? 'i' : '');
+  const end = '(?![\\p{L}\\p{N}\\p{M}_-]|\\.[\\p{L}\\p{N}\\p{M}_])';
+  const re = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}_.~-]|:\\/)${source}((?:[\\\\/][^\\s"'<>|*?]*)?)${end}`, windows ? 'giu' : 'gu');
+  const anywhere = new RegExp(`${source}${end}`, windows ? 'iu' : 'u');
   return {
     rewrite: (s) => s.replace(re, (_, rest) => to + (windows ? rest.replaceAll('\\', '/') : rest)),
     // The folder in what the rewrite doesn't take, each of its matches read as one NUL.
