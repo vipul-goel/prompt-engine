@@ -35,9 +35,10 @@ Reply `ok`. Expected, in this order:
 
 ### 3. Change an assumption
 
-Reply `change 1: make it for team managers`. Expected:
-- [ ] An updated prompt.
-- [ ] What changed.
+Read Assumption 1 in the reply, then reply `change 1:` and a different value for it, such as `change 1: British spelling` if Assumption 1 is US spelling. Expected:
+- [ ] One line on what changed, then the whole reply again, in the order of check 2.
+- [ ] The Full prompt uses the new value, and the rest of it is kept.
+- [ ] Assumption 1 is gone or shows the new value.
 - [ ] A new score.
 
 ### 4. Quick mode for an image tool
