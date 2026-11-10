@@ -1338,3 +1338,20 @@ test("the rubrics that quote answer 7 quote its question too, and deep's 04 quot
   const deep = graderOf('followup-deep-second-round', '04-further-round').body.split('\n');
   for (const [i, q] of questions.entries()) assert.ok(deep.some((l) => l.startsWith(`${i + 1}. "${q}": "`)), q);
 });
+
+// coding-vague-asks-questions 08 (finding 6): `ok` takes the ★, so the ★ must be an answer the
+// prompt can use. Its judge failed T1's reply (votes FAIL PASS FAIL) whose ★ options were all
+// usable: questions.md's Format B can put a question's options on one line, so the unstarred 'b)
+// Type it in your own words, e.g. …' sat on the ★'s line and read like the rubric's own FAIL
+// example, and 'Ask before either ★' could read as asking the user for something. The rubric now
+// says which text it judges and that both are fine, and still fails a 'Tell me' ★ (step 1e, B1.1.1).
+test("coding-vague-asks-questions 08 judges only each ★ option's own text, and still fails a Tell me ★", () => {
+  const body = graderOf('coding-vague-asks-questions', '08-star-is-an-answer').body;
+  for (const part of [
+    'Judge only the text of each option marked ★ or labelled (Recommended)',
+    "an option runs from its letter to the next option's letter, so in 'a) Use a library ★ (well tested) b) Write your own' only a) is judged.",
+    "An option without ★ may invite the user to type or paste the real thing instead, such as 'b) Type it in your own words', and so may the question; that invitation is fine.",
+    "An option under which the agent asks the user before it acts, such as 'Ask before installing packages', is a usable answer too",
+    "FAIL if any recommended option asks the user to supply information instead, such as 'Tell me', 'Paste it' or 'Tell me, e.g. Next.js', because accepting it with `ok` gives the prompt nothing to use.",
+  ]) assert.ok(body.includes(part), part);
+});
