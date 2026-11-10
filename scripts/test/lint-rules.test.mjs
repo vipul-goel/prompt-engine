@@ -361,20 +361,38 @@ test('fragments samples characters that two classes both match', () => {
 // step by step way", and so does the phrase written with an en, em or figure
 // dash. Whether to widen the rule to them is left to step 1e, whose list in
 // the review record's step_1d.follow_ups names these limits.
-// Written with a no-break space, two spaces or a tab between its words, the
-// phrase passes the eval lint graders and validate.mjs's self-lint, which match
-// the text as written, but not check_prompt, which turns each run of whitespace
-// into one plain space first. The same goes for every rule that spells the
-// space between two words as one space: magic-phrase ("take a deep breath"),
-// prefill-instruction ("prefill the response") and vague-quality-words ("best
-// quality"), which only the graders and check_prompt apply. Writing those
-// spaces as \s+ or \s{1,3} would close the gap in the graders and the
-// self-lint, but check_prompt's gate refuses \s+ in all four rules as an
-// unbounded repetition, and \s{1,3} in all but vague-quality-words as more than
-// 1,000 steps, so check_prompt would skip them; the rules stay as they are
-// (step 1e, B1.2.10).
+// The four rules that name words in a row, this one, magic-phrase ("take a
+// deep breath"), prefill-instruction ("prefill the response") and
+// vague-quality-words ("best quality"), write the space between two words as
+// [^\S\n], which also takes a tab or a no-break space. So the eval lint graders
+// and validate.mjs's self-lint, which match the text as written, flag those
+// forms as check_prompt does, which turns each run of whitespace other than a
+// line break into one space (step 1e). Two spaces or more between the words
+// still pass the graders and the self-lint, and a line break passes all three,
+// since check_prompt matches one line at a time. [^\S\n]+ would close the first
+// gap, but check_prompt's gate refuses it in all four rules as an unbounded
+// repetition, and [^\S\n]{1,2} in this rule and magic-phrase as more than 1,000
+// steps, so check_prompt would skip them (B1.2.10).
 const reasoningRule = rules.find((r) => r.id === 'visible-reasoning-request');
 const asksForReasoning = (text) => new RegExp(reasoningRule.pattern, reasoningRule.flags).test(text);
+
+test('the multi-word rules take a tab or a no-break space between words, as check_prompt does', () => {
+  for (const [id, phrases] of Object.entries({
+    'visible-reasoning-request': ['Think step by step.', 'Show your step by step reasoning.', 'Use chain of thought.', 'Explain your reasoning before you answer.'],
+    'magic-phrase': ['Take a deep breath.', 'Think really hard.', 'You are a world class editor.', 'This is very important to my career.'],
+    'prefill-instruction': ['Prefill the response with {', 'The assistant turn begins with a brace.'],
+    'vague-quality-words': ['best quality, soft light', 'ultra detailed', 'award winning photo'],
+  })) {
+    const rule = rules.find((r) => r.id === id);
+    const re = new RegExp(rule.pattern, rule.flags);
+    for (const phrase of phrases) {
+      assert.ok(re.test(phrase), `${id}: ${phrase}`);
+      for (const [name, space] of [['tab', '\t'], ['no-break space', '\u{A0}'], ['ideographic space', '\u{3000}']]) {
+        assert.ok(re.test(phrase.replaceAll(' ', space)), `${id}: ${phrase} with a ${name}`);
+      }
+    }
+  }
+});
 
 test('visible-reasoning-request catches a request to reason step by step, spelled with spaces, hyphens or a mix', () => {
   for (const text of [
