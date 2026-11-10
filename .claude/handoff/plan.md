@@ -149,7 +149,7 @@ Each phase is a workflow with independent reviewers and ends in a commit.
    - Platform smoke tests: `npx skills add . --list`, plus Codex and Gemini CLI if they install without accounts.
 5. **Finish.**
    1. Description tuning: `run_loop` from a scratch directory, with at least half the eval set being near-miss task requests and a length cap from Phase 0.
-   2. The full `claude plugin eval`. The README's real example is then replaced with that run's `image-midjourney-quick` reply, naming the model and date the results record (D52).
+   2. The full `claude plugin eval`. The README's real example is then replaced with that run's `image-midjourney-quick` reply, naming the model and date the results record (D52). The date is the day the run started on the clock of the machine that ran it, as `docs/compatibility.md` dates runs; the UTC date in `startedAt` can be a day off.
    3. A smoke test from a fresh marketplace install: one run by hand is recorded, on 2026-10-29, before 998e0c8; no tmux script was written, and since D25 re-runs follow the manual Claude Code checklist in docs/manual-checks.md (handoff step 4).
    4. Multi-agent code review, fixes, every check re-run.
    5. Push.
