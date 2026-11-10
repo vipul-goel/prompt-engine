@@ -17,6 +17,7 @@ The design follows the platforms' own documentation and the prompting guidance b
 ## Claude Code plugins and testing
 - Plugin manifest, marketplace, loading, components, publishing and the CLI: https://code.claude.com/docs/en/plugins/manifest-reference.md · https://code.claude.com/docs/en/plugins/marketplace-reference.md · https://code.claude.com/docs/en/plugins/loading.md · https://code.claude.com/docs/en/plugins/components.md · https://code.claude.com/docs/en/plugins/publish.md · https://code.claude.com/docs/en/plugins/cli-reference.md
 - Plugin evals: https://code.claude.com/docs/en/plugin-evals.md
+- The git status snapshot that Claude Code gives the model when a session starts, for the manual check of a request in a folder with git history (`includeGitInstructions`, checked on 2026-11-10): https://code.claude.com/docs/en/settings-reference.md
 - AskUserQuestion: https://code.claude.com/docs/en/agent-sdk/user-input.md
 - Hooks (why there's no prompt-rewriting hook): https://code.claude.com/docs/en/hooks
 

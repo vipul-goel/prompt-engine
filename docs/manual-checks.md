@@ -152,13 +152,14 @@ Choose "Yes, I trust this folder" again. In Claude Code, run the prompt below. C
 - [ ] Until you press Esc, no permission prompt appears.
 - [ ] `app.log` is still there, and `utils.py` is unchanged.
 
-Then check a request that isn't for code, in a folder with git history, where looking the changes up would take a git command. In the same shell, make a small repository with a tag in another new folder, and start Claude Code there, in Manual mode again:
+Then check a request that isn't for code, in a folder with git history. When a session starts, Claude Code gives the model a git status snapshot with the current and main branches, `git status` and the latest commits (Claude Code's settings reference, under `includeGitInstructions`); in a session of 2.1.322 it listed the five latest commits by hash and subject, without tags. The folder below has twelve commits since its last tag, so finding every change since the tag takes a lookup: a Read call, even of a file under `.git`, is one the method allows, and a Bash call or a subagent fails the check. In the same shell, make the repository in another new folder, and start Claude Code there, in Manual mode again:
 
 ```bash
 cd "$(mktemp -d)" && git init -q
 printf '# Invoice tool\n' > README.md && git add README.md
 git -c user.name=Test -c user.email=test@example.com commit -q -m "Add the invoice list"
 git tag v1.0.0
+for n in 1 2 3 4 5 6 7 8 9 10 11; do git -c user.name=Test -c user.email=test@example.com commit -q --allow-empty -m "Add invoice field $n"; done
 git -c user.name=Test -c user.email=test@example.com commit -q --allow-empty -m "Fix the date format on invoices"
 claude --permission-mode manual
 ```
