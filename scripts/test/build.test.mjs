@@ -304,6 +304,16 @@ test('the knowledge file demotes headings but not "# " lines inside fenced block
   }
 });
 
+// A fence closes only the block that a fence of its own kind, at least as long, opened; and a
+// level-6 heading has no level below it, so it stays as it is.
+test('the knowledge file keeps a block open past a shorter fence inside it, and leaves level-6 headings alone', () => {
+  const refs = Object.fromEntries(KNOWLEDGE_ORDER.map((k) => [k, `# ${k}\n\nText.\n`]));
+  refs.coding = '# Coding\n\n````markdown\n```text\n# inside the outer block\n```\n# still inside it\n````\n\n##### Five\n###### Six\n';
+  const out = renderKnowledge(refs);
+  for (const line of ['# inside the outer block', '# still inside it', '###### Five', '###### Six']) assert.match(out, new RegExp(`^${line}$`, 'm'), line);
+  assert.doesNotMatch(out, /^#{7}/m);
+});
+
 // ---------- refreshHistory: the skill text and Read results inside recorded histories ----------
 const HEAD = 'Base directory for this skill: /plugin/skills/prompt-engine\n\n';
 const readText = (p) => normalize(readFileSync(join(repo, p), 'utf8'));
@@ -432,6 +442,21 @@ test('a slash command with empty or no arguments is refreshed', () => {
   }
 });
 
+// refreshHistory also reads a typed slash command whose message content is a list of text parts.
+test('a slash command recorded as text parts is refreshed like one recorded as a string', () => {
+  const original = history('save-to-file');
+  const args = recordedArgs(original);
+  const h = original.split('\n').map((l) => {
+    if (!l.trim()) return l;
+    const r = JSON.parse(l);
+    if (typeof r.message?.content === 'string' && r.message.content.includes('<command-name>/prompt-engine')) r.message.content = [{ type: 'text', text: r.message.content }];
+    for (const p of Array.isArray(r.message?.content) ? r.message.content : []) if (p.type === 'text' && p.text.startsWith(HEAD)) p.text = expected('OLD BODY', args);
+    return JSON.stringify(r);
+  }).join('\n');
+  assert.ok(partsOf(h).some((p) => p.type === 'text' && p.text.includes('<command-name>/prompt-engine')), 'the command is a text part');
+  assert.equal(skillText(refresh(h)), expected(body, args));
+});
+
 test("another skill's text is left alone, and its Skill call sets no arguments", () => {
   // The recording's only Skill call is for another skill: prompt-engine's text has no invocation.
   const other = history('followup-ok-accepts-recommendations').split('\n').map((l) => {
@@ -548,6 +573,46 @@ test('leaves a failed Read as it was recorded', () => {
   const input = jsonl(readUse({ file_path: `/plugin/${REL}` }), readResult('File does not exist.', { is_error: true }));
   assert.equal(refreshHistory(input, 'BODY', files({ [REL]: 'NEW' })), input);
   assert.equal(refreshHistory(input, 'BODY', files({})), input);
+});
+
+// media-targets.md is generated and copied into recorded Reads in the same run, so the Reads get
+// the new render rather than the file still on disk, and one build settles. No committed recording
+// reads it yet, so the copy's save-to-file recording reads it in place of writing.md.
+test('one build gives the recorded Reads of media-targets.md the new render', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-media-reads-'));
+  try {
+    copyTo(dir);
+    const recording = join(dir, 'evals/save-to-file/history.jsonl');
+    const before = readFileSync(recording, 'utf8');
+    const reads = before.replaceAll('/plugin/skills/prompt-engine/references/writing.md', '/plugin/skills/prompt-engine/references/media-targets.md');
+    assert.notEqual(reads, before, 'the recording reads writing.md');
+    writeFileSync(recording, reads);
+    const file = join(dir, 'data/media-targets.json');
+    const data = JSON.parse(readFileSync(file, 'utf8'));
+    data.targets[0].notes = 'A note added by the test.';
+    writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    const build = node(join(dir, 'scripts', 'build.mjs'));
+    assert.equal(build.code, 0, build.out);
+    assert.match(readFileSync(join(dir, 'evals/save-to-file/history.jsonl'), 'utf8'), /A note added by the test\./);
+    const check = node(join(dir, 'scripts', 'build.mjs'), ['--check']);
+    assert.equal(check.code, 0, check.out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The MCP server's content is written only where the server is: a copy of the skill alone gets no mcp/.
+test('build.mjs writes no MCP content in a tree without mcp/', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pe-no-mcp-'));
+  try {
+    copyTo(dir);
+    rmSync(join(dir, 'mcp'), { recursive: true, force: true });
+    const build = node(join(dir, 'scripts', 'build.mjs'));
+    assert.equal(build.code, 0, build.out);
+    assert.ok(!existsSync(join(dir, 'mcp')), 'no mcp/ folder was made');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('build.mjs and validate.mjs name the history they cannot refresh, in one line', () => {
