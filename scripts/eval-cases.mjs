@@ -311,6 +311,21 @@ const inside = (rel) => typeof rel === 'string' && rel !== '' && !win32.isAbsolu
 // The CLI takes a plain file with one name. It also follows a link whose target stays in the
 // case folder; this check doesn't, since a link doesn't survive every checkout.
 const isPlainFile = (p) => { try { const s = lstatSync(p); return s.isFile() && s.nlink === 1; } catch { return false; } };
+// A link where evals/, a case, its case.yaml, prompt.md or graders/ folder, or a folder on a
+// fixture's path belongs. git stores the link, not what it leads to, so a clone has nothing there,
+// or a file that holds a path, while isFile, isDir and the reads here follow it: the checks passed
+// on the machine that made it. Each is named, and nothing is read through it.
+const isLink = (p) => { try { return lstatSync(p).isSymbolicLink(); } catch { return false; } };
+const LINK_RULE = 'git stores the link, not what it leads to, so a clone has nothing there, or a file that holds a path';
+const linked = (p, keep) => `${p}: a link; ${LINK_RULE}, and validate.mjs doesn't read through it; keep ${keep}`;
+// The first part of a fixture's path rel, from the case folder abs, that is a link, as a path from
+// the root (dir is abs's), or null.
+const linkOn = (abs, dir, rel) => {
+  const parts = rel.split(/[\\/]/).filter((s) => s !== '' && s !== '.');
+  for (let i = 1; i <= parts.length; i++) if (isLink(join(abs, ...parts.slice(0, i)))) return `${dir}/${parts.slice(0, i).join('/')}`;
+  return null;
+};
+const throughLink = (where, what, rel, p) => `${where}: ${what} "${rel}" goes through ${p}, a link; ${LINK_RULE}; keep fixtures in the case folder itself`;
 
 // Values that sit at the top of prompt.md, and at the top of case.yaml or under its execution:
 // or context: (top, exec and ctx are those mappings, execKeys the keys allowed in exec). Only
@@ -405,6 +420,7 @@ function checkGrader(err, where, g, abs, referenced, dir) {
       if (typeof c !== 'string' || c.trim() === '') err(`${where}: needs criteria (the criteria key, or the file's body)`);
       if (d.type === 'llm') view('focus');
       else if (!inside(d.baseline_file) || !isPlainFile(join(abs, d.baseline_file))) err(`${where}: baseline_file "${d.baseline_file}" is not a plain file in the case folder`);
+      else if (linkOn(abs, dir, d.baseline_file) !== null) err(throughLink(where, 'baseline_file', d.baseline_file, linkOn(abs, dir, d.baseline_file)));
       else referenced.add(`${dir}/${d.baseline_file}`);
       break;
     }
@@ -418,21 +434,29 @@ function checkGrader(err, where, g, abs, referenced, dir) {
 // warn(message) says when a check was skipped.
 export function checkEvalCases(root, err, warn = () => {}) {
   const cases = [];
+  if (isLink(join(root, 'evals'))) { err(linked('evals', 'the cases in evals itself')); return cases; }
   if (!isDir(join(root, 'evals'))) return cases;
   const referenced = new Set();
   for (const name of readdirSync(join(root, 'evals')).sort()) {
     const dir = `evals/${name}`;
     const abs = join(root, dir);
-    if (name === 'results' || !isDir(abs)) continue; // results/: claude plugin eval's output
+    if (name === 'results') continue; // claude plugin eval's output
+    if (isLink(abs)) { err(linked(dir, `the case's files in ${dir} itself`)); continue; }
+    if (!isDir(abs)) continue;
     if (name === 'mocks') { err(`${dir}: suite-wide mocks aren't used in this repo, and validate.mjs doesn't check them (repo rule)`); continue; }
-    const hasCase = isFile(join(abs, 'case.yaml'));
-    const hasPrompt = isFile(join(abs, 'prompt.md'));
+    // A case.yaml or prompt.md that is a link is there but not read, as one that doesn't parse.
+    const caseLink = isLink(join(abs, 'case.yaml'));
+    const promptLink = isLink(join(abs, 'prompt.md'));
+    if (caseLink) err(linked(`${dir}/case.yaml`, `the file itself in ${dir}`));
+    if (promptLink) err(linked(`${dir}/prompt.md`, `the file itself in ${dir}`));
+    const hasCase = caseLink || isFile(join(abs, 'case.yaml'));
+    const hasPrompt = promptLink || isFile(join(abs, 'prompt.md'));
     // claude plugin eval also reads cases from subfolders of a folder without them (a group).
     if (!hasCase && !hasPrompt) { err(`${dir}: needs prompt.md or case.yaml; cases sit directly under evals/, because scripts/build.mjs refreshes only evals/<case>/history.jsonl (repo rule)`); continue; }
     const c = { name, dir, caseYaml: null, prompt: null, graders: [] };
     cases.push(c);
     let caseParsed = !hasCase;
-    if (hasCase) {
+    if (hasCase && !caseLink) {
       const file = `${dir}/case.yaml`;
       const raw = readFileSync(join(abs, 'case.yaml'), 'utf8');
       const text = normalize(raw);
@@ -443,7 +467,7 @@ export function checkEvalCases(root, err, warn = () => {}) {
         try { c.caseYaml = parseYaml(raw, file); caseParsed = true; } catch (e) { err(e.message); }
       }
     }
-    if (hasPrompt) {
+    if (hasPrompt && !promptLink) {
       try { c.prompt = frontmatter(readFileSync(join(abs, 'prompt.md'), 'utf8'), `${dir}/prompt.md`); } catch (e) { err(e.message); }
     }
 
@@ -471,6 +495,7 @@ export function checkEvalCases(root, err, warn = () => {}) {
       for (const k of ['scaffold_script', 'history_file']) {
         if (typeof ctx[k] !== 'string') continue;
         if (!inside(ctx[k]) || !isPlainFile(join(abs, ctx[k]))) err(`${file}: context.${k} "${ctx[k]}" is not a plain file in the case folder`);
+        else if (linkOn(abs, dir, ctx[k]) !== null) err(throughLink(file, `context.${k}`, ctx[k], linkOn(abs, dir, ctx[k])));
         else referenced.add(`${dir}/${ctx[k]}`);
       }
       if (ctx.history_file !== undefined && ctx.history_file !== 'history.jsonl') err(`${file}: context.history_file must be history.jsonl, the only name scripts/build.mjs refreshes (repo rule)`);
@@ -478,6 +503,7 @@ export function checkEvalCases(root, err, warn = () => {}) {
       for (const d of Array.isArray(ctx.add_dirs) ? ctx.add_dirs : []) {
         const first = typeof d === 'string' ? d.split(/[\\/]/).find((s) => s !== '' && s !== '.') : undefined;
         if (!inside(d) || first === undefined || first === 'graders' || first === 'mocks' || !isDir(join(abs, d))) err(`${file}: add_dirs entry "${d}" is not a fixture folder in the case folder (one that isn't the case folder, graders/ or mocks/)`);
+        else if (linkOn(abs, dir, d) !== null) err(throughLink(file, 'add_dirs entry', d, linkOn(abs, dir, d)));
       }
     }
     const fm = c.prompt;
@@ -516,7 +542,9 @@ export function checkEvalCases(root, err, warn = () => {}) {
     // Listed without following links: one that leads nowhere, such as the lock file Emacs keeps next
     // to a file with unsaved changes, stopped the read with Node's own ENOENT line.
     const gdir = join(abs, 'graders');
-    const gentries = isDir(gdir) ? readdirSync(gdir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) : [];
+    const gradersLink = isLink(gdir);
+    if (gradersLink) err(linked(`${dir}/graders`, `the graders in ${dir}/graders itself`));
+    const gentries = !gradersLink && isDir(gdir) ? readdirSync(gdir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) : [];
     for (const e of gentries) {
       const f = e.name;
       if (OS_JUNK.has(f)) continue;
@@ -535,7 +563,7 @@ export function checkEvalCases(root, err, warn = () => {}) {
       c.graders.push({ name: f.slice(0, -3), file: where, data: g.data, body: g.body });
       checkGrader(err, where, g, abs, referenced, dir);
     }
-    if (!count) err(`${dir}: needs at least one grader in graders/ with front matter`);
+    if (!count && !gradersLink) err(`${dir}: needs at least one grader in graders/ with front matter`);
   }
 
   // A referenced fixture that git ignores works here but is missing from a clean checkout. Only
@@ -557,13 +585,15 @@ export function checkEvalCases(root, err, warn = () => {}) {
 }
 
 // ---------- this repo's rules for runs ----------
-// True when a file of the case didn't read (it didn't parse, or a grader has no front matter).
-// checkEvalCases has reported that file, and the rules below would misread the case without it.
+// True when a file of the case didn't read (it didn't parse, a grader has no front matter, or a
+// case file or the graders folder is a link, also one that leads nowhere). checkEvalCases has
+// reported that file, and the rules below would misread the case without it.
 function unread(root, c) {
   const abs = join(root, c.dir);
   const gdir = join(abs, 'graders');
-  const graders = isDir(gdir) ? readdirSync(gdir).filter((f) => f.endsWith('.md')).length : 0;
-  return (isFile(join(abs, 'prompt.md')) && !c.prompt) || (isFile(join(abs, 'case.yaml')) && !c.caseYaml) || graders !== c.graders.length;
+  const there = (p) => isFile(p) || isLink(p);
+  const graders = isDir(gdir) && !isLink(gdir) ? readdirSync(gdir).filter((f) => f.endsWith('.md')).length : 0;
+  return (there(join(abs, 'prompt.md')) && !c.prompt) || (there(join(abs, 'case.yaml')) && !c.caseYaml) || isLink(gdir) || graders !== c.graders.length;
 }
 
 // A case's settings as claude plugin eval resolves them: a key in prompt.md's front matter wins

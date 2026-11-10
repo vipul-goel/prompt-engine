@@ -1104,6 +1104,19 @@ test('names a link in a case\'s graders folder in one line, such as an editor\'s
   /^2 error\(s\)$/m,
 ], 1, [...NO_STACK, /ENOENT/]));
 
+// A case folder, or a case's prompt.md or case.yaml, as a link: the checks read through it on the
+// machine that made it, and a clone has nothing there, or a file that holds a path.
+test('names a case folder, a case.yaml and a prompt.md that are links', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => withMutation((d) => {
+  for (const p of [`${SPANISH}/prompt.md`, `${SPANISH}/case.yaml`, 'evals/coding-vague-asks-questions']) {
+    const moved = join(d, `moved-${basename(p)}`);
+    renameSync(join(d, p), moved);
+    symlinkSync(moved, join(d, p));
+  }
+}, [
+  ...[`${SPANISH}/case.yaml`, `${SPANISH}/prompt.md`, 'evals/coding-vague-asks-questions'].map((p) => new RegExp(`^error: ${reEsc(p)}: a link; git stores the link, not what it leads to`, 'm')),
+  /^3 error\(s\)$/m,
+], 1, NO_STACK));
+
 // skills/ or skills/prompt-engine as a link: git stores the link, not the files it leads to, while
 // the checks, the build and the skill zip follow it.
 for (const what of ['skills/prompt-engine', 'skills']) {

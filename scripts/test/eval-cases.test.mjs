@@ -328,6 +328,76 @@ test('checkEvalCases refuses a fixture that is a link or has a second name', { s
   ]);
 });
 
+// The same for a case folder, its case.yaml or prompt.md, its graders folder and a folder on a
+// fixture's path: git stores a link, not what it leads to, so a clone has nothing there, or a file
+// that holds a path, while the checks here passed through the link. Each is named, and nothing is
+// read through it; a case with a file left unread is skipped by the suite rules, as one that doesn't
+// parse is.
+test('checkEvalCases names a case, a case file, a graders folder or a fixture folder that is a link, and reads nothing through it', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => {
+  const outside = tree({
+    'case/prompt.md': promptMd(), 'case/graders/01-x.md': REGEX,
+    'prompt.md': promptMd(), 'case.yaml': 'schema_version: "1.1"\nname: b\n',
+    'graders/01-x.md': REGEX, 'fixtures/setup.sh': 'true\n', 'docs/a.txt': 'a\n', 'empty/a.txt': 'a\n',
+  });
+  try {
+    const at = (p) => join(outside, p);
+    const files = {
+      'evals/a/case.yaml': 'schema_version: "1.1"\nname: a\n',
+      'evals/a/graders/01-x.md': REGEX,
+      'evals/b/prompt.md': promptMd(),
+      'evals/b/graders/01-x.md': REGEX,
+      'evals/d/prompt.md': promptMd(),
+      'evals/e/case.yaml': 'schema_version: "1.1"\nname: e\ncontext:\n  scaffold_script: fixtures/setup.sh\n  add_dirs: [docs]\n',
+      'evals/e/prompt.md': promptMd('tags: [needs-write]\n'),
+      'evals/e/graders/01-x.md': REGEX,
+    };
+    const links = (dir) => {
+      symlinkSync(at('case'), join(dir, 'evals/c'));
+      symlinkSync(at('prompt.md'), join(dir, 'evals/a/prompt.md'));
+      symlinkSync(at('case.yaml'), join(dir, 'evals/b/case.yaml'));
+      symlinkSync(at('graders'), join(dir, 'evals/d/graders'));
+      symlinkSync(at('fixtures'), join(dir, 'evals/e/fixtures'));
+      symlinkSync(at('docs'), join(dir, 'evals/e/docs'));
+    };
+    const linked = (p, keep) => `${p}: a link; git stores the link, not what it leads to, so a clone has nothing there, or a file that holds a path, and validate.mjs doesn't read through it; keep ${keep}`;
+    const via = (field, rel, p) => `evals/e/case.yaml: ${field} "${rel}" goes through ${p}, a link; git stores the link, not what it leads to, so a clone has nothing there, or a file that holds a path; keep fixtures in the case folder itself`;
+    const expected = [
+      linked('evals/a/prompt.md', 'the file itself in evals/a'),
+      linked('evals/b/case.yaml', 'the file itself in evals/b'),
+      linked('evals/c', 'the case\'s files in evals/c itself'),
+      linked('evals/d/graders', 'the graders in evals/d/graders itself'),
+      via('context.scaffold_script', 'fixtures/setup.sh', 'evals/e/fixtures'),
+      via('add_dirs entry', 'docs', 'evals/e/docs'),
+    ];
+    const { errors, cases } = check(files, links);
+    assert.deepEqual(errors, expected);
+    assert.deepEqual(cases.map((c) => [c.name, c.caseYaml !== null, c.prompt !== null, c.graders.length]), [['a', true, false, 1], ['b', false, true, 1], ['d', false, true, 0], ['e', true, true, 1]]);
+    // The suite rules skip the cases with a file left unread, so no rule reports the model they don't pin.
+    const dir = tree(files);
+    try {
+      links(dir);
+      const suite = [];
+      checkSuiteRules(dir, checkEvalCases(dir, () => {}), (m) => suite.push(m));
+      assert.deepEqual(suite, []);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('checkEvalCases names evals itself when it is a link, and reads no case through it', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => {
+  const outside = tree({ 'demo/prompt.md': promptMd(), 'demo/graders/01-x.md': REGEX });
+  try {
+    const { errors, cases } = check({ 'README.md': 'x\n' }, (dir) => symlinkSync(outside, join(dir, 'evals')));
+    assert.deepEqual(errors, ['evals: a link; git stores the link, not what it leads to, so a clone has nothing there, or a file that holds a path, and validate.mjs doesn\'t read through it; keep the cases in evals itself']);
+    assert.deepEqual(cases, []);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('checkEvalCases checks the form of each grader option, not only that it is there', () => {
   const { errors } = check({
     'evals/demo/prompt.md': PROMPT,
