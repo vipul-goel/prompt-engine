@@ -105,6 +105,10 @@ const REFUSES = [
   ['a value starting with "- "', 'a: - x\n', 'f.yaml:1: quote the value "- x"'],
   ['a value Psych reads as a symbol', 'a: :x\n', 'f.yaml:1: quote the value ":x"'],
   ...['True', 'yes', 'y', 'NULL', '+1', '012', '0x1F', '1e3', '.5', '.', '1_000', '1:30', '2026-11-07', '.inf'].map((v) => [`the plain value ${v}`, `a: ${v}\n`, `f.yaml:1: quote the value "${v}" (YAML parsers read it as a number, boolean, null or date`]),
+  // Values that only one entry of NOT_TEXT reads: a date with a time, a number the yaml package
+  // reads in YAML 1.1 mode, and YAML 1.1's merge and value keys.
+  ...['2026-11-07T10:00:00Z', '2026-11-07 10:00', 'e1', 'E-2', '<<', '='].map((v) => [`the plain value ${v}`, `a: ${v}\n`, `f.yaml:1: quote the value "${v}" (YAML parsers read it as a number, boolean, null or date`]),
+  ...['\u{FFFE}', '\u{FFFF}'].map((c) => [`the noncharacter U+${c.codePointAt(0).toString(16).toUpperCase()}`, `a: x${c}y\n`, `f.yaml:1: control character U+${c.codePointAt(0).toString(16).toUpperCase()}`]),
 ];
 for (const [name, text, message] of REFUSES) {
   test(`parseYaml refuses ${name}`, () => assert.throws(() => parseYaml(text, 'f.yaml'), (e) => e.message.startsWith(message) || assert.fail(`got: ${e.message}`)));
@@ -344,6 +348,15 @@ test('checkEvalCases checks the form of each grader option, not only that it is 
     `evals/demo/graders/13-focus-extra-key.md: ${focus}`,
     `evals/demo/graders/14-focus-source.md: ${focus}`,
   ]);
+});
+
+test('checkEvalCases wants count: followed by a number in a regex grader\'s match', () => {
+  const { errors } = check({
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-count.md': '---\ntype: regex\npattern: x\nmatch: count:12\n---\n',
+    'evals/demo/graders/02-count-word.md': '---\ntype: regex\npattern: x\nmatch: count:x\n---\n',
+  });
+  assert.deepEqual(errors, ['evals/demo/graders/02-count-word.md: match must be contains, not_contains or count:N']);
 });
 
 test('checkEvalCases refuses a grader type that is not a string, as claude plugin eval does', () => {
@@ -900,6 +913,36 @@ test('checkConversations names recording lines as the file numbers them, and che
   ]);
 });
 
+// The end of a recording, each part on its own: an output needs its What next? menu in the same
+// message, and the last assistant row has to say that it ended its turn.
+test('checkConversations wants a recorded output with its menu, in a last row that ended its turn', () => {
+  const output = '### Full prompt\n```text\nWrite the notes.\n```\n\n### What next?\n1. Run it now \u{2605}';
+  const noStop = assistantRow(output);
+  delete noStop.message.stop_reason;
+  const { errors } = histories({
+    ...recordedCase('no-menu', [userRow('write the notes'), assistantRow('### Full prompt\n```text\nWrite the notes.\n```')], '1', { '01-x.md': REGEX }),
+    ...recordedCase('no-stop', [userRow('write the notes'), noStop], '1', { '01-x.md': REGEX }),
+    ...recordedCase('whole', [userRow('write the notes'), assistantRow(output)], '1', { '01-x.md': REGEX }),
+  });
+  assert.deepEqual(errors, [
+    `evals/no-menu/history.jsonl: the last recorded assistant text is neither a question round (with "${CONTRACT.required.replyLine[0]}") nor an output with its Full prompt and What next? headings in one message; record it again (repo rule)`,
+    'evals/no-stop/history.jsonl: line 2, the last assistant row, has stop_reason (none), not end_turn, so the recorded turn didn\'t end; record it again (repo rule)',
+  ]);
+});
+
+// The grader's flags count: a case-insensitive pattern that matches the Full prompt only in
+// another letter case is fine, and so is one that the Short version matches only without them.
+test('checkConversations compares a saved-file regex with the recorded output under its own flags', () => {
+  const output = ['### Full prompt', '```text', '# Goal', 'Write the notes.', '```', '', '### Short version', '```text', 'Notes, goal first.', '```',
+    '', '### What next?', '1. Run it now \u{2605}', '3. Save to file: `out/notes.md`'].join('\n');
+  const { errors } = histories(recordedCase('flags', [userRow('write the notes'), assistantRow(output)], '3', {
+    '01-insensitive.md': savedFile('WRITE THE NOTES', 'flags: i\n'),
+    '02-sensitive.md': savedFile('Goal'),
+    '03-insensitive-short.md': savedFile('GOAL', 'flags: i\n'),
+  }));
+  assert.deepEqual(errors, ['evals/flags/graders/03-insensitive-short.md: pattern also matches the recorded Short version, so it can\'t tell the two apart (repo rule)']);
+});
+
 test('checkConversations checks regexes on the menu\'s save path against the recorded Full prompt, closed by a fence as long as its opener', () => {
   const output = [
     '### Full prompt', '````markdown', '# Goal', 'Write the notes.', '```text', 'an example block', '```', '# Output', 'Plain text.', '````',
@@ -1067,6 +1110,20 @@ test('checkConversations reports a request marker that it cannot read, instead o
   assert.deepEqual(errors, [mark('01-next-line.md'), mark('02-two-lines.md'), tag('03-unclosed.md'), tag('04-empty.md')]);
 });
 
+// Word for word means in the request's own letter case and spacing too, unlike the looser
+// comparison of the quotes from a recording.
+test('checkConversations compares a quoted request with the case\'s in letter case and spacing', () => {
+  const { errors } = histories({
+    'evals/quick/prompt.md': `---\nmodel: ${MODEL}\n---\n\nwrite a launch email for my productivity app\n`,
+    'evals/quick/graders/01-case.md': judge('The user\'s whole request was "Write a launch email for my productivity app".'),
+    'evals/quick/graders/02-spacing.md': judge('The user\'s whole request was "write a launch  email for my productivity app".'),
+  });
+  assert.deepEqual(errors, [
+    'evals/quick/graders/01-case.md: the quoted request "Write a launch email for my productivity app" isn\'t in prompt.md word for word (repo rule)',
+    'evals/quick/graders/02-spacing.md: the quoted request "write a launch  email for my productivity app" isn\'t in prompt.md word for word (repo rule)',
+  ]);
+});
+
 test('checkConversations reads the request markers in any letter case, and wants a quoted request to start a word', () => {
   const request = 'escribe un post de LinkedIn sobre mi nuevo trabajo';
   const { errors } = histories({
@@ -1138,6 +1195,8 @@ test('checkConversations wants a rubric that judges the answers of the round the
       '10-options.md': judge('PASS if the prompt follows the options the user kept.'),
       // A rubric about the round's questions, not its answers, needs no quote either.
       '11-no-more-questions.md': judge('The reply asks no further questions.'),
+      // The \u{2605} alone marks an answer check, so a rubric about it quotes an answer too.
+      '12-star-unquoted.md': judge('PASS if the prompt follows each \u{2605}.'),
     }),
     // A recording that ends in an output: the answers were used already.
     ...recordedCase('output', [...recording, userRow('ok'), assistantRow('### Full prompt\n```text\nWrite the post.\n```\n\n### What next?\n1. Run it now ★')], 'Run it now', {
@@ -1147,6 +1206,7 @@ test('checkConversations wants a rubric that judges the answers of the round the
   assert.deepEqual(errors, [
     quotesNone('round/graders/03-paraphrased.md'), quotesNone('round/graders/04-unquoted.md'), quotesNone('round/graders/05-partial.md'),
     quotesNone('round/graders/08-recommended-option.md'), quotesNone('round/graders/09-accepted.md'), quotesNone('round/graders/10-options.md'),
+    quotesNone('round/graders/12-star-unquoted.md'),
   ]);
 });
 
