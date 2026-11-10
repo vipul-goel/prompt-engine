@@ -25,14 +25,33 @@ if (!isSemver(next)) {
 const pending = [];
 const fail = (msg) => { console.error(msg); process.exit(1); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// A file under the root, as normalized text, and a JSON one also parsed. One that can't be read or
+// doesn't parse ends the run, before anything is written, with one line that names it by its path
+// in the checkout, as in release.mjs: the throw printed a stack trace with the checkout's absolute
+// path. Control characters in the message, such as the line breaks of the text that JSON.parse's
+// message quotes, are written as escapes.
+function readText(rel, parse = false) {
+  const file = join(root, rel);
+  try {
+    const text = normalize(readFileSync(file, 'utf8'));
+    return parse ? { text, value: JSON.parse(text) } : text;
+  } catch (e) {
+    return fail(`${rel}: ${e.code === 'ENOENT' ? 'missing' : e.message.replaceAll(file, rel).replace(/[\x00-\x1f]/g, (c) => JSON.stringify(c).slice(1, -1))}`);
+  }
+}
+// Each JSON file here holds one object, whose keys the run sets.
+function readJsonFile(rel) {
+  const read = readText(rel, true);
+  if (read.value === null || typeof read.value !== 'object' || Array.isArray(read.value)) fail(`${rel}: not a JSON object`);
+  return read;
+}
 
 // Replace every "version": "…" value in the file, then check that the result is
 // exactly the intended change, so an unexpected nested "version" key aborts.
 function bumpJson(rel, intend) {
   const file = join(root, rel);
   if (!existsSync(file)) return;
-  const text = normalize(readFileSync(file, 'utf8'));
-  const want = JSON.parse(text);
+  const { text, value: want } = readJsonFile(rel);
   intend(want);
   const updated = text.replace(/("version"\s*:\s*")[^"]*(")/g, `$1${next}$2`);
   if (!same(JSON.parse(updated), want)) fail(`${rel}: has "version" keys this script doesn't expect; update it by hand`);
@@ -51,8 +70,7 @@ bumpJson('mcp/server.json', (d) => {
 const lockRel = 'mcp/package-lock.json';
 const lockFile = join(root, lockRel);
 if (existsSync(lockFile)) {
-  const text = normalize(readFileSync(lockFile, 'utf8'));
-  const lock = JSON.parse(text);
+  const { text, value: lock } = readJsonFile(lockRel);
   if (`${JSON.stringify(lock, null, 2)}\n` !== text) fail(`${lockRel}: unexpected formatting; run \`npm version ${next} --no-git-tag-version\` in mcp/ instead`);
   lock.version = next;
   if (lock.packages?.['']) lock.packages[''].version = next;
@@ -63,7 +81,7 @@ if (existsSync(lockFile)) {
 // and validate.mjs end it (splitFrontmatter).
 const skillRel = 'skills/prompt-engine/SKILL.md';
 const skillFile = join(root, skillRel);
-const skill = normalize(readFileSync(skillFile, 'utf8'));
+const skill = readText(skillRel);
 let split;
 try { split = splitFrontmatter(skill); } catch (e) { fail(`${skillRel}: ${e.message}`); }
 // The frontmatter with its "---" lines: the text before the body.
@@ -78,7 +96,13 @@ for (const [file, text, rel] of pending) {
   writeFileSync(file, text);
   console.log(`${rel} → ${next}`);
 }
-execFileSync(process.execPath, [join(root, 'scripts', 'build.mjs')], { stdio: 'inherit' });
+// The build prints its own error; a throw here printed a stack trace after it, with node's and the
+// checkout's absolute paths.
+try {
+  execFileSync(process.execPath, [join(root, 'scripts', 'build.mjs')], { stdio: 'inherit' });
+} catch (e) {
+  fail(`version.mjs stopped: node scripts/build.mjs ${typeof e.status === 'number' ? `exited with code ${e.status}` : `failed (${e.signal ?? e.code})`}; the version is set in the files above, so fix what the build names and run node scripts/build.mjs`);
+}
 
 const changelog = join(root, 'CHANGELOG.md');
 // Remind until the version has a dated heading, so "## [0.1.0] - not yet released" still gets it.

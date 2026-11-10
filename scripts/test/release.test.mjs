@@ -202,11 +202,14 @@ test('release.mjs stops with one line that names plugin.json when it doesn\'t pa
       assert.ok(!out.includes(dir), `${what}, ${args}: no absolute path of the checkout`);
     }, damage);
   }
-  // JSON that holds no object has no version, so no tag matches it.
-  withArgs([['--zip', '--tag', `v${VERSION}`]], (code, out, args) => {
-    assert.equal(code, 1, `null, ${args}: ${out}`);
-    assert.match(out, new RegExp(`^tag v${VERSION.replaceAll('.', '\\.')} does not match plugin version `), `null, ${args}: ${out}`);
-  }, (dir) => writeFileSync(file(dir), 'null\n'));
+  // JSON that holds no object, or no version, has no version, so no tag matches it. The message said
+  // "plugin version vundefined" (or vnull).
+  for (const text of ['null\n', '{}\n', '{ "version": null }\n']) {
+    withArgs([['--zip', '--tag', `v${VERSION}`]], (code, out, args) => {
+      assert.equal(code, 1, `${text}, ${args}: ${out}`);
+      assert.equal(out, `tag v${VERSION} does not match plugin version: .claude-plugin/plugin.json has no version; set it (and the versions it is synced with) first\n`, `${text}, ${args}`);
+    }, (dir) => writeFileSync(file(dir), text));
+  }
 });
 
 test('release.mjs --zip with the matching tag, in either form, builds the zip', { skip: NO_ZIP }, () => {

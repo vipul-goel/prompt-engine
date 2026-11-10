@@ -148,6 +148,52 @@ test('changes nothing when mcp/package-lock.json has another format', () => {
   }
 });
 
+// A file that didn't parse stopped the run with JSON.parse's stack trace, which holds the checkout's
+// absolute path; so did a build that failed after the version was set. Each now ends with one line,
+// which names the file by its path in the checkout and holds no line break of the text JSON.parse
+// quotes. A file that doesn't parse stops the run before it writes anything.
+test('stops with one line that names a JSON file that does not parse, and changes nothing', () => {
+  const dir = copyRepo();
+  try {
+    const files = ['.claude-plugin/plugin.json', 'skills/prompt-engine/SKILL.md', 'mcp/package.json', 'mcp/manifest.json', 'mcp/server.json', 'mcp/package-lock.json'];
+    for (const [file, damage] of [
+      ['.claude-plugin/plugin.json', (t) => t.replace(/",\n/, '",,\n')],
+      ['mcp/server.json', (t) => t.replace(/\s*\}\s*$/, ',\n}\n')],
+      ['mcp/package-lock.json', (t) => `<<<<<<< HEAD\n${t}`],
+      // JSON that holds no object, whose version the run would set.
+      ['.claude-plugin/plugin.json', () => 'null\n'],
+      ['mcp/package-lock.json', () => '[]\n'],
+    ]) {
+      const original = read(dir, file);
+      writeFileSync(join(dir, file), damage(original));
+      const before = files.map((f) => read(dir, f));
+      const r = run(dir, 'version.mjs', '9.8.7');
+      assert.equal(r.code, 1, `${file}: ${r.out}`);
+      assert.match(r.out, new RegExp(`^${file.replaceAll('.', '\\.')}: [^\\n]*JSON[^\\n]*\\n$`), `${file}: ${r.out}`);
+      assert.ok(!r.out.includes(dir), `${file}: no absolute path of the checkout`);
+      assert.deepEqual(files.map((f) => read(dir, f)), before, `${file}: no file changed`);
+      writeFileSync(join(dir, file), original);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('stops with one line, after the build\'s own, when the build fails once the version is set', () => {
+  const dir = copyRepo();
+  try {
+    const data = JSON.parse(read(dir, 'data/media-targets.json'));
+    data.targets[0].status = 'verifed';
+    writeFileSync(join(dir, 'data/media-targets.json'), `${JSON.stringify(data, null, 2)}\n`);
+    const r = run(dir, 'version.mjs', '9.8.7');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /\nbuild failed: media-targets: unknown status "verifed" for [^\n]+\nversion\.mjs stopped: node scripts\/build\.mjs exited with code 1; the version is set in the files above, so fix what the build names and run node scripts\/build\.mjs\n$/);
+    assert.ok(!r.out.includes(dir), 'no absolute path of the checkout');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('sets the version in a CRLF checkout, changing only the version lines', () => {
   const dir = copyRepo();
   try {

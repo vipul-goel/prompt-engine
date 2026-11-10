@@ -53,8 +53,9 @@ const dist = join(root, 'dist');
 // A plugin.json that doesn't parse or is missing ends the run with one line that names it by its
 // path in the checkout, as a command that fails does: the throw printed a stack trace with the
 // checkout's absolute path. Control characters in the message, such as the line breaks of the
-// text that JSON.parse's message quotes, are written as escapes (\n). JSON that holds no object
-// has no version: no tag matches it, and without a tag validate.mjs names it.
+// text that JSON.parse's message quotes, are written as escapes (\n). JSON that holds no object,
+// or no version, has none: no tag matches it, the tag check says so rather than naming a version
+// "vundefined", and without a tag validate.mjs names it.
 const pluginJson = join(root, '.claude-plugin', 'plugin.json');
 let version;
 try {
@@ -64,8 +65,9 @@ try {
   console.error(`release.mjs stopped: .claude-plugin/plugin.json: ${why}`);
   process.exit(1);
 }
-if (tag !== undefined && tag !== `v${version}`) {
-  console.error(`tag ${tag} does not match plugin version v${version}; bump .claude-plugin/plugin.json (and the versions it is synced with) first`);
+if (tag !== undefined && (version == null || tag !== `v${version}`)) {
+  console.error(version == null ? `tag ${tag} does not match plugin version: .claude-plugin/plugin.json has no version; set it (and the versions it is synced with) first`
+    : `tag ${tag} does not match plugin version v${version}; bump .claude-plugin/plugin.json (and the versions it is synced with) first`);
   process.exit(1);
 }
 
