@@ -4,7 +4,7 @@ These files let you use Prompt Engine in any chat app by pasting `prompt-engine.
 
 | File | What it is | Size |
 |---|---|---|
-| [`prompt-engine.md`](prompt-engine.md) | The instructions. Works on its own. | just under 7,500 characters |
+| [`prompt-engine.md`](prompt-engine.md) | The instructions. Works on its own. | at most 7,500 characters |
 | [`prompt-engine-knowledge.md`](prompt-engine-knowledge.md) | Optional detailed checklists for coding, writing, research, image and video prompts | about 70,000 characters |
 
 ## Quickest: paste into any chat
@@ -45,7 +45,7 @@ Use the app's custom instructions or space or agent instructions field, and atta
 
 ## Good to know
 
-- **Instruction limits.** Limits differ by app and change over time. `prompt-engine.md` is kept under 7,500 characters so it fits common limits of 8,000; the 8,000-character limit is confirmed for Microsoft 365 Copilot agents. Other apps' limits haven't been confirmed. If an app rejects the instructions as too long, paste them as the first chat message instead.
+- **Instruction limits.** Limits differ by app and change over time. `prompt-engine.md` is kept within 7,500 characters so it fits common limits of 8,000; the 8,000-character limit is confirmed for Microsoft 365 Copilot agents. Other apps' limits haven't been confirmed. If an app rejects the instructions as too long, paste them as the first chat message instead.
 - **What's different outside Claude.**
   - Questions arrive as a numbered list rather than clickable dialogs.
   - "Run it now" carries out the prompt in the same chat.
