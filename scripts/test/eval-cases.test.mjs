@@ -1840,4 +1840,7 @@ test('the media cases fail a reply without its Short version', () => {
   const ja = graderOf('japanese-midjourney-quick', '11-short-version-fenced');
   assert.equal(regexPasses(ja, mediaReply({ ja: true, shortBlock: '夜の雪山にある小さな木造の山小屋 --ar 3:2' })), false);
   assert.ok(regexPasses(ja, mediaReply({ ja: true }).replace('```\n\n### 短縮版', '```\n全文版は細部まで指定したいときに。\n\n### 短縮版')));
+  // The fence must follow that second heading: a later block, such as one under the menu, doesn't
+  // stand in for a missing Short version (step 1e).
+  assert.equal(regexPasses(ja, `${mediaReply({ ja: true, short: false })}\n\n\`\`\`text\n夜の雪山にある小さな木造の山小屋 --ar 3:2\n\`\`\``), false);
 });
