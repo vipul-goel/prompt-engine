@@ -45,6 +45,8 @@ Add `--scope user` to use it in every project. If you also installed the Prompt 
 
 The server is supported on Node.js 22.19 or later. On Windows, some clients need `"command": "cmd", "args": ["/c", "npx", "-y", "prompt-engine-mcp"]`. To run it from a clone instead, build it (see [Development and testing](#development-and-testing)) and start it with `node /path/to/prompt-engine/mcp/dist/cli.js`; in JSON configs, that's `"command": "node", "args": ["/path/to/prompt-engine/mcp/dist/cli.js"]`.
 
+Version 0.0.1, a placeholder published by hand on 2026-11-09 to claim the package name, is what `npx -y prompt-engine-mcp` runs until a later version is published: a full build of the server from that day, without npm's provenance statement. Over HTTP it lacks some of the limits listed under [Self-hosting over HTTP](#self-hosting-over-http).
+
 ## Use it
 
 Ask for it in plain words: "improve this prompt: write a blog post about remote work", "quick: a Midjourney prompt for a cozy cabin at night", or "use prompt-engine on this agent prompt: …". Start with `quick:` to skip the questions, or with `deep:` for extra rounds.
@@ -139,6 +141,8 @@ To serve on a network, bind the interface and name the hostname clients use:
 ```bash
 npx -y prompt-engine-mcp --http --host 0.0.0.0 --port 8080 --allowed-hosts mcp.example.com
 ```
+
+Version 0.0.1, which `npx` runs until a later version is published (see [Install](#install)), has the body cap, the request and connection caps, the header and request timeouts and the `Host` and `Origin` checks listed below, but not the 8,000,000-byte budget for bodies in flight, the closing of a connection whose answers aren't read, the staged close after an answer that closes the connection, or the log lines for the 2025-era HTTP transport's errors.
 
 Connect a client with, for example, `claude mcp add --transport http prompt-engine http://127.0.0.1:8787/mcp`. The server has no authentication of its own, so put it behind your own proxy or access control before exposing it. Each request gets a fresh, stateless server. Clients on the 2026-07-28 protocol get question forms; 2025-era clients over HTTP get the questions as text.
 
