@@ -251,6 +251,7 @@ test('after change 1: the section 5 reply again, menu included, with the change 
   assert.ok(failing(U.CHANGED, `Changed:\n\`\`\`text\nReaders: new users from a Product Hunt launch.\n\`\`\`\n\n${SCORE}`).includes('full prompt heading'));
 });
 
+const ASKS = 'asks for no values and starts no task';
 test('ok or thanks at the menu: the prompt is ready, and no fenced block or score table follows', () => {
   for (const t of [
     'The prompt is ready. Reply 1 to run it here, or 2 to refine it.',
@@ -258,11 +259,31 @@ test('ok or thanks at the menu: the prompt is ready, and no fenced block or scor
     'Ready when you are. The prompt above runs only when you pick 1.',
     // Both versions, the full and the short one.
     "You're welcome! Both prompts are ready: reply 1 to fill the placeholders, or 2 to refine.",
+    // Step 1d's universal run (0f65705): coding-standard-then-ok turn 3 and writing-quick-then-thanks turn 2.
+    'The prompt is ready. A bare "ok" doesn\'t tell me which option you want, so I haven\'t run anything.\n\nReply `1` or "run it" to have me carry out the full prompt. Reply `2` or "refine" to change it first, for example with a different login method or a wider scope.\n\nNote that your working folder is empty and has no app in it. If you run it here, I\'d have no code to read, so I\'d need you to point me to your app\'s folder first.',
+    "You're welcome! The prompt is ready whenever you are. Pick **1) Fill placeholders** to give me the app name, launch date, features, link, and the rest, or **2) Refine** if you'd like changes first.",
+    // Words about the pick, or about what an option does, ask for no values.
+    'Your prompt is ready. Reply 1 to run it now, 2 to refine it, or tell me what to change.',
+    "The prompt is ready. What's your pick: 1 or 2? Just send me 1 or 2.",
+    'Nothing runs until you pick one; the prompt is ready.',
+    'Both prompts are ready: paste these into Midjourney whenever you like, or reply 2 to refine.',
+    "The prompt is ready, and there's no need to send me anything else.",
   ]) assert.deepEqual(failing(U.MENU_ACK, t), [], t);
   // What a run looks like instead: one live reply to ok at the menu (U3, 2026-11-03), shortened.
-  assert.deepEqual(failing(U.MENU_ACK, "I can't run the full prompt yet, because it tells me to inspect your repo to find the stack.\n\nPlease send these:\n1. **Stack:** language and framework.\n2. **Tests:** your test command."), ['says the prompt is ready']);
-  assert.deepEqual(failing(U.MENU_ACK, 'Here is the launch email, ready to send.\n\nSubject: Meet Flowly\n\nHi there, ...'), ['says the prompt is ready']);
-  assert.deepEqual(failing(U.MENU_ACK, 'The prompt is ready, so here is the code:\n```python\ndef login(): ...\n```'), ['no fenced block or score table']);
+  assert.deepEqual(failing(U.MENU_ACK, "I can't run the full prompt yet, because it tells me to inspect your repo to find the stack.\n\nPlease send these:\n1. **Stack:** language and framework.\n2. **Tests:** your test command."), ['says the prompt is ready', ASKS]);
+  assert.deepEqual(failing(U.MENU_ACK, 'Here is the launch email, ready to send.\n\nSubject: Meet Flowly\n\nHi there, ...'), ['says the prompt is ready', ASKS]);
+  assert.deepEqual(failing(U.MENU_ACK, 'The prompt is ready, so here is the code:\n```python\ndef login(): ...\n```'), ['no fenced block or score table', ASKS]);
+  // ok or thanks read as a pick (step 1e): a ready that is negated or put off doesn't count, and a
+  // request for values, or the task's result in prose, fails.
+  for (const [reply, want] of [
+    ["Great! To fill in the prompt, send me:\n1. Your app's name\n2. The one feature to lead with\n3. The trial length\n\nOnce I have them, your prompt will be ready to paste.", ['says the prompt is ready', ASKS]],
+    ["I can't run the full prompt yet: it still has open placeholders, so it isn't ready to run. What's your app's name, and what does it do?", ['says the prompt is ready', ASKS]],
+    ['Prompt ready, so here is the launch email it asks for.\n\nSubject: Meet [[app name]]\n\nHi there, we built [[app name]] to give you back an hour a day.', [ASKS]],
+    ['The prompt is not ready yet, so I tightened the subject line rule and cut the preview text to 60 characters.', ['says the prompt is ready']],
+    ['The prompt is ready. Send me the app name and the launch date, and I will fill them in.', [ASKS]],
+    ['The prompt would be ready to run once you fill the placeholders.', ['says the prompt is ready']],
+    ["Your prompt is ready. Here's the post:\n\nRemote work changed how managers lead.", [ASKS]],
+  ]) assert.deepEqual(failing(U.MENU_ACK, reply), want, reply);
   assert.deepEqual(failing(U.MENU_ACK, `Your prompt is ready.\n\n### Score\n${SCORE}`), ['no fenced block or score table']);
   assert.deepEqual(failing(U.MENU_ACK, output()), ['says the prompt is ready', 'no fenced block or score table']);
 });

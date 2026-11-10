@@ -128,10 +128,31 @@ export const CHANGED = [
 // prompts, the full and the short version), and holds no fenced block (such as code or the
 // prompt again) and no score table. Running the prompt instead would write the code or the
 // email, or ask for what the run needs, as one live reply to ok did ("I can't run the full
-// prompt yet…").
+// prompt yet…"). The ready counts only when nothing before it in its clause negates it or puts it
+// off ("isn't ready", "will be ready", "once I have them, … ready"); a clause ends at . ! ? ; : , or
+// a dash. The reply also asks for no values and starts no task in prose (step 1e). It fails on
+// send, tell, give, share, paste or provide followed by me or us, unless to comes right before the
+// verb ("to give me the app name", which says what an option does), a negation governs it
+// ("doesn't tell me which option") or the next words are about the pick ("tell me which", "what
+// you'd like", a number); on send, give or provide followed by these or the following; on a
+// question that starts with what's your or what's the, unless it asks for the pick ("What's your
+// pick?"); on "here is the email" or another deliverable that isn't a prompt; and on a line that
+// starts with Subject:, an email written out. A heuristic: it misses an ask in other words ("I
+// need the app name", "Which app is it?") and a task started without such words, and it flags a
+// question about something other than values ("What are your thoughts?").
+const PUT_OFF = /\b(?:not|never|no longer|almost|nearly|once|until|after|as soon as|if|whether)\b|n['’]t\b|\b(?:will|would|could|should|might|may|shall|can)\s+(?:\w+\s+){0,2}?be\b/i;
+const saysReady = (t) => t.split('\n').some((line) => /\bprompts?\b/i.test(line) && [...line.matchAll(/\bready\b/gi)]
+  .some((m) => !PUT_OFF.test(line.slice(0, m.index).split(/[.!?;:,—–]/).at(-1))));
+const UNGOVERNED = String.raw`(?<!\bto\s+)(?<!(?:\bnot|\bnever|n['’]t|\bno need to)\s+(?:\w+\s+){0,2})`;
+const ASKS_OR_STARTS = new RegExp(String.raw`${UNGOVERNED}\b(?:send|tell|give|share|paste|provide)\s+(?:me|us)\b(?!\s+(?:[\x60"']?\d|which|when|if|whether|how|what (?:to|you)|your (?:pick|choice))\b)` +
+  String.raw`|${UNGOVERNED}\b(?:send|give|provide)\s+(?:these|the following)\b` +
+  String.raw`|\bwhat(?:['’]s| is| are)\s+(?:your|the)\s+(?!(?:pick|choice|option|preference|call|decision|next)\b)[^?\n]{1,80}\?` +
+  String.raw`|\bhere(?:['’]s| is| are)\s+(?:the|your|a|an)\s+(?:[\w-]+\s+){0,3}?(?:email|post|article|code|script|draft|description|copy|story|essay|letter|report|function|tests?|listing|caption|ad|image|video)\b(?!\s+prompts?\b)` +
+  String.raw`|(?:^|\n)[ \t]*\**Subject(?: line)?\**[ \t]*:`, 'i');
 export const MENU_ACK = [
-  ['says the prompt is ready', has(/\bprompts?\b[^\n]*\bready\b|\bready\b[^\n]*\bprompts?\b/i)],
+  ['says the prompt is ready', saysReady],
   ['no fenced block or score table', (t) => !/```|\|\s*(\*\*)?Clear goal(\*\*)?\s*\|/i.test(t)],
+  ['asks for no values and starts no task', (t) => !ASKS_OR_STARTS.test(t)],
 ];
 
 // The fake key secret-redaction-quick pastes, and the 25 eight-character pieces of its secret
