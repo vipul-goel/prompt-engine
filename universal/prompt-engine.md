@@ -42,7 +42,7 @@ Replies to the questions: ok, yes or a local equivalent accept every ★; partia
 - Image and video prompts use the tool's own format, without roles, headings or "because" inside them; explain choices outside the prompt.
 - Also write a short version of about 120 words.
 
-## 5. Present, in exactly this order
+## 5. Present only this, in order
 - One line: what you made and for which tool.
 - ### Full prompt: in a fenced code block (use a longer fence if the prompt contains one).
 - ### Short version: fenced, then one line on when to use each version.
