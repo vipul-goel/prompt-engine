@@ -1,15 +1,17 @@
 ---
 # After What next?: no Run it now option, and a starred Done option (output-format.md, "What
 # next?": an image or video prompt when you can't generate media), or a starred Fill
-# placeholders option while Fill before running lists a placeholder that isn't a secret's: the
-# table's first row that fits is the one for open placeholders that are neither secrets nor
-# removed private details (D1, D5, D46), so Done ★ fails then. This request holds no private
-# detail, so the condition doesn't model D46; private-detail-redaction-quick's 08 does. One
-# check, so the no-skill arm gets no free point. The option prefix (^|\s)(\d[.)]|[-*•])[ \t]*\**
-# and the open-placeholder condition are shared with writing-quick-launch-email's 08, which says
-# what counts as a secret's placeholder, and with scripts/eval/universal-test.mjs.
+# placeholders option while placeholders other than secrets' are open: the table's first row that
+# fits is the one for open placeholders that are neither secrets nor removed private details
+# (D1, D5, D46), so Done ★ fails then. They are open when Fill before running lists one, or when
+# the reply has no "#" Fill before running heading and its Full prompt holds one (step 1e). This
+# request holds no private detail, so the condition doesn't model D46;
+# private-detail-redaction-quick's 08 does. One check, so the no-skill arm gets no free point. The
+# option prefix (^|\s)(\d[.)]|[-*•])[ \t]*\** and the open-placeholder condition are shared with
+# writing-quick-launch-email's 08, which says what counts as a secret's placeholder, and with
+# scripts/eval/universal-test.mjs.
 type: regex
-pattern: '^(?![\s\S]*What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Run it now)(?:(?=[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\])[\s\S]*?What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Fill (in )?(the )?placeholders\**[ \t]*★|(?![\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\])[\s\S]*?What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Done\b[^\n]*★)'
+pattern: '^(?![\s\S]*What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Run it now)(?:(?=[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\]|(?![\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running)(?:(?!(?<!#)#+[ \t]*Full prompt)[\s\S])*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?![ \t]*#+[ \t]*(?:Short version|What I added|Assumptions|Score|What next))[^\n]*)*?\n(?![ \t]*#+[ \t]*(?:Short version|What I added|Assumptions|Score|What next))[^\n]*?(?<!(?:such as|e\.g\.,?|for example,?|like|write|leave(?: an?)?|insert|put)[ \t]+\x60?)(?<!\]\]\x60?(?:,|[ \t]+or)[ \t]+\x60?)(?<![\w\])])\[\[(?!placeholders?\]\])(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\])[\s\S]*?What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Fill (in )?(the )?placeholders\**[ \t]*★|(?![\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\]|(?![\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running)(?:(?!(?<!#)#+[ \t]*Full prompt)[\s\S])*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?![ \t]*#+[ \t]*(?:Short version|What I added|Assumptions|Score|What next))[^\n]*)*?\n(?![ \t]*#+[ \t]*(?:Short version|What I added|Assumptions|Score|What next))[^\n]*?(?<!(?:such as|e\.g\.,?|for example,?|like|write|leave(?: an?)?|insert|put)[ \t]+\x60?)(?<!\]\]\x60?(?:,|[ \t]+or)[ \t]+\x60?)(?<![\w\])])\[\[(?!placeholders?\]\])(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\])[\s\S]*?What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**Done\b[^\n]*★)'
 flags: i
 weight: 1
 ---

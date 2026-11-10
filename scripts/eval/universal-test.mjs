@@ -57,16 +57,31 @@ const OPTION = String.raw`(^|\s)(\d[.)]|[-*•])[ \t]*\**`;
 // After "What next?": a starred option output-format.md allows, numbered or bulleted, and
 // Refine anywhere after "What next?". It doesn't check that the starred option comes first.
 export const MENU = new RegExp(String.raw`What next\?(?=[\s\S]*Refine)[\s\S]*?${OPTION}(Run it now|Fill (in )?(the )?placeholders|Try it here|Done)\**[ \t]*★`, 'i');
-// A Fill before running section, up to the next line that starts with #, that lists a placeholder
-// that isn't a secret's. A placeholder is a secret's when key, token, secret or password ends it,
-// also after _, or when it says api key anywhere: the rule of secret-redaction-quick's 09, plus
-// password, which SKILL.md counts as a secret. So [[key feature]] is not one.
+// Whether placeholders other than secrets' are open, read from the start of the reply, as
+// (?=FILL_OPEN) or (?!FILL_OPEN): a Fill before running section, up to the next line that starts
+// with #, lists one; or the reply has no "#" Fill before running heading and its Full prompt holds
+// one, read from the first Full prompt heading to the next heading of the output (Short version,
+// What I added, Assumptions, Score or What next?). The method asks for that section whenever
+// placeholders remain, so a reply that leaves it out, or writes it as a bold label, doesn't hide
+// them (step 1e). A placeholder is a secret's when key, token, secret or password ends it, also
+// after _, or when it says api key anywhere: the rule of secret-redaction-quick's 09, plus
+// password, which SKILL.md counts as a secret. So [[key feature]] is not one. In the Full prompt,
+// these don't count either: the generic [[placeholder]] or [[placeholders]]; one right after such
+// as, e.g., for example or like, an example; one right after write, leave, insert or put, a marker
+// the prompt tells the model to write; one right after another placeholder and a comma or "or";
+// and one right after a letter, digit, ] or ), as in code such as df[["a", "b"]]. Residuals: a
+// real placeholder right after one of those words isn't counted, and a marker after other words
+// ("mark it [[TBD]]") is. The (?<!#) keeps a long run of # linear.
 // writing-quick-launch-email's 08 and the media 05 graders hold the same text. The skill also
 // leaves out the placeholder of another person's private detail that it removed (D46). The core
 // has no room for that rule, so this check doesn't model it; private-detail-redaction-quick's 08
 // does, for the skill.
-export const FILL_OPEN = String.raw`(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\]`;
-const fillOpen = new RegExp(FILL_OPEN, 'i');
+const SECRET_PLACEHOLDER = String.raw`(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)`;
+const OUTPUT_HEADING = String.raw`[ \t]*#+[ \t]*(?:Short version|What I added|Assumptions|Score|What next)`;
+export const FILL_OPEN = String.raw`[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]` +
+  String.raw`|(?![\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running)(?:(?!(?<!#)#+[ \t]*Full prompt)[\s\S])*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?!${OUTPUT_HEADING})[^\n]*)*?\n(?!${OUTPUT_HEADING})[^\n]*?` +
+  String.raw`(?<!(?:such as|e\.g\.,?|for example,?|like|write|leave(?: an?)?|insert|put)[ \t]+\x60?)(?<!\]\]\x60?(?:,|[ \t]+or)[ \t]+\x60?)(?<![\w\])])\[\[(?!placeholders?\]\])(?![^\[\]\n]*(?:${SECRET_PLACEHOLDER}))[^\[\]\n]+\]\]`;
+const fillOpen = new RegExp(`^(?:${FILL_OPEN})`, 'i');
 const STARRED_NOT_FILL = new RegExp(String.raw`What next\?[\s\S]*?${OPTION}(Run it now|Try it here|Done)\**[ \t]*★`, 'i');
 // The score table, from its first row to its last; the row labels may be bold, as the eval
 // graders' score-table checks accept (finding 60).
@@ -91,8 +106,8 @@ export const STRUCTURE = [
 // starred Done option, or Fill placeholders ★ while placeholders other than secrets are open
 // (findings 5 and 22; D1). The pattern of image-midjourney-quick's 05 grader.
 export const MEDIA_MENU = new RegExp(String.raw`^(?![\s\S]*What next\?[\s\S]*?${OPTION}Run it now)` +
-  String.raw`(?:(?=[\s\S]*?${FILL_OPEN})[\s\S]*?What next\?[\s\S]*?${OPTION}Fill (in )?(the )?placeholders\**[ \t]*★` +
-  String.raw`|(?![\s\S]*?${FILL_OPEN})[\s\S]*?What next\?[\s\S]*?${OPTION}Done\b[^\n]*★)`, 'i');
+  String.raw`(?:(?=${FILL_OPEN})[\s\S]*?What next\?[\s\S]*?${OPTION}Fill (in )?(the )?placeholders\**[ \t]*★` +
+  String.raw`|(?!${FILL_OPEN})[\s\S]*?What next\?[\s\S]*?${OPTION}Done\b[^\n]*★)`, 'i');
 export const DONE_NOT_RUN = ['Done ★ (Fill placeholders ★ while placeholders are open), not Run it now', has(MEDIA_MENU)];
 export const QUESTIONS = [
   // A first numbered question; the number may be bold or a heading, as coding-vague 01 accepts

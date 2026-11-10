@@ -136,9 +136,25 @@ test('Fill placeholders ★ while placeholders are open: no starred Run it now, 
   ]) assert.ok(fill(withFill(items, { menu })), `${items} ${menu}`);
   assert.ok(fill(output({ menu: '1) Run it now ★\n2) Refine' })));
   assert.ok(fill(output({ menu: "1) Done ★ (paste it into Midjourney)\n2) Refine" })));
-  // A placeholder elsewhere, such as in the prompt or under the next heading, isn't listed there.
-  assert.ok(fill(output({ prompt: 'Write it for [[app name]].' })));
+  // A placeholder elsewhere, such as under the next heading, isn't listed there.
   assert.ok(fill(withFill(['[[api key]]'], { tag: '[best practice] for [[app name]]' })));
+  assert.ok(fill(output({ tag: '[best practice] for [[app name]]' })));
+  // With no Fill before running heading, the Full prompt counts (step 1e): an open placeholder
+  // there makes Fill placeholders the ★, whether the section was dropped or written as a bold label.
+  const inPrompt = 'Write it for [[app name]].';
+  for (const t of [
+    output({ prompt: inPrompt }),
+    output({ prompt: inPrompt, menu: '1) Try it here ★ (results there may differ)\n2) Refine' }),
+    withFill(['[[app name]]'], { prompt: inPrompt }).replace('### Fill before running', '**Fill before running**'),
+  ]) assert.ok(!fill(t), t);
+  assert.ok(fill(output({ prompt: inPrompt, menu: '1) Fill placeholders ★\n2) Refine' })));
+  // There, the generic [[placeholder]], an example, a marker the prompt tells the model to write
+  // and a secret's placeholder don't count.
+  for (const prompt of [
+    'Write the post. Where a number would help, leave a [[placeholder]] describing it, such as [[productivity statistic]] or [[survey result]].',
+    'Write the post. Where a figure is missing, write [[statistic needed]]; mark a gap with a placeholder like `[[source]]`, e.g. [[study name]].',
+    'Read the key from [[OPENAI_API_KEY]] and the mailbox password from [[db password]].',
+  ]) assert.ok(fill(output({ prompt })), prompt);
   for (const [items, menu] of [
     [['[[app name]]'], '1) Run it now ★\n2) Refine'],
     [['[[app name]]'], '1) Run it now ★ 2) Refine'],
@@ -175,25 +191,32 @@ test('Done ★, not Run it now: the Midjourney case wants a starred Done option,
   assert.ok(!done(image('1) Fill placeholders ★\n2) Refine', ['[[api key]]'])));
   assert.ok(!done(image('1) Fill placeholders ★\n2) Run it now\n3) Refine', ['[[sign text]]'])));
   assert.deepEqual(failing(checks, image("1) Done ★ (paste it into Midjourney)\n2) Refine\n3) Save to file")), ['no Save to file (tools disabled)']);
+  // With no Fill before running heading, an open placeholder in the Full prompt counts too (step 1e).
+  const signed = (menu) => output({ menu, prompt: 'A cozy cabin in the snow at night, a wooden sign reading [[sign text]] --ar 3:2' });
+  assert.deepEqual(failing(checks, signed('1) Done ★ (paste it into Midjourney)\n2) Refine')),
+    ['Fill placeholders ★ while placeholders are open', 'Done ★ (Fill placeholders ★ while placeholders are open), not Run it now']);
+  assert.deepEqual(failing(checks, signed('1) Fill placeholders ★ — reply with the sign text\n2) Refine')), []);
 });
 
 test('menu patterns: the Midjourney check is the media graders\' pattern, and writing 08 holds its open-placeholder condition', () => {
   const pattern = (file) => readFileSync(join(repo, 'evals', file), 'utf8').match(/^pattern: '([^']*)'\r?$/m)[1];
   assert.equal(U.MEDIA_MENU.source, pattern('image-midjourney-quick/graders/05-done-not-run.md'));
   assert.equal(U.MEDIA_MENU.source, pattern('video-veo-quick/graders/05-done-menu.md'));
-  assert.ok(pattern('writing-quick-launch-email/graders/08-what-next-menu.md').includes(`(?=[\\s\\S]*?${U.FILL_OPEN})`));
+  assert.ok(pattern('writing-quick-launch-email/graders/08-what-next-menu.md').includes(`(?=${U.FILL_OPEN})`));
+  assert.equal(pattern('followup-change-assumption/graders/03-what-next-menu.md'), pattern('writing-quick-launch-email/graders/08-what-next-menu.md'));
 });
 
 test('menu patterns: private-detail-redaction-quick 08 holds the same open-placeholder condition, with the number\'s placeholder left out too (D46)', () => {
   const pattern = readFileSync(join(repo, 'evals', 'private-detail-redaction-quick', 'graders', '08-what-next-menu.md'), 'utf8').match(/^pattern: '([^']*)'\r?$/m)[1];
   // FILL_OPEN leaves out a secret's placeholder; the case's condition adds the words that name a phone number.
   const secret = '(?:\\b|_)api[ _-]?key(?:\\b|_)))';
-  assert.equal(U.FILL_OPEN.split(secret).length, 2);
+  // It does so twice: in the Fill before running section, and in the Full prompt when that section is missing.
+  assert.equal(U.FILL_OPEN.split(secret).length, 3);
   const num = String.raw`phone|mobile|\bcell(?:phone)?\b|(?:conductor|\bher\b|personal|private|contact)[^\[\]\n]{0,40}?number|(?:conductor|\bher\b|personal|private)[^\[\]\n]{0,40}?contact`;
-  const open = U.FILL_OPEN.replace(secret, () => `(?:\\b|_)api[ _-]?key(?:\\b|_)|${num}))`);
+  const open = U.FILL_OPEN.replaceAll(secret, () => `(?:\\b|_)api[ _-]?key(?:\\b|_)|${num}))`);
   // With such a placeholder open, Fill placeholders ★; without one, Run it now ★ or Try it here ★.
-  assert.ok(pattern.startsWith(`^(?:(?=[\\s\\S]*?${open})`));
-  assert.ok(pattern.includes(`★|(?![\\s\\S]*?${open})`));
+  assert.ok(pattern.startsWith(`^(?:(?=${open})`));
+  assert.ok(pattern.includes(`★|(?!${open})`));
 });
 
 test('bold and heading forms: bold score-row labels, and bold or heading question numbers, as the eval graders accept', () => {
