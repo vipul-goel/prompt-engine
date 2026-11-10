@@ -1398,9 +1398,11 @@ test('the mug cases\' no-invention judges skip, by quote, the counts that the re
 // overview', 'párrafos cortos') passed the unlisted count in 2 of 4 kept runs and failed it in the
 // others (step 1e, B1.1.3). The example comes from none of the cases' requests.
 // Nothing runs until the user picks (SKILL.md) and nothing comes after the menu (output-format.md),
-// so in every quick output case whose prompt asks for text or code, one judge fails a reply that
-// also carries out the prompt, as strong-prompt-minimal-changes' 01 does (step 1e, B1.1.9). The
-// image and video cases have nothing to carry out here; their 05 graders fail Run it now. Each
+// so in every output case whose prompt asks for text or code, one judge fails a reply that also
+// carries out the prompt, as strong-prompt-minimal-changes' 01 does: in the quick cases (step 1e,
+// B1.1.9), and in the cases that resume a question round or a change and end in a whole output
+// (B2.1.4). The image and video cases have nothing to carry out here; their 05 graders fail Run it
+// now. Each
 // sentence says what in the reply doesn't count, so that the prompt itself isn't read as the task
 // carried out: a custom GPT's instructions may hold a sample exchange, as general.md's list for an
 // assistant's instructions suggests ("Examples — one or two short sample exchanges"), step 1e.
@@ -1411,8 +1413,11 @@ const CARRIES_OUT = [
   ['coding-quick-code-block', '04-no-invention', 'writing the fixed function or its test', "the prompt's own instructions don't count, and neither does the user's code quoted in them"],
   ['spanish-quick', '01-spanish-throughout', 'writing the LinkedIn post', "the prompt's own instructions don't count"],
   ['private-detail-redaction-quick', '03-told-not-asked', "answering a member's question as the GPT would", "the prompt's own instructions don't count, and neither does a sample exchange inside them"],
+  ['followup-ok-accepts-recommendations', '05-uses-recommended-answers', 'writing the blog post', "the prompt's own instructions don't count"],
+  ['followup-partial-answers', '05-applies-overrides', 'writing the blog post', "the prompt's own instructions don't count"],
+  ['followup-change-assumption', '04-change-applied', 'writing the product description', "the prompt's own instructions don't count"],
 ];
-test('the quick output cases fail a reply that also carries out the prompt, as strong-prompt 01 does', () => {
+test('the output cases fail a reply that also carries out the prompt, as strong-prompt 01 does', () => {
   assert.ok(graderOf('strong-prompt-minimal-changes', '01-already-strong').body.includes('FAIL if the reply carries out the prompt itself (for example, it writes the release notes)'));
   for (const [c, g, example, exempt] of CARRIES_OUT) {
     const body = graderOf(c, g).body;
