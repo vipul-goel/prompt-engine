@@ -32,7 +32,8 @@ const FORMAT = 'skills/prompt-engine/references/output-format.md';
 const CORE = 'universal/prompt-engine.md';
 const GROUP = 'saveOffer';
 const CONTRACT = JSON.parse(readFileSync(join(repo, 'data/contract.json'), 'utf8'));
-const read = (file) => readFileSync(join(repo, file), 'utf8');
+// A CRLF checkout reads the same, as build.mjs and validate.mjs do (finding 16).
+const read = (file) => readFileSync(join(repo, file), 'utf8').replace(/\r\n/g, '\n');
 const lineWith = (text, start) => text.split('\n').find((l) => l.startsWith(start)) ?? '';
 
 test('each format offers Save to file only with a tool that saves files on the user\'s computer', () => {
@@ -46,28 +47,32 @@ test('each format offers Save to file only with a tool that saves files on the u
   for (const file of [SKILL, FORMAT, CORE]) assert.ok((CONTRACT.artifacts[file] ?? []).includes(GROUP), `data/contract.json doesn't check ${GROUP} in ${file}`);
 });
 
-// [name, file, the text to replace, its replacement]
+// [name, file, [the text to replace, its replacement]...], each text within one line so that a
+// CRLF checkout matches too.
 const MUTATIONS = [
-  ['SKILL.md keys the offer on the product again', SKILL,
-    "only when you have a tool that saves files on the user's computer (Write in Claude Code)",
-    'only where you can write files (Claude Code and other local coding agents)'],
-  ['output-format.md keys the menu on chat apps again', FORMAT,
-    "| You have no tool that saves files on the user's computer (most chat apps) | Drop \"Save to file\" |\n\nWhen several rows apply, use the first that fits: open placeholders that are neither secrets nor removed private details, then an image or video prompt you can't generate, then a prompt for another tool. Drop \"Save to file\" from any of them when you have no tool that saves files on the user's computer.",
-    "| You can't write files (chat apps) | Drop \"Save to file\" |\n\nWhen several rows apply, use the first that fits: open placeholders that are neither secrets nor removed private details, then an image or video prompt you can't generate, then a prompt for another tool. Drop \"Save to file\" from any of them when you can't write files."],
-  ['the universal core keys the offer on the app', CORE,
-    "Add 3) Save to file only if you have a tool that saves files on the user's computer; most chat apps don't, so leave it out.",
-    'Add 3) Save to file in apps that can write files.'],
+  ['SKILL.md keys the offer on the product again', SKILL, [
+    ["only when you have a tool that saves files on the user's computer (Write in Claude Code)",
+      'only where you can write files (Claude Code and other local coding agents)']]],
+  ['output-format.md keys the menu on chat apps again', FORMAT, [
+    ["| You have no tool that saves files on the user's computer (most chat apps) |", "| You can't write files (chat apps) |"],
+    ["from any of them when you have no tool that saves files on the user's computer.", "from any of them when you can't write files."]]],
+  ['the universal core keys the offer on the app', CORE, [
+    ["Add 3) Save to file only if you have a tool that saves files on the user's computer; most chat apps don't, so leave it out.",
+      'Add 3) Save to file in apps that can write files.']]],
 ];
 
-for (const [name, file, from, to] of MUTATIONS) {
+for (const [name, file, pairs] of MUTATIONS) {
   test(`validate fails when ${name}`, () => {
     const dir = mkdtempSync(join(tmpdir(), 'pe-save-offer-'));
     try {
       cpSync(repo, dir, { recursive: true, filter: (src) => src === repo || !SKIP.has(basename(src)) });
       const path = join(dir, file);
-      const before = readFileSync(path, 'utf8');
-      assert.ok(before.includes(from), `${file} no longer holds the text this test changes; update the test with the condition's wording`);
-      writeFileSync(path, before.replace(from, to));
+      let text = readFileSync(path, 'utf8');
+      for (const [from, to] of pairs) {
+        assert.ok(text.includes(from), `${file} no longer holds the text this test changes; update the test with the condition's wording`);
+        text = text.replace(from, to);
+      }
+      writeFileSync(path, text);
       const built = run(dir, 'build.mjs');
       assert.equal(built.status, 0, `build failed:\n${built.stdout}${built.stderr}`);
       const r = run(dir, 'validate.mjs');
