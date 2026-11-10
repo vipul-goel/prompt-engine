@@ -196,6 +196,34 @@ test('folders are rewritten at path boundaries, the session ID is replaced and m
   assert.match(refusal(() => run(textEvent(`${MAC.home}x/file`))), /line 1: home folder path/);
 });
 
+// Only where a path starts, too: a folder's text inside a longer path or a URL is another path. With
+// a home of /root, as a container's root user has, https://github.com/acme/root/blob/main/x.py was
+// written as https://github.com/acme~/blob/main/x.py, without a word. The scan looks for the home
+// folder inside other paths too, so it refuses one there instead of letting a user name such as al
+// in /mnt/opt/al/backup through. No public text, so that a path the skill's files or an eval prompt
+// someday quote isn't allowed.
+test('a folder inside a longer path or a URL is never rewritten, and the scan refuses a home folder there', () => {
+  const at = (home) => ({ repo: '/srv/build/prompt-engine', cwd: '/srv/tmp/pe-history-abc', home, host: 'build-host-1', allowText: '' });
+  const outcome = (text, home) => {
+    try { return JSON.parse(sanitize(textEvent(text), at(home))).message.content[0].text; } catch (e) { return e.message; }
+  };
+  for (const [home, text, kind] of [
+    ['/root', 'See https://github.com/acme/root/blob/main/x.py.', 'this machine\'s home folder'],
+    ['/root', 'The files in /var/root/cache.', 'this machine\'s home folder'],
+    [`/${'home'}/al`, `Mount it at /mnt/${'home'}/al/backup.`, 'home folder path'],
+    // Outside /Users and /home, only the scan's own pattern for this machine's home folder sees it.
+    ['/opt/al', 'Mount it at /mnt/opt/al/backup.', 'this machine\'s home folder'],
+  ]) {
+    const out = outcome(text, home);
+    assert.ok(out.startsWith('refusing to write the history') && out.includes(`\n  line 1: ${kind}`), `home ${home}: ${JSON.stringify(text)} gave ${JSON.stringify(out)}`);
+  }
+  // The working folder's text inside another path, which holds nothing the scan looks for.
+  assert.equal(outcome('Copied to /backup/srv/tmp/pe-history-abc/x.md.', '/opt/al'), 'Copied to /backup/srv/tmp/pe-history-abc/x.md.');
+  // Where a path starts: at the start, after a space, a quote, a bracket, = or :, and after the
+  // second / of file:///.
+  assert.equal(outcome('/root/a, "/root/b" (/root/c) --dir=/root/d PATH=/bin:/root/e file:///root/f', '/root'), '~/a, "~/b" (~/c) --dir=~/d PATH=/bin:~/e file://~/f');
+});
+
 test('thinking blocks are left as recorded, and one that holds a home path is refused', () => {
   // A plugin folder outside any home folder, so the scan lets the unchanged thinking block through.
   const ctx = { repo: '/srv/build/prompt-engine', cwd: '/srv/tmp/pe-history-abc', home: '/srv/people/al', host: 'build-host-1' };

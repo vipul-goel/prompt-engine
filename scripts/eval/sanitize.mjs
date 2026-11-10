@@ -6,9 +6,9 @@
 //
 // sanitize() keeps only the user and assistant events, and only the fields in KEEP_KEYS. In
 // every string except thinking blocks, it rewrites the plugin folder to /plugin, the working
-// folder to /workspace and the home folder to ~, each with the rest of its path (a home folder
-// that is a file-system root holds nothing private and stays as it is), and the original
-// session ID to FIXED_SESSION. Then it scans the result and throws, listing
+// folder to /workspace and the home folder to ~, each where a path starts and with the rest of
+// its path (a home folder that is a file-system root holds nothing private and stays as it is),
+// and the original session ID to FIXED_SESSION. Then it scans the result and throws, listing
 // "line N: kind", if anything still looks private. No scan recognises every secret or
 // another machine's name, so read a fixture before you commit it.
 
@@ -73,11 +73,13 @@ export function publicText(root) {
 }
 
 /**
- * Patterns for one machine: its home folder, unless that is a file-system root, at a path
- * boundary (in any letter case for a Windows drive path, as sanitize() rewrites it), and its name
- * (os.hostname() and the part before the first dot) when that has 6 or more characters, so it
- * doesn't match ordinary words. The name is only looked for, never replaced: replacing a short
- * one such as "mac" would turn "macOS" into something else.
+ * Patterns for one machine. Its home folder, unless that is a file-system root: where its last
+ * name ends (in any letter case for a Windows drive path, as sanitize() rewrites it), but anywhere
+ * in a path, since sanitize() leaves one inside another path as recorded, and /mnt/opt/al/backup,
+ * for a home of /opt/al, still names al. Its name (os.hostname() and the part before the first
+ * dot), when that has 6 or more characters, so it doesn't match ordinary words. The name is only
+ * looked for, never replaced: replacing a short one such as "mac" would turn "macOS" into
+ * something else.
  */
 export function machinePatterns({ home, host } = {}) {
   const extra = [];
@@ -163,7 +165,12 @@ export function scanText(text, { extra = [], allowText = '' } = {}) {
 }
 
 // One folder's rewrite. The folder matches with either separator (and in any case, for a
-// Windows drive path), and only at a path boundary, so /home/al doesn't rewrite /home/alex.
+// Windows drive path), and only at a path boundary at both ends. It starts where a path starts,
+// not after an ASCII letter or digit, _, ., ~ or -: so a home of /root rewrites /root/a,
+// file:///root/a and PATH=/bin:/root/bin, but not https://github.com/acme/root or /var/root,
+// which are other paths. A home folder left inside another path stays as recorded, and the scan,
+// which looks for it there too, refuses it. And it ends where a name ends, so /srv/people/al
+// doesn't rewrite /srv/people/alex.
 // It becomes `to` followed by the rest of its path; for a Windows path, the rest's
 // backslashes become "/", so build.mjs recognises a /plugin/... Read. A file-system root
 // (isRoot) is left as it is.
@@ -172,7 +179,7 @@ function prefixRule(prefix, to) {
   const folder = prefix.replace(/[\\/]+$/, '');
   const windows = /^[A-Za-z]:[\\/]/.test(folder);
   const source = folder.split(/[\\/]/).map(esc).join('[\\\\/]');
-  const re = new RegExp(`${source}((?:[\\\\/][^\\s"'<>|*?]*)?)(?![\\w-]|\\.\\w)`, windows ? 'gi' : 'g');
+  const re = new RegExp(`(?<![\\w.~-])${source}((?:[\\\\/][^\\s"'<>|*?]*)?)(?![\\w-]|\\.\\w)`, windows ? 'gi' : 'g');
   return (s) => s.replace(re, (_, rest) => to + (windows ? rest.replaceAll('\\', '/') : rest));
 }
 
