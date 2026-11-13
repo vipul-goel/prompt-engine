@@ -17318,5 +17318,84 @@
         ]
       }
     }
-  ]
+  ],
+  "step_1e": {
+    "$comment": "Step 1e (2026-11-09 to 2026-11-13): an adversarial check of steps 1c and 1d's fixes and of task T1 (the owner's answers D46-D52 and K3), in five areas, each a workflow of attack rounds. Run by the release orchestrator; details of every claim are in the session's workflow results, not here.",
+    "process": [
+      "Each round: two attackers with different lenses, triage that reproduced or refuted every claim from a clean checkout, a fixer that wrote the failing test first (Opus 5.5), one or two independent reviews by commit range, a follow-up fix pass, and a re-run of every original repro. A second round attacked the first round's fixes; a third ran when round 2 fixed a major. Areas B and E had a live-probe stage capped at $1.25 each.",
+      "Areas A (core scripts), C (MCP server) and D (workflows) started from 3768ba9; areas B (eval graders and tooling) and E (method, universal core and docs) from 56799e0, after T1 merged. On 2026-11-09 the owner asked for Sonnet or Opus only, so every agent after that ran on Opus 5.5 (mechanical re-runs on Sonnet 5.5)."
+    ],
+    "areas": {
+      "A": {
+        "name": "core scripts",
+        "rounds": 2,
+        "claims": 64,
+        "confirmed": 63,
+        "major": 1,
+        "merge": "f274bea",
+        "major_findings": [
+          "A bare node --test also started universal-test.mjs's billed conversation test."
+        ]
+      },
+      "B": {
+        "name": "eval graders and tooling",
+        "rounds": 2,
+        "claims": 40,
+        "confirmed": 38,
+        "major": 1,
+        "merge": "682a47b",
+        "live_probes_usd": 0,
+        "major_findings": [
+          "The text no-invention rubrics didn't require an Assumption to state a number to cover it (D30); all 11 now do."
+        ]
+      },
+      "C": {
+        "name": "MCP server",
+        "rounds": 3,
+        "claims": 38,
+        "confirmed": 31,
+        "major": 3,
+        "merge": "a43ddd0",
+        "major_findings": [
+          "128 concurrent --http requests within the documented limits could exhaust the heap.",
+          "One connection that pipelines and never reads could hold every request slot.",
+          "A 2025-era batch that cancels its own request kept its slot until the client left."
+        ]
+      },
+      "D": {
+        "name": "GitHub workflows",
+        "rounds": 2,
+        "claims": 28,
+        "confirmed": 25,
+        "major": 1,
+        "merge": "8bd0942",
+        "major_findings": [
+          "The release build started the packed server on dependency versions the lockfile doesn't pin; a separate read-only pack-check job now does it after the upload."
+        ]
+      },
+      "E": {
+        "name": "method, universal core and docs",
+        "rounds": 3,
+        "claims": 58,
+        "confirmed": 51,
+        "major": 4,
+        "merge": "4b20410",
+        "live_probes_usd": 0.55,
+        "major_findings": [
+          "A read-only shell command ran before the pick in an imperative coding request (interactive rehearsal on 3768ba9); the method now looks things up with file-reading and search tools only, and no shell command or subagent runs before the pick."
+        ]
+      }
+    },
+    "after_merges": "050bc5d applied three doc items areas C, D and E handed over. Checks at 682a47b (Node 24.21, Claude Code 2.1.323): actionlint 1.7.12 with shellcheck 0.11.0, build --check, validate OK with one expected warning, 842 root tests (1 skipped, CI only), claude plugin validate --strict, 301 MCP tests, the Inspector gates, pack:mcpb and test:pack (12 files).",
+    "left_open": [
+      "A re-recording of the mug history so its Assumptions state the two counts the graders now skip by quote (billed; area B).",
+      "An optional section-order check in writing-quick-launch-email 08 (B), optional validate checks for AppleDouble files in graders folders and an output tag on cases (A), and counting the universal core in UTF-16 units too (A).",
+      "Video replies still add actions no Assumption names, though the method now names the check (E; docs/compatibility.md Known limits).",
+      "D39's rule refusing tracked .claude/ entries should compare the first path segment case-insensitively (A1.1.11).",
+      "Live checks for steps 3 and 4: the three-run re-checks of the media and follow-up cases, the interactive run's Ctrl+O tool list (no Bash or subagent before the pick), a third save writing -3, and the release-notes check in a repository with history."
+    ],
+    "owner_questions": [
+      "Nine questions are open: seven from T1 (listed in .claude/CLAUDE.md) and two from area E: whether Save to file should honor an explicit request to replace a file (the branch keeps never overwrite), and whether Save to file should be offered whenever the session has a file-writing tool (the branch's new rule) rather than in Claude Code and other local coding agents."
+    ]
+  }
 }
