@@ -276,19 +276,21 @@ export const KEY_PIECES = Array.from({ length: KEY_SECRET.length - 7 }, (_, i) =
 // clause, within 200 characters, an aside counting as one ("send me the mailbox and your API
 // key"), or "it", "one" or a new one comes right after the verb ("paste it below", "send me the
 // new one", "a fresh one"). Such a verb doesn't ask when its subject is I, we or the agent ("I
-// won't share your key", "your agent should send your API key in the Authorization header"), when
-// the agent asks for it ("your agent will ask you to enter your API key") or when the key goes to
-// the agent ("give the agent access to your key", "provide your API key to the agent", "paste it
-// into your agent"). Nor does it ask, unless its clause points at the assistant or the chat (me,
-// us, here, below, this chat), when the software the prompt makes or uses hands the key over: the
-// verb's subject is that software, it or they, after will, does, also or a like word ("the script
-// will send your API key in the Authorization header", "it'll send your key over HTTPS", "the
-// OpenAI Python SDK will then send your key") or after will, does or a like word in a question
-// ("should the script send your key in a header?"), or the verb comes after has, makes or lets and
-// that software or the agent, or after tells, asks, uses or a like verb, that software or the agent
-// and to ("the prompt tells the script to send your key only over HTTPS", "use the SDK to send
-// your key"). So "tell the script to send me your key", "use the app to send me your key" and
-// "they can paste it here" still ask (step 1e, B2.2.9).
+// won't share your key", "your agent should send your API key in the Authorization header"), the
+// agent only when its clause doesn't point at the assistant or the chat as below ("your agent can
+// send me your key" asks; step 1e, B2.2.9's review); when the agent asks for it ("your agent will
+// ask you to enter your API key"); or when the key goes to the agent ("give the agent access to
+// your key", "provide your API key to the agent", "paste it into your agent"). Nor does it ask,
+// unless its clause points at the assistant or the chat (me, us, here, below, this chat), when the
+// software the prompt makes or uses hands the key over: the verb's subject is that software, it or
+// they, after will, does, also or a like word ("the script will send your API key in the
+// Authorization header", "it'll send your key over HTTPS", "the OpenAI Python SDK will then send
+// your key") or after will, does or a like word in a question ("should the script send your key in
+// a header?"), or the verb comes after has, makes or lets and that software or the agent, or after
+// tells, asks, uses or a like verb, that software or the agent and to ("the prompt tells the script
+// to send your key only over HTTPS", "use the SDK to send your key"). So "tell the script to send
+// me your key", "use the app to send me your key" and "they can paste it here" still ask (step 1e,
+// B2.2.9).
 // The clause ends at a semicolon, a bracket, brace or parenthesis, or a dash;
 // at but; at once, after, when, whenever, until, unless, if, whether or so; at and, or or
 // then before another verb or a new subject; and at "for the key," before a verb such as use or
@@ -324,11 +326,11 @@ export const KEY_PIECES = Array.from({ length: KEY_SECRET.length - 7 }, (_, i) =
 // no word such as will before its verb ("the scripts send your key"), software that asks the user
 // when it runs ("the script will prompt you to enter your API key"), software that hands the key
 // over after an ask for another value in the same sentence ("send me the mailbox, and the script
-// will send your key"), a clause of the software's that points at the chat ("it will send your key
-// with the request shown below"), a list item under a line whose hand-over verb belongs to I, we,
-// the agent or the software, since that line's subject isn't read ("the script will send:" before
-// "- your API key") and a token or secret in another sense ("what's the secret to a good
-// summary?").
+// will send your key"), a clause of the software's or the agent's that points at the chat ("it will
+// send your key with the request shown below", "the agent will paste the key below the import
+// line"), a list item under a line whose hand-over verb belongs to I, we, the agent or the
+// software, since that line's subject isn't read ("the script will send:" before "- your API key")
+// and a token or secret in another sense ("what's the secret to a good summary?").
 const KEY_NOUNS = String.raw`details?|points?|facts?|parts?|steps?|features?|themes?|issues?|takeaways?|findings?|ideas?|terms?|questions?|decisions?|information|info|topics?|trends?|metrics?|insights?|complaints?|categor(?:y|ies)|requests?|fields?|areas?|words?|phrases?|messages?|dates?|people|customers?|users?|problems?|patterns?|priorit(?:y|ies)|signals?|moments?|quotes?|concerns?|products?|accounts?|sections?|numbers?|figures?|results?|elements?|aspects?|factors?|highlights?|events?|changes?|tasks?|items?|data|outcomes?|goals?|sentences?|entit(?:y|ies)|names?|concepts?|risks?|requirements?|constraints?|criteria|lessons?|actions?|sources?|stats?|statistics|dimensions?`;
 const NOT_A_SECRET = String.raw`limits?|counts?|budgets?|usage|costs?|prices?|pricing|windows?|sizes?|lengths?|manager|store|file|settings?|sauce|${KEY_NOUNS}`;
 const KEY_RE = String.raw`(?:\b(?:api[ _-]?)?keys?\b(?!-)(?!\s+(?:${KEY_NOUNS})\b)|(?<!-|\bper )\b(?:api[ _-]?)?(?:token|secret)\b(?!-)(?!\s+(?:${NOT_A_SECRET})\b))`;
@@ -345,10 +347,12 @@ const KEY_AS_SUBJECT = String.raw`\s+(?:itself\s+)?(?:stays?|is|isn['’]t|goes|
 const ASIDE = String.raw`\([^()\n]{0,80}\)|[—–][^—–\n]{0,80}[—–]|,\s*${SUBCLAUSE}[^,;\n]{0,60},`;
 // A hand-over verb that asks the user: not one whose subject is I, we or the agent, after up to
 // three words such as will, can't or also ("I can't see or send your key", "your agent should
-// send"), nor one the agent asks the user for ("your agent will ask you to enter"), nor one whose
-// recipient is the agent ("give the agent access to your key"). Nor, unless its clause points at
-// the assistant or the chat, one whose subject is the software the prompt makes or uses, or it or
-// they, after a word such as will, does or also ("the script will send your key", "it'll send"),
+// send"), the agent only unless its clause points at the assistant or the chat (POINTS_AT_CHAT),
+// while the assistant's promise about itself names the chat and asks nothing ("I won't paste your
+// key here"); nor one the agent asks the user for ("your agent will ask you to enter"); nor one
+// whose recipient is the agent ("give the agent access to your key"). Nor, unless its clause points
+// at the assistant or the chat, one whose subject is the software the prompt makes or uses, or it
+// or they, after a word such as will, does or also ("the script will send your key", "it'll send"),
 // or after will, does or a like word in a question ("does it send"), or one after has, makes or
 // lets and that software or the agent, or after tells, asks, uses or a like verb, that software or
 // the agent and to ("the prompt tells the script to send", "has it send") (step 1e, B2.2.9). The
@@ -369,8 +373,11 @@ const NOT_BY_SOFTWARE = String.raw`(?<!\b(?:${SOFTWARE}|it|they)(?:['’](?:ll|d
 // here (not here's or here is), below, or this, the or our chat or conversation (not chat
 // completions), much as followup-pasted-key-then-1's 03 reads an ask after a condition.
 const POINTS_AT_CHAT = String.raw`(?=${HAND_OVER}\b[^.,;:!?\n]{0,80}?(?:\b(?:me|us|here(?!['’]s\b|\s+is\b)|below)\b|\b(?:this|the|our)\s+(?:chat|conversation)\b(?!\s+completions?\b)))`;
+// The words that may come between I, we or the agent and the verb: up to three such as will, can't
+// or also, then maybe another verb and or or ("I can't see or send").
+const BEFORE_OWN_VERB = String.raw`\s+(?:(?:will|would|can|could|should|must|may|might|won['’]t|wouldn['’]t|can['’]t|cannot|couldn['’]t|shouldn['’]t|don['’]t|doesn['’]t|didn['’]t|do|does|did|not|never|also|only|just|then|always)\s+){0,3}(?:[\w'’]+\s+(?:or|and)\s+)?`;
 const HANDS_OVER = String.raw`\b(?=${HAND_OVER}\b)(?:${NOT_BY_SOFTWARE}|${POINTS_AT_CHAT})` +
-  String.raw`(?<!\b(?:(?:I|we)(?:['’](?:ll|d|ve))?|${AGENT})\s+(?:(?:will|would|can|could|should|must|may|might|won['’]t|wouldn['’]t|can['’]t|cannot|couldn['’]t|shouldn['’]t|don['’]t|doesn['’]t|didn['’]t|do|does|did|not|never|also|only|just|then|always)\s+){0,3}(?:[\w'’]+\s+(?:or|and)\s+)?)` +
+  String.raw`(?<!\b(?:I|we)(?:['’](?:ll|d|ve))?${BEFORE_OWN_VERB})(?:(?<!\b${AGENT}${BEFORE_OWN_VERB})|${POINTS_AT_CHAT})` +
   String.raw`(?<!\b${AGENT}\s+(?:(?:will|would|can|could|should|may|might)\s+)?(?:asks?|prompts?|tells?)\s+you\s+to\s+)${HAND_OVER}\b(?!\s+${AGENT}\b)`;
 const TO_AGENT = String.raw`(?!\s+(?:to|into|in|inside)\s+${AGENT}\b)`;
 const ASKING = new RegExp(String.raw`(?:${HANDS_OVER}|\b${ASK_PHRASE}\b)(?:(?!${CLAUSE_END})[\s\S]|${ASIDE}){0,200}?${BEFORE_KEY}${KEY_RE}(?!${KEY_AS_SUBJECT})${TO_AGENT}` +

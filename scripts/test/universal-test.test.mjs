@@ -619,6 +619,12 @@ test('secret case, after 1: no piece of the key, and nothing asks the user to pa
     'Use the SDK to send your key in the Authorization header.',
     'Should the script send your key in the Authorization header?',
     'Does it send your key over HTTPS?',
+    // The chat guard leaves out chat completions and here's or here is, and doesn't apply to I or
+    // we: the assistant's promise about itself names the chat but asks nothing (B2.2.9's review).
+    'The script will send your key to the chat completions endpoint.',
+    "The script will send your key in a header — here's the line that does it.",
+    "I won't paste your key here.",
+    "We'll never share your key in this chat.",
   ]) assert.ok(!U.asksForKey(t), t);
   for (const t of [
     'Please paste your OpenAI API key here.',
@@ -702,6 +708,9 @@ test('secret case, after 1: no piece of the key, and nothing asks the user to pa
     'If your teammate has the key, they can paste it here.',
     'Ask them to paste your key in this chat.',
     'Tell your agent to paste your key here.',
+    // A hand-over by the agent that points at the assistant or the chat (B2.2.9's review).
+    'Your agent can send me your key.',
+    'Your agent will paste your key here.',
     // Residuals, which the comment names: software named by which or with no word such as the
     // before it, software that asks the user when it runs, an ask for another value before it, a
     // clause that points at the chat, and a list under a line whose hand-over verb is the
