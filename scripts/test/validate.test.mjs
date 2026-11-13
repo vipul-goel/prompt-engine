@@ -152,6 +152,10 @@ const moveSection = (h, at) => (d) => edit(d, SKILL, (t) => {
 });
 const KEY_LAST = BUDGETS.skillKeySections.at(-1);
 const KEY_LIMIT = BUDGETS.skillKeySectionsWithinChars;
+// For a row that adds lines right before the last key section and wants it read to start there:
+// the copy's limit raised by 1,000 characters, so that the row tests where the section starts, not
+// how much room SKILL.md has left. Merged with the method changes of 2026-11-10, it had 15.
+const roomBeforeKeyLast = (d) => editJson(d, 'data/contract.json', (j) => { j.budgets.skillKeySectionsWithinChars += 1_000; });
 // Neutral text: no lint hits and no substitution syntax.
 const filler = (n) => 'filler '.repeat(Math.ceil(Math.max(n, 1) / 7)).slice(0, Math.max(n, 1));
 const setFront = (key, line) => (d) => edit(d, SKILL, (t) => t.replace(new RegExp(`^${key}:.*$`, 'm'), () => line));
@@ -391,6 +395,7 @@ const ROWS = [
   // a line of backticks that holds another backtick, which opens no block.
   ...[['a fenced block closed by a fence indented three spaces', '```\nx\n   ```'], ['a line of backticks that holds another backtick', '``` a`b']].map(([what, lines]) => [
     `accepts a key section right after ${what}`, (d) => {
+      roomBeforeKeyLast(d);
       edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n${lines}\n${KEY_LAST}\n`));
       rebuild(d);
     }, /validate: OK/, 0, /missing section|starts at char/]),
@@ -401,6 +406,7 @@ const ROWS = [
     edit(d, SKILL, (t) => t.replace(`\n${BUDGETS.skillKeySections[0]}`, () => `\n<!-- a note\n${KEY_LAST}\n-->\n\n${BUDGETS.skillKeySections[0]}`));
   }, new RegExp(`SKILL\\.md: section "${reEsc(KEY_LAST)}" starts at char \\d+; keep it within the first ${KEY_LIMIT} `)],
   ['accepts a key section right after a one-line HTML comment', (d) => {
+    roomBeforeKeyLast(d);
     edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n<!-- a note -->\n${KEY_LAST}\n`));
     rebuild(d);
   }, /validate: OK/, 0],
@@ -423,6 +429,7 @@ const ROWS = [
   // after a block tag's block.
   ...[['a <pre> block closed on a later line', '<pre>\nx\n</pre>'], ['a <div> block and a blank line', '<div>\nx\n</div>\n'], ['a <!--> line', '<!-->']].map(([what, lines]) => [
     `accepts a key section right after ${what}`, (d) => {
+      roomBeforeKeyLast(d);
       edit(d, SKILL, (t) => t.replace(`\n${KEY_LAST}\n`, () => `\n${lines}\n${KEY_LAST}\n`));
       rebuild(d);
     }, /validate: OK/, 0, /missing section|starts at char/]),
