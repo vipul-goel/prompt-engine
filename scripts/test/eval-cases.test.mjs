@@ -1761,11 +1761,11 @@ test('the Midjourney aspect-ratio graders want the parameters at the end of the 
     })) assert.equal(regexPasses(g, text), false, `${c}: ${name}`);
     assert.notEqual(lastPhraseAfter(full), full);
     assert.notEqual(paramsMidLine(full), full);
-    // A note on the heading's line passes. Image 01 reads at most 200 characters of that line past
-    // Full prompt, so a longer one fails there, a residual (step 1e, B2.2.2).
+    // A note on the heading's line passes, however long: image 01 read at most 200 characters of
+    // that line past Full prompt in a fix of step 1e (B2.2.2) and has no bound since its review.
     const noted = (note) => reply(full).replace(`### ${headings[0]}\n`, `### ${headings[0]} ${note}\n`);
     assert.ok(regexPasses(g, noted('(paste it into Midjourney)')), `${c}: a note on the heading's line`);
-    if (c === 'image-midjourney-quick') assert.equal(regexPasses(g, noted('x'.repeat(200))), false, `${c}: a heading line that runs on for more than 200 characters`);
+    assert.ok(regexPasses(g, noted('x'.repeat(2_000))), `${c}: a heading line that runs on for 2,000 characters`);
     // A long run of # or of headings, and a long line without parameters, stay fast. So does a
     // prompt line that ends in a long run of spaces, tabs or single-dash words, which the
     // description gave back one character at a time until step 1e read it in a lookahead (B2.1.2).
@@ -1773,7 +1773,7 @@ test('the Midjourney aspect-ratio graders want the parameters at the end of the 
     for (const s of [`${'#'.repeat(40_000)}x`, `\n${'#'.repeat(40_000)}x`, '# Full prompt\n'.repeat(3_000), `### ${headings[0]}\n\`\`\`text\n${'a '.repeat(20_000)}\n\`\`\``,
       line(' '.repeat(40_000)), line('\t'.repeat(40_000)), line(' -a'.repeat(13_000)),
       // The heading repeated on one line: image 01 read the rest of the line again from each one
-      // until step 1e bounded what it reads past Full prompt (B2.2.2).
+      // until step 1e (B2.2.2); it now starts once per line.
       '#Full prompt'.repeat(10_000)]) {
       vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });
     }
