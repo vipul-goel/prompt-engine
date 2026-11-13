@@ -186,6 +186,12 @@ test('a slow pattern fails only when its time does not grow linearly, so a rise 
   // JavaScriptCore can be as slow on part of the reply as on all of it, as it was on some menu
   // patterns without their {0,200} bound.
   assert.match(verdict([5_000], [5_000], [5_000]), /^5000 ms, 5000 ms on half/, 'as slow on a quarter of the reply');
+  // Next to the thresholds: both doublings 3 times as long fail and 2.5 times pass, and the whole
+  // reply 1.4 times as long as its quarter fails and 1.6 times passes (step 1e, B2.2.5's review).
+  assert.equal(verdict([1_800], [600], [200]), '1800 ms, 600 ms on half the reply and 200 ms on a quarter', 'both doublings 3 times as long');
+  assert.equal(verdict([1_250], [500], [200]), '', 'both doublings 2.5 times as long');
+  assert.equal(verdict([1_400], [1_200], [1_000]), '1400 ms, 1200 ms on half the reply and 1000 ms on a quarter', 'the whole reply 1.4 times as long as its quarter');
+  assert.equal(verdict([1_600], [1_300], [1_000]), '', 'the whole reply 1.6 times as long as its quarter');
   assert.match(verdict([40_000], [20_000], [10_000]), /^40000 ms$/, 'far over the limit: no growth test');
   assert.equal(verdict([5_000], [40_000], [100]), '40000 ms on half the reply', 'far over the limit on half the reply');
   // The tries on the reply and its half behind a failure of the JavaScriptCore leg at 5b9758d, at
