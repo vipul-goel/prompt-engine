@@ -406,6 +406,8 @@ test('ok or thanks at the menu: the prompt is ready, and no fenced block or scor
     ['The prompt is ready. Tell me your preference for the tone.', [ASKS]],
     ['The prompt is ready. Give me the word count you want.', [ASKS]],
     ['The prompt is ready. Send me a 10-word tagline.', [ASKS]],
+    // A digit after a, then a hyphen: not "a 1" (step 1e, B2.2.7's review).
+    ['The prompt is ready. Send me a 5-word tagline.', [ASKS]],
     ['Your prompt is ready. Send me the number of seats you need.', [ASKS]],
     ['The prompt would be ready to run once you fill the placeholders.', ['says the prompt is ready']],
     ["Your prompt is ready. Here's the post:\n\nRemote work changed how managers lead.", [ASKS]],
