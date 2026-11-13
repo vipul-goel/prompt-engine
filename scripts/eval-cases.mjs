@@ -1,11 +1,12 @@
 // Checks the eval cases under evals/ for free, before a billed `claude plugin eval` run: the
 // keys, values and referenced files of each case.yaml, prompt.md and graders/*.md. claude plugin
-// eval drops an unknown case.yaml key and skips a grader file without front matter, both without
-// a message; a missing baseline_file or a pattern that doesn't compile fails only after the
-// billed agent run; and `claude plugin validate` doesn't read evals/. checkSuiteRules adds this
-// repo's rules for how the cases run and score, and checkConversations its rules for the history
-// cases' recordings and the graders that depend on them, and for the request text that any
-// rubric quotes. scripts/validate.mjs runs all three. Zero dependencies.
+// eval drops an unknown case.yaml key, and skips a grader file without front matter and a file or
+// folder whose name or place it doesn't read, all without a message; a missing baseline_file or a
+// pattern that doesn't compile fails only after the billed agent run; and `claude plugin validate`
+// doesn't read evals/. checkSuiteRules adds this repo's rules for how the cases run and score, and
+// checkConversations its rules for the history cases' recordings and the graders that depend on
+// them, and for the request text that any rubric quotes. scripts/validate.mjs runs all three. Zero
+// dependencies.
 //
 // The rules follow claude plugin eval's code (read in versions 2.1.312, 2.1.317, 2.1.318 and
 // 2.1.319) and code.claude.com/docs/en/plugin-evals. Messages that end in "(repo rule)" are
@@ -15,9 +16,9 @@
 // Claude Code runs JavaScriptCore (Bun), so a rare pattern can compile in one and not the other.
 
 import { readFileSync, readdirSync, statSync, lstatSync, existsSync } from 'node:fs';
-import { join, isAbsolute, win32, posix } from 'node:path';
+import { join, win32, posix } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { normalize, LINT_GRADER_CASES } from './build.mjs';
+import { normalize, LINT_GRADER_CASES, OS_JUNK } from './build.mjs';
 
 // ---------- YAML subset ----------
 // Lines: blank, "# comment", "key: value" at indent 0, and under a "key:" line with no value
@@ -56,8 +57,15 @@ const spaces = (line) => line.match(/^ */)[0].length;
 const blank = (line) => /^ *$/.test(line);
 // YAML separates with spaces (and tabs, refused here), so a value's own edges keep any other
 // white space, such as a no-break or ideographic space; String.prototype.trim would drop it and
-// read "regex\u{A0}" as regex.
-const trimSp = (s) => s.replace(/^ +| +$/g, '');
+// read "regex\u{A0}" as regex. A loop, not / +$/: that pattern rescans a run of spaces from each
+// space in it, which took quadratic time on a long run inside a value.
+const trimSp = (s) => {
+  let a = 0;
+  let b = s.length;
+  while (a < b && s[a] === ' ') a++;
+  while (b > a && s[b - 1] === ' ') b--;
+  return s.slice(a, b);
+};
 
 function quoted(v, where) {
   if (v[0] === "'") {
@@ -80,11 +88,14 @@ function quoted(v, where) {
 }
 
 // One-level [a, b] or {k: v} on one line: entries split at commas outside quotes, a trailing
-// comma allowed.
+// comma allowed. Whether the entry so far holds only spaces, and whether it ends in white space,
+// is kept up as it grows: reading it again for each quote or # took quadratic time on a long entry.
 function flow(v, where) {
   const close = v[0] === '[' ? ']' : '}';
   const entries = [];
   let cur = '';
+  let onlySpaces = true;
+  let endsInSpace = false;
   let q = null;
   let i = 1;
   for (; i < v.length; i++) {
@@ -97,12 +108,15 @@ function flow(v, where) {
       continue;
     }
     if (ch === close) break;
-    if ((ch === "'" || ch === '"') && trimSp(cur) === '') q = ch;
+    if ((ch === "'" || ch === '"') && onlySpaces) q = ch;
     else if ('[]{}'.includes(ch)) throw new Error(`${where}: nested [ ] or { } isn't supported; quote the entry: ${v}`);
     // YAML reads the rest of the line, closing bracket included, as a comment.
-    else if (ch === '#' && (cur === '' || /\s$/.test(cur))) throw new Error(`${where}: a # comment inside ${v[0]} ${close}: ${v}`);
-    if (ch === ',') { entries.push(cur); cur = ''; continue; }
+    else if (ch === '#' && (cur === '' || endsInSpace)) throw new Error(`${where}: a # comment inside ${v[0]} ${close}: ${v}`);
+    if (ch === ',') { entries.push(cur); cur = ''; onlySpaces = true; endsInSpace = false; continue; }
     cur += ch;
+    // A quoted part ends in its closing quote, so neither flag changes inside it.
+    onlySpaces &&= ch === ' ';
+    endsInSpace = /\s/.test(ch);
   }
   if (q || i >= v.length) throw new Error(`${where}: ${v[0]} without its closing ${close} on the same line: ${v}`);
   if (!/^(?: +#.*)?$/.test(v.slice(i + 1))) throw new Error(`${where}: text after the closing ${close}: ${v}`);
@@ -126,7 +140,9 @@ function scalar(raw, where) {
   if (v[0] === "'" || v[0] === '"') return quoted(v, where);
   if (v[0] === '[' || v[0] === '{') return flow(v, where);
   if (/^[&*!|>%@`#]/.test(v)) throw new Error(`${where}: unsupported YAML value ${v}`);
-  const plain = v.replace(/ +#.*$/, '');
+  // The comment starts at the first space of its run: a match tried from each space of a long run
+  // took quadratic time.
+  const plain = v.replace(/(?<! ) +#.*$/, '');
   // A nested mapping, a list entry or a flow indicator to YAML, or an error; Psych reads :x as a
   // Ruby symbol.
   if (/:( |$)/.test(plain) || /^[-?,]( |$)/.test(plain) || /^[:\]},]/.test(plain)) throw new Error(`${where}: quote the value "${plain}"`);
@@ -173,11 +189,25 @@ function block(lines, style, chomp, where) {
   return chomp === '+' ? `${value}\n${trailing}` : `${value}\n`;
 }
 
+// A line that ends in CR CR LF, as in a file converted to CRLF twice, is two line breaks to YAML,
+// which reads a lone CR as one, and Bun.YAML, which claude plugin eval uses, adds a blank line to a
+// block scalar for each; normalize() reads one. Refused in the raw text, before normalize() runs.
+const refuseCrCrLf = (text, file, firstLine = 1) => {
+  const i = text.indexOf('\r\r\n');
+  if (i >= 0) throw new Error(`${file}:${firstLine + text.slice(0, i).split('\n').length - 1}: the line ends in CR CR LF, which YAML reads as two line breaks (a file converted to CRLF twice); save it with LF or CRLF line endings`);
+};
+
 // Parses text in the subset. firstLine is the file line that the text starts on, for messages.
 export function parseYaml(text, file, firstLine = 1) {
+  refuseCrCrLf(text, file, firstLine);
   const lines = normalize(text).split('\n');
-  if (lines.at(-1) === '') lines.pop();
   const at = (i) => `${file}:${firstLine + i}`;
+  if (lines.at(-1) === '') lines.pop();
+  // Without a line break, a last line of only spaces isn't a line to YAML (a blank line needs its
+  // line break). Read as one, it added a line break to a |+ or >+ block that Bun.YAML, which claude
+  // plugin eval uses, doesn't read. Refused rather than dropped: past a block's indentation, YAML
+  // reads the extra spaces as text.
+  else if (/^ +$/.test(lines.at(-1))) throw new Error(`${at(lines.length - 1)}: a line of only spaces at the end of the file, without a line break; delete the spaces or end the file with a line break`);
   // Checked first, since a block's lines are read below as a whole.
   lines.forEach((line, i) => {
     if (line.includes('\t')) throw new Error(`${at(i)}: a tab; indent with spaces, and write \\t for a tab inside a double-quoted value`);
@@ -232,15 +262,17 @@ export function parseYaml(text, file, firstLine = 1) {
 // with data null when the text has no front matter, and body as the CLI reads it (trimmed).
 const FRONT = /^---\s*\n([\s\S]*?)---\s*\n?/;
 export function frontmatter(text, file) {
+  refuseCrCrLf(text, file);
   const t = normalize(text);
   const m = t.match(FRONT);
   if (!m) {
-    if (/^---\s*\n/.test(t)) throw new Error(`${file}: front matter without its closing "---"`);
+    if (/^---\s*\n/.test(t)) throw new Error(`${file}:1: front matter without its closing "---"`);
     return { data: null, body: t.trim() };
   }
-  if (m[1] !== '' && !m[1].endsWith('\n')) throw new Error(`${file}: "---" inside the front matter, where claude plugin eval ends it; keep "---" out of values and comments`);
-  const opening = t.match(/^---\s*\n/)[0];
-  return { data: parseYaml(m[1], file, opening.split('\n').length), body: t.slice(m[0].length).trim() };
+  // The line the YAML starts on: blank lines can follow the opening "---".
+  const first = t.match(/^---\s*\n/)[0].split('\n').length;
+  if (m[1] !== '' && !m[1].endsWith('\n')) throw new Error(`${file}:${first + m[1].split('\n').length - 1}: "---" inside the front matter, where claude plugin eval ends it; keep "---" out of values and comments`);
+  return { data: parseYaml(m[1], file, first), body: t.slice(m[0].length).trim() };
 }
 
 // ---------- case files ----------
@@ -274,10 +306,48 @@ const isMapping = (v) => v !== null && typeof v === 'object' && !Array.isArray(v
 const whole = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 const compileError = (pattern, flags = '') => { try { new RegExp(pattern, flags); return null; } catch (e) { return e.message; } };
 // A relative path inside the case folder on any platform (D10 runs the checks on Windows too).
-const inside = (rel) => typeof rel === 'string' && rel !== '' && !isAbsolute(rel) && !win32.isAbsolute(rel) && !rel.split(/[\\/]/).includes('..');
+// win32.isAbsolute covers POSIX absolute paths as well, since each of them starts with "/".
+const inside = (rel) => typeof rel === 'string' && rel !== '' && !win32.isAbsolute(rel) && !rel.split(/[\\/]/).includes('..');
 // The CLI takes a plain file with one name. It also follows a link whose target stays in the
 // case folder; this check doesn't, since a link doesn't survive every checkout.
 const isPlainFile = (p) => { try { const s = lstatSync(p); return s.isFile() && s.nlink === 1; } catch { return false; } };
+// A link where evals/, a case, its case.yaml, prompt.md or graders/ folder, or a folder on a
+// fixture's path belongs. git stores the link, not what it leads to, so a clone has nothing there,
+// or a file that holds a path, while isFile, isDir and the reads here follow it: the checks passed
+// on the machine that made it. Each is named, and nothing is read through it.
+const isLink = (p) => { try { return lstatSync(p).isSymbolicLink(); } catch { return false; } };
+const LINK_RULE = 'git stores the link, not what it leads to, so a clone has nothing there, or a file that holds a path';
+const linked = (p, keep) => `${p}: a link; ${LINK_RULE}, and validate.mjs doesn't read through it; keep ${keep}`;
+// The first part of a fixture's path rel, from the case folder abs, that is a link, as a path from
+// the root (dir is abs's), or null.
+const linkOn = (abs, dir, rel) => {
+  const parts = rel.split(/[\\/]/).filter((s) => s !== '' && s !== '.');
+  for (let i = 1; i <= parts.length; i++) if (isLink(join(abs, ...parts.slice(0, i)))) return `${dir}/${parts.slice(0, i).join('/')}`;
+  return null;
+};
+const throughLink = (where, what, rel, p) => `${where}: ${what} "${rel}" goes through ${p}, a link; ${LINK_RULE}; keep fixtures in the case folder itself`;
+// A fixture's path rel as the case folder abs lists it, up to the first part that it holds only in
+// another letter case, or null. claude plugin eval looks a fixture up by its exact name, which on
+// macOS's and Windows' default file systems opens a name in another letter case and on Linux, as in
+// CI, doesn't: so the checks, which looked it up the same way, passed on the first and failed in CI
+// with a message that didn't name the file. The rule de4b99f applies to case.yaml, prompt.md and
+// graders/ (the name loop in checkEvalCases), here for scaffold_script, history_file, add_dirs and
+// baseline_file.
+const otherCase = (abs, rel) => {
+  const parts = rel.split(/[\\/]/).filter((s) => s !== '' && s !== '.');
+  let at = abs;
+  for (let i = 0; i < parts.length; i++) {
+    let names;
+    try { names = readdirSync(at); } catch { return null; }
+    if (!names.includes(parts[i])) {
+      const listed = names.find((n) => n.toLowerCase() === parts[i].toLowerCase());
+      return listed === undefined ? null : [...parts.slice(0, i), listed].join('/');
+    }
+    at = join(at, parts[i]);
+  }
+  return null;
+};
+const inOtherCase = (where, what, rel, listed) => `${where}: ${what} "${rel}": the case folder has "${listed}", which only a file system that ignores letter case, such as macOS's or Windows', matches to that name; give both the same name`;
 
 // Values that sit at the top of prompt.md, and at the top of case.yaml or under its execution:
 // or context: (top, exec and ctx are those mappings, execKeys the keys allowed in exec). Only
@@ -309,7 +379,9 @@ function checkSchemaVersion(err, where, v) {
 
 function checkGrader(err, where, g, abs, referenced, dir) {
   const d = g.data;
-  if (!Object.hasOwn(GRADER_TYPES, d.type)) { err(`${where}: type must be one of ${Object.keys(GRADER_TYPES).join(', ')}`); return; }
+  // A string only: Object.hasOwn reads a one-entry list such as [regex] as its string, and the
+  // switch below would then check none of its options. The CLI refuses a type that isn't a string.
+  if (typeof d.type !== 'string' || !Object.hasOwn(GRADER_TYPES, d.type)) { err(`${where}: type must be one of ${Object.keys(GRADER_TYPES).join(', ')}`); return; }
   for (const k of Object.keys(d)) {
     if (k === 'name') err(`${where}: name: the file name is the grader's name; don't override it (repo rule)`);
     else if (!['type', 'weight', 'arm', ...GRADER_TYPES[d.type]].includes(k)) err(`${where}: key "${k}" is not a ${d.type} grader option`);
@@ -344,6 +416,11 @@ function checkGrader(err, where, g, abs, referenced, dir) {
       if (typeof p !== 'string' || p === '') err(`${where}: needs a pattern (the pattern key, or the file's body)`);
       else if (typeof flags !== 'string' || !/^[dgimsuvy]*$/.test(flags)) err(`${where}: flags may use only d g i m s u v y`);
       else { const e = compileError(p, flags); if (e) err(`${where}: pattern: ${e}`); }
+      // claude plugin eval accepts y, but tests the pattern once against the whole text: test() for
+      // contains and not_contains, and the matches with g added for count:N. Under y each looks only
+      // at the start of the text, so a not_contains check passed on any reply that didn't start with
+      // what it forbids. g does no harm there, since each test is made with a new RegExp.
+      if (typeof flags === 'string' && /^[dgimsuvy]*$/.test(flags) && flags.includes('y')) err(`${where}: flags: y makes claude plugin eval look for the pattern only at the start of the text, since it tests the whole text once; leave y out, and write ^ (without the m flag) to match at the start (repo rule)`);
       if (d.match !== undefined && !(typeof d.match === 'string' && /^(?:contains|not_contains|count:\d+)$/.test(d.match))) err(`${where}: match must be contains, not_contains or count:N`);
       view('target');
       break;
@@ -352,9 +429,11 @@ function checkGrader(err, where, g, abs, referenced, dir) {
       if (typeof d.tool !== 'string' || d.tool === '') err(`${where}: needs tool`);
       pattern('input_match', d.input_match);
       for (const k of ['min', 'max']) if (d[k] !== undefined && !whole(d[k], 0, Infinity)) err(`${where}: ${k} must be a whole number of 0 or more`);
-      // The CLI counts calls from min (1 when unset) to max: a max below that never passes.
+      // The CLI counts calls from min (1 when unset) to max (no limit when unset): a max below that
+      // never passes, and min: 0 without max passes every run.
       const min = d.min ?? 1;
       if (whole(min, 0, Infinity) && whole(d.max, 0, Infinity) && min > d.max) err(`${where}: min (${d.min === undefined ? '1 when unset' : min}) is above max (${d.max}), so the grader never passes`);
+      if (min === 0 && d.max === undefined) err(`${where}: min: 0 without max counts any number of calls, so the grader never fails; set max (max: 0 checks that the tool is never called), or drop min`);
       break;
     }
     case 'tool_order': tool('before'); tool('after'); break;
@@ -367,7 +446,9 @@ function checkGrader(err, where, g, abs, referenced, dir) {
       const c = fromBody('criteria');
       if (typeof c !== 'string' || c.trim() === '') err(`${where}: needs criteria (the criteria key, or the file's body)`);
       if (d.type === 'llm') view('focus');
+      else if (inside(d.baseline_file) && otherCase(abs, d.baseline_file) !== null) err(inOtherCase(where, 'baseline_file', d.baseline_file, otherCase(abs, d.baseline_file)));
       else if (!inside(d.baseline_file) || !isPlainFile(join(abs, d.baseline_file))) err(`${where}: baseline_file "${d.baseline_file}" is not a plain file in the case folder`);
+      else if (linkOn(abs, dir, d.baseline_file) !== null) err(throughLink(where, 'baseline_file', d.baseline_file, linkOn(abs, dir, d.baseline_file)));
       else referenced.add(`${dir}/${d.baseline_file}`);
       break;
     }
@@ -378,32 +459,43 @@ function checkGrader(err, where, g, abs, referenced, dir) {
 // it found, for other checks to reuse: { name, dir, caseYaml, prompt: { data, body }, graders:
 // [{ name, file, data, body }] }, where caseYaml or prompt is null when the file is missing or
 // didn't parse, graders lists the files with front matter that parsed, and bodies are trimmed.
-export function checkEvalCases(root, err) {
+// warn(message) says when a check was skipped.
+export function checkEvalCases(root, err, warn = () => {}) {
   const cases = [];
+  if (isLink(join(root, 'evals'))) { err(linked('evals', 'the cases in evals itself')); return cases; }
   if (!isDir(join(root, 'evals'))) return cases;
   const referenced = new Set();
   for (const name of readdirSync(join(root, 'evals')).sort()) {
     const dir = `evals/${name}`;
     const abs = join(root, dir);
-    if (name === 'results' || !isDir(abs)) continue; // results/: claude plugin eval's output
+    if (name === 'results') continue; // claude plugin eval's output
+    if (isLink(abs)) { err(linked(dir, `the case's files in ${dir} itself`)); continue; }
+    if (!isDir(abs)) continue;
     if (name === 'mocks') { err(`${dir}: suite-wide mocks aren't used in this repo, and validate.mjs doesn't check them (repo rule)`); continue; }
-    const hasCase = isFile(join(abs, 'case.yaml'));
-    const hasPrompt = isFile(join(abs, 'prompt.md'));
+    // A case.yaml or prompt.md that is a link is there but not read, as one that doesn't parse.
+    const caseLink = isLink(join(abs, 'case.yaml'));
+    const promptLink = isLink(join(abs, 'prompt.md'));
+    if (caseLink) err(linked(`${dir}/case.yaml`, `the file itself in ${dir}`));
+    if (promptLink) err(linked(`${dir}/prompt.md`, `the file itself in ${dir}`));
+    const hasCase = caseLink || isFile(join(abs, 'case.yaml'));
+    const hasPrompt = promptLink || isFile(join(abs, 'prompt.md'));
     // claude plugin eval also reads cases from subfolders of a folder without them (a group).
     if (!hasCase && !hasPrompt) { err(`${dir}: needs prompt.md or case.yaml; cases sit directly under evals/, because scripts/build.mjs refreshes only evals/<case>/history.jsonl (repo rule)`); continue; }
     const c = { name, dir, caseYaml: null, prompt: null, graders: [] };
     cases.push(c);
     let caseParsed = !hasCase;
-    if (hasCase) {
+    if (hasCase && !caseLink) {
       const file = `${dir}/case.yaml`;
-      const text = normalize(readFileSync(join(abs, 'case.yaml'), 'utf8'));
+      const raw = readFileSync(join(abs, 'case.yaml'), 'utf8');
+      const text = normalize(raw);
       // Named before parsing, since the subset can't read a list of mappings.
-      if (/^graders:/m.test(text)) err(`${file}: graders: write each grader as graders/<name>.md, which validate.mjs checks (repo rule)`);
+      const graders = text.match(/^graders:/m);
+      if (graders) err(`${file}:${text.slice(0, graders.index).split('\n').length}: graders: write each grader as graders/<name>.md, which validate.mjs checks (repo rule)`);
       else {
-        try { c.caseYaml = parseYaml(text, file); caseParsed = true; } catch (e) { err(e.message); }
+        try { c.caseYaml = parseYaml(raw, file); caseParsed = true; } catch (e) { err(e.message); }
       }
     }
-    if (hasPrompt) {
+    if (hasPrompt && !promptLink) {
       try { c.prompt = frontmatter(readFileSync(join(abs, 'prompt.md'), 'utf8'), `${dir}/prompt.md`); } catch (e) { err(e.message); }
     }
 
@@ -430,14 +522,18 @@ export function checkEvalCases(root, err) {
       checkValues(err, file, cy, exec, ctx, EXECUTION_KEYS);
       for (const k of ['scaffold_script', 'history_file']) {
         if (typeof ctx[k] !== 'string') continue;
-        if (!inside(ctx[k]) || !isPlainFile(join(abs, ctx[k]))) err(`${file}: context.${k} "${ctx[k]}" is not a plain file in the case folder`);
+        if (inside(ctx[k]) && otherCase(abs, ctx[k]) !== null) err(inOtherCase(file, `context.${k}`, ctx[k], otherCase(abs, ctx[k])));
+        else if (!inside(ctx[k]) || !isPlainFile(join(abs, ctx[k]))) err(`${file}: context.${k} "${ctx[k]}" is not a plain file in the case folder`);
+        else if (linkOn(abs, dir, ctx[k]) !== null) err(throughLink(file, `context.${k}`, ctx[k], linkOn(abs, dir, ctx[k])));
         else referenced.add(`${dir}/${ctx[k]}`);
       }
       if (ctx.history_file !== undefined && ctx.history_file !== 'history.jsonl') err(`${file}: context.history_file must be history.jsonl, the only name scripts/build.mjs refreshes (repo rule)`);
       // The CLI refuses an add_dir that is the case folder itself or covers its graders/ or mocks/.
       for (const d of Array.isArray(ctx.add_dirs) ? ctx.add_dirs : []) {
         const first = typeof d === 'string' ? d.split(/[\\/]/).find((s) => s !== '' && s !== '.') : undefined;
-        if (!inside(d) || first === undefined || first === 'graders' || first === 'mocks' || !isDir(join(abs, d))) err(`${file}: add_dirs entry "${d}" is not a fixture folder in the case folder (one that isn't the case folder, graders/ or mocks/)`);
+        if (inside(d) && otherCase(abs, d) !== null) err(inOtherCase(file, 'add_dirs entry', d, otherCase(abs, d)));
+        else if (!inside(d) || first === undefined || first === 'graders' || first === 'mocks' || !isDir(join(abs, d))) err(`${file}: add_dirs entry "${d}" is not a fixture folder in the case folder (one that isn't the case folder, graders/ or mocks/)`);
+        else if (linkOn(abs, dir, d) !== null) err(throughLink(file, 'add_dirs entry', d, linkOn(abs, dir, d)));
       }
     }
     const fm = c.prompt;
@@ -457,8 +553,40 @@ export function checkEvalCases(root, err) {
     if (fm && fm.body === '' && execPrompt === '' && caseParsed) err(`${dir}/prompt.md: the body (the prompt) is empty`);
     else if (!hasPrompt && cy && execPrompt === '') err(`${dir}: no prompt (a prompt.md body, or execution.prompt in case.yaml)`);
 
+    // Entries that claude plugin eval skips without a word (its code, read in 2.1.321): it looks for
+    // case.yaml, prompt.md and graders/ by those exact names, so a name that differs only in letter
+    // case is read on macOS and Windows and skipped on Linux; it reads only the .md files directly
+    // in graders/; and it layers a case's own mocks/ over the suite's. A recording that no
+    // context.history_file names isn't resumed, so the case runs without it.
+    const names = readdirSync(abs).sort();
+    for (const n of names) {
+      const lower = n.toLowerCase();
+      const want = /^case\.ya?ml$/.test(lower) ? 'case.yaml' : /^prompt\.(?:md|markdown)$/.test(lower) ? 'prompt.md' : /^graders?$/.test(lower) ? 'graders' : null;
+      if (lower === 'mocks') err(`${dir}/${n}: a case's own mocks aren't used in this repo, and validate.mjs doesn't check them (repo rule)`);
+      else if (want === null || n === want) continue;
+      else if (lower === want) err(`${dir}/${n}: claude plugin eval looks for ${want} by that exact name, which only a file system that ignores letter case, such as macOS's or Windows', matches to this one; name it ${want}`);
+      else err(`${dir}/${n}: claude plugin eval reads ${want}, not this name, so it skips this one; name it ${want}`);
+    }
+    // Found by the name the folder lists, in any letter case, so that it is named the same way on
+    // every file system.
+    const recording = names.find((n) => n.toLowerCase() === 'history.jsonl');
+    if (caseParsed && recording !== undefined && isFile(join(abs, recording)) && !(isMapping(cy?.context) && cy.context.history_file !== undefined)) {
+      err(`${dir}/${recording}: no context.history_file in case.yaml names it, so claude plugin eval doesn't resume it; ${recording === 'history.jsonl' ? '' : 'name it history.jsonl and '}set context.history_file: history.jsonl, or delete the file`);
+    }
+    // Listed without following links: one that leads nowhere, such as the lock file Emacs keeps next
+    // to a file with unsaved changes, stopped the read with Node's own ENOENT line.
     const gdir = join(abs, 'graders');
-    const files = isDir(gdir) ? readdirSync(gdir).filter((f) => f.endsWith('.md')).sort() : [];
+    const gradersLink = isLink(gdir);
+    if (gradersLink) err(linked(`${dir}/graders`, `the graders in ${dir}/graders itself`));
+    const gentries = !gradersLink && isDir(gdir) ? readdirSync(gdir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) : [];
+    for (const e of gentries) {
+      const f = e.name;
+      if (OS_JUNK.has(f)) continue;
+      if (e.isDirectory()) err(`${dir}/graders/${f}: a folder; claude plugin eval reads only the .md files directly in graders/, so it skips the graders in it`);
+      else if (!e.isFile()) err(`${dir}/graders/${f}: not a plain file (a link, such as the lock file Emacs keeps while a file has unsaved changes, doesn't survive every checkout), so validate.mjs doesn't read it`);
+      else if (!f.endsWith('.md')) err(`${dir}/graders/${f}: claude plugin eval reads only the files in graders/ whose names end in .md, so it skips this one`);
+    }
+    const files = gentries.filter((e) => e.isFile() && e.name.endsWith('.md')).map((e) => e.name);
     let count = 0;
     for (const f of files) {
       const where = `${dir}/graders/${f}`;
@@ -469,28 +597,41 @@ export function checkEvalCases(root, err) {
       c.graders.push({ name: f.slice(0, -3), file: where, data: g.data, body: g.body });
       checkGrader(err, where, g, abs, referenced, dir);
     }
-    if (!count) err(`${dir}: needs at least one grader in graders/ with front matter`);
+    if (!count && !gradersLink) err(`${dir}: needs at least one grader in graders/ with front matter`);
   }
 
   // A referenced fixture that git ignores works here but is missing from a clean checkout. Only
   // files that exist are asked about, since check-ignore also lists a missing path that matches
-  // a pattern. Exit 0: some are ignored; 1: none; 128 or no git at all: skipped. Tracked files
-  // are never listed, which is right: a clean checkout has them.
+  // a pattern. Exit 0: some are ignored; 1: none. Anything else (no git on PATH, or a repository
+  // git can't read, such as one owned by another user or with a damaged index) skips the check
+  // with a warning that says why: skipped quietly, the run passed as if it had run. In a copy
+  // without .git, it is skipped quietly. Tracked files are never listed, which is right: a clean
+  // checkout has them.
   if (referenced.size && existsSync(join(root, '.git'))) {
     const r = spawnSync('git', ['-C', root, 'check-ignore', '--stdin', '-z'], { input: `${[...referenced].join('\0')}\0`, encoding: 'utf8' });
     if (r.status === 0) for (const p of r.stdout.split('\0').filter(Boolean)) err(`${p}: ignored by .gitignore, so a clean checkout lacks it (git check-ignore -v ${p} names the rule)`);
+    else if (r.status !== 1) {
+      const why = r.error?.code === 'ENOENT' ? 'git isn\'t on PATH' : `git check-ignore failed: ${String(r.stderr ?? '').trim().split('\n')[0] || r.error?.message || `exit ${r.status ?? r.signal}`}`;
+      warn(`the check that .gitignore hides no file a case names (scaffold_script, history_file, baseline_file) was skipped: ${why}`);
+    }
   }
   return cases;
 }
 
 // ---------- this repo's rules for runs ----------
-// True when a file of the case didn't read (it didn't parse, or a grader has no front matter).
-// checkEvalCases has reported that file, and the rules below would misread the case without it.
+// True when a file of the case didn't read (it didn't parse, a grader has no front matter, a case
+// file or the graders folder is a link, also one that leads nowhere, or the recording is there only
+// in another letter case, which a file system that ignores letter case would read and another
+// wouldn't). checkEvalCases has reported that file, and the rules below would misread the case
+// without it.
 function unread(root, c) {
   const abs = join(root, c.dir);
   const gdir = join(abs, 'graders');
-  const graders = isDir(gdir) ? readdirSync(gdir).filter((f) => f.endsWith('.md')).length : 0;
-  return (isFile(join(abs, 'prompt.md')) && !c.prompt) || (isFile(join(abs, 'case.yaml')) && !c.caseYaml) || graders !== c.graders.length;
+  const there = (p) => isFile(p) || isLink(p);
+  const graders = isDir(gdir) && !isLink(gdir) ? readdirSync(gdir).filter((f) => f.endsWith('.md')).length : 0;
+  const history = isMapping(c.caseYaml?.context) ? c.caseYaml.context.history_file : undefined;
+  return (there(join(abs, 'prompt.md')) && !c.prompt) || (there(join(abs, 'case.yaml')) && !c.caseYaml) || isLink(gdir) || graders !== c.graders.length
+    || (inside(history) && otherCase(abs, history) !== null);
 }
 
 // A case's settings as claude plugin eval resolves them: a key in prompt.md's front matter wins
@@ -572,6 +713,28 @@ function readRecording(file) {
   };
 }
 
+// Whether a regex grader's pattern spells out the words of the Full prompt heading with something
+// else than one space between them, such as \s+, [ ] or \x20, and finds the heading: its text holds
+// both words, in any letter case, and it matches a reply that starts with the heading (a # to ####
+// heading, a bold label or a label with a colon) and its block, but not the same reply with either
+// word of the heading changed, so "Full|prompt" doesn't count. Only such patterns run here, on these
+// short replies. Each test makes a new RegExp, as claude plugin eval does; a pattern or flags that
+// don't compile find nothing here (checkGrader names them).
+const FULL_PROMPT_REPLIES = [...['# ', '## ', '### ', '#### '].map((h) => `${h}Full prompt`), '**Full prompt**', 'Full prompt:']
+  .map((heading) => `${heading}\n\`\`\`text\nWrite the notes.\n\`\`\`\n`);
+function findsFullPrompt(pattern, flags) {
+  if (!/full/i.test(pattern) || !/prompt/i.test(pattern)) return false;
+  const test = (text) => { try { return new RegExp(pattern, typeof flags === 'string' ? flags : '').test(text); } catch { return false; } };
+  return FULL_PROMPT_REPLIES.some((r) => test(r) && !test(r.replace('Full prompt', 'Rough prompt')) && !test(r.replace('Full prompt', 'Full notes')));
+}
+
+// The inputs of a Skill call that starts prompt-engine, as a tool_used grader's input_match reads
+// them: claude plugin eval tests new RegExp(input_match) against the call's input as text (read in
+// 2.1.322's code), JSON text as the cases' own pattern reads it, which counted the calls of step
+// 1d's runs. The skill is named as a plugin's or on its own, with or without args.
+const SKILL_INPUTS = ['prompt-engine:prompt-engine', 'prompt-engine']
+  .flatMap((skill) => [{ skill }, { skill, args: 'improve my prompt' }]).map((input) => JSON.stringify(input));
+
 // This repo's rules for how the cases run and score, which claude plugin eval doesn't require.
 // cases is checkEvalCases's result; a case with a file that didn't read is skipped.
 export function checkSuiteRules(root, cases, err) {
@@ -585,9 +748,16 @@ export function checkSuiteRules(root, cases, err) {
     if (s.tags.includes('trigger')) {
       const skill = c.graders.filter((g) => g.data.type === 'tool_used' && g.data.tool === 'Skill');
       if (!skill.length) err(`${c.dir}: a case tagged trigger needs a tool_used grader on Skill (repo rule)`);
-      // checkGrader reports an arm value other than with-only or both.
+      // checkGrader reports an arm value other than with-only or both, and min: 0 without max. A
+      // range of calls that holds both 0 and 1, min: 0 with a max of 1 or more, passes whether the
+      // skill starts or not. So does an input_match that matches none of the calls that start the
+      // skill, which then aren't counted; with min of 1 or more, the grader fails either way.
       for (const g of skill) {
         if (g.data.arm === undefined || g.data.arm === 'with-only') err(`${g.file}: a trigger case's Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)`);
+        if (g.data.min === 0 && whole(g.data.max, 1, Infinity)) err(`${g.file}: min: 0 with a max above 0 passes whether the skill starts or not; use min of 1 or more to check that it starts, or max: 0 to check that it doesn't (repo rule)`);
+        const match = g.data.input_match;
+        const missed = typeof match === 'string' && compileError(match) === null ? SKILL_INPUTS.filter((i) => !new RegExp(match).test(i)) : [];
+        if (missed.length) err(`${g.file}: input_match doesn't match ${missed.join(' or ')}, the input of a Skill call that starts prompt-engine, so claude plugin eval doesn't count such a call and the grader can't tell whether the skill started; match the skill named prompt-engine and prompt-engine:prompt-engine, with and without args (repo rule)`);
       }
     }
     // Every case pins the agent under test, and all pin the same one, so the scores of a run
@@ -620,6 +790,21 @@ export function checkSuiteRules(root, cases, err) {
     if (Object.hasOwn(LINT_GRADER_CASES, c.name) && !c.graders.some((g) => g.data.type === 'llm' && g.name.endsWith('-no-invention'))) {
       err(`${c.dir}: an output case (LINT_GRADER_CASES in scripts/build.mjs) needs an llm grader named <n>-no-invention.md, which checks that every name, number, date or URL the user didn't give is a placeholder or an assumption, or, in an image or video case, that every new thing the user didn't give is in an assumption (repo rule)`);
     }
+    // A case that LINT_GRADER_CASES leaves out gets neither its lint graders nor the rule above, so
+    // an output case is also known by its graders: a regex grader on the reply (claude plugin eval's
+    // default target), with match contains or count:N, whose pattern spells out the words Full
+    // prompt: as that text, or with something else between them that finds the heading, as
+    // Full\s+prompt does (findsFullPrompt). Not caught: a case whose graders find the heading without
+    // spelling it out, as the translated cases do, or only along with other text, as
+    // followup-fill-placeholders' does, or only through llm graders.
+    const lookup = c.graders.find((g) => {
+      const d = g.data;
+      const p = d.pattern ?? (g.body !== '' ? g.body : undefined);
+      return d.type === 'regex' && (d.target === undefined || d.target === 'last_message')
+        && (d.match === undefined || d.match === 'contains' || /^count:[1-9]/.test(d.match)) && typeof p === 'string'
+        && (/full prompt/i.test(p) || findsFullPrompt(p, d.flags));
+    });
+    if (lookup && !Object.hasOwn(LINT_GRADER_CASES, c.name)) err(`${c.dir}: graders/${lookup.name}.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts/build.mjs, so that the build writes its lint graders and validate.mjs requires a no-invention judge (repo rule)`);
     // A tool_used grader with min: 0, such as a max: 0 check, passes with zero calls, which is
     // all a run can make of a tool it doesn't grant. Listed in allowed_tools, the tool shows as
     // not granted in the progress output; a grader that requires it in the trace fails the case.
@@ -652,11 +837,52 @@ const NEXT = 'What next?';
 const SAVE = 'Save to file';
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// A heading as the method writes it: "### Full prompt".
-const headingRe = (h) => new RegExp(`#+[ \\t]*${esc(h)}`);
-// The text of the fenced block right after a heading, closed by a fence as long as its opener;
-// null when no fenced block follows the heading.
-const fencedAfter = (text, h) => text.match(new RegExp(`#+[ \\t]*${esc(h)}[^\\n]*\\n\\s*(\`{3,})[^\\n]*\\n([\\s\\S]*?)\\n\\1[ \\t]*(?:\\n|$)`))?.[2] ?? null;
+// A heading as the method writes it: "### Full prompt". It starts at the first # of a run, which
+// gives the same answers: tried from each # of a long run, it took quadratic time.
+const headingRe = (h) => new RegExp(`(?<!#)#+[ \\t]*${esc(h)}`);
+// The text of the fenced block right after a heading, closed by a line of as many backticks as its
+// opener has (and spaces or tabs); null when no fenced block follows the heading. The pattern this
+// replaces also read the opener as a shorter run of three or more of its backticks, so the whole run
+// is tried first, then each shorter one. It tried the rest of the text from each heading whose fence
+// had no closing line, which took quadratic time on a run of such headings, and on a long run of
+// backticks with no line break after it. Here the fence lines are found in one pass, and each length
+// is looked for once: a length with no closing line after one heading has none after a later one. A
+// heading later on the same line has the same block, so the search for the next heading starts on
+// the next line, and the opening fence is tried once for each line, sticky. A pattern that read the
+// heading together with the rest of its line was tried to the line's end from each heading on it,
+// which took quadratic time on a line of headings with no fence after it.
+const fencedAfter = (text, h) => {
+  const heading = new RegExp(`(?<!#)#+[ \\t]*${esc(h)}`, 'g');
+  const opener = /\s*(?=(`{3,}))\1[^\n]*\n/y;
+  let fences = null; // backticks in a fence line -> where the line break before each such line is
+  const passed = new Map(); // backticks -> how many of those lines come before the block looked at
+  for (let m; (m = heading.exec(text));) {
+    // The line after the heading's; with none, no block follows this heading or a later one.
+    const next = text.indexOf('\n', m.index + m[0].length) + 1;
+    if (next === 0) return null;
+    heading.lastIndex = next;
+    opener.lastIndex = next;
+    const open = opener.exec(text);
+    if (open === null) continue;
+    const start = opener.lastIndex;
+    if (fences === null) {
+      fences = new Map();
+      for (const f of text.matchAll(/\n(`{3,})[ \t]*(?=\n|$)/g)) {
+        const at = fences.get(f[1].length);
+        if (at) at.push(f.index);
+        else fences.set(f[1].length, [f.index]);
+      }
+    }
+    for (let n = open[1].length; n >= 3; n--) {
+      const at = fences.get(n) ?? [];
+      let i = passed.get(n) ?? 0;
+      while (i < at.length && at[i] < start) i++;
+      passed.set(n, i);
+      if (i < at.length) return text.slice(start, at[i]);
+    }
+  }
+  return null;
+};
 // Quoted text and the text it is looked up in, in one form: NFKC, dashes as -, no ` or * (code
 // and emphasis marks), curly quotes straight, each run of white space as one space, lowercase.
 const normalizeQuote = (s) => s.normalize('NFKC').replace(/[\u{2010}-\u{2015}\u{2212}]/gu, '-').replace(/[`*]/g, '')
@@ -678,36 +904,138 @@ function roundOptions(round) {
   }
   return options;
 }
-// The save path the recorded menu offers: on the line with the Save to file entry, the first
-// backticked token that looks like a file path (it has a / or \, or a file extension), so a reply
-// keyword such as `3` before it doesn't count.
-const savePathOf = (text, lineRe) => {
-  const line = text?.match(lineRe)?.[1];
-  return line === undefined ? undefined : [...line.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).find((t) => /[\\/]/.test(t) || /\.[A-Za-z0-9]+$/.test(t));
+// The save path the recorded menu offers: on the line of the first Save to file after the What
+// next? heading, the first backticked token that looks like a file path (it has a / or \, or a file
+// extension), so a reply keyword such as `3` before it doesn't count. Found with indexOf: a lazy
+// pattern tried the rest of the text from each What next? that no Save to file followed, which took
+// quadratic time on a run of them; with none after the first, there is none after a later one.
+const savePathOf = (text) => {
+  const next = text?.indexOf(NEXT) ?? -1;
+  const at = next < 0 ? -1 : text.indexOf(SAVE, next + NEXT.length);
+  if (at < 0) return undefined;
+  const end = text.indexOf('\n', at);
+  const line = text.slice(at + SAVE.length, end < 0 ? text.length : end);
+  return [...line.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).find((t) => /[\\/]/.test(t) || /\.[A-Za-z0-9]+$/.test(t));
 };
 // A relative path in one form, so ./prompts/x.md, prompts//x.md and prompts\x.md name one file.
 const samePath = (a, b) => posix.normalize(a.replace(/\\/g, '/')) === posix.normalize(b.replace(/\\/g, '/'));
-// Whether a reply picks option q+letter, written as "2c" or "2: c".
-const picks = (reply, { q, letter }) => new RegExp(`(?:^|[^0-9a-z])${q}\\s*:?\\s*${letter}\\b`, 'i').test(reply);
+// Whether a reply picks option q+letter, written as "2c" or "2: c". The spaces after a colon are
+// matched only after one: two runs of \s* side by side split a long run of spaces every way, which
+// took quadratic time.
+const picks = (reply, { q, letter }) => new RegExp(`(?:^|[^0-9a-z])${q}\\s*(?::\\s*)?${letter}\\b`, 'i').test(reply);
 // The prompt a case sends: prompt.md's body, else execution.prompt in case.yaml.
 const promptOf = (c) => c.prompt?.body || (isMapping(c.caseYaml?.execution) && typeof c.caseYaml.execution.prompt === 'string' ? c.caseYaml.execution.prompt.trim() : '');
 // An llm grader's criteria: the criteria key, else the file's body, as the CLI reads them.
 const criteriaOf = (g) => (g.data.type === 'llm' ? g.data.criteria ?? (g.body !== '' ? g.body : undefined) : undefined);
 // The two ways a rubric quotes the user's request: in <original_prompt> tags, and as the first
 // quoted string after "The user's whole request" (so "The user's whole request, in Spanish, was
-// "..."" counts too). Straight or curly quotes and apostrophe.
-const ORIGINAL_PROMPT = /<original_prompt>([\s\S]*?)<\/original_prompt>/g;
-const WHOLE_REQUEST = /The user['\u{2019}]s whole request\b[^"\u{201C}\n]*["\u{201C}]([^"\u{201D}\n]+)["\u{201D}]/gu;
-const WHOLE_REQUEST_MARK = /The user['\u{2019}]s whole request\b/gu;
-// Text in straight or curly double quotes, on one line.
-const QUOTE = /"([^"\n]+)"|\u{201C}([^\u{201D}\n]+)\u{201D}/gu;
+// "..."" counts too). Straight or curly quotes. Both count in any letter case, so that no form of
+// them is skipped without a word. The tags count with white space inside them, as in
+// < original_prompt > and < /original_prompt >, and an opening tag with more than its name in it,
+// such as an attribute, counts as one and is reported as one that can't be read. The phrase counts
+// with any apostrophe people type, any punctuation mark or symbol (', ’, ‘, ´, `, ′ or ＇) or the
+// modifier letters ʹ, ʻ and ʼ, and with any white space between its words. Other wordings, such as
+// "The user's entire request", and quotes in single quotes aren't read (CONTRIBUTING.md says so).
+// Another quotation mark (« », ‹ ›, „, 「 or 『) between the phrase and the double quotes makes the
+// phrase unreadable: the request quoted in that mark was passed over for a later double-quoted word.
+const ORIGINAL_PROMPT_OPEN = /<\s*original_prompt\b/gi;
+const WHOLE_REQUEST_MARK = /The\s+user[\p{P}\p{S}\u{2B9}\u{2BB}\u{2BC}]s\s+whole\s+request\b/giu;
+// Both forms are read in time in step with the text. Lazy patterns, from an opening tag to its
+// closing tag and from the phrase to the quote after it, tried the rest of the text or line again
+// from each tag or phrase that nothing closed, which took quadratic time on a run of them. The
+// readers below give the same answers. When an opening tag has no closing tag after it, no later one
+// has, so the reading stops there. The phrases before one quotation mark or line break share it,
+// and so do the quotes that open before one ", ” or line break, so each is looked for once.
+const PROMPT_TAG_OPEN = /<\s*original_prompt\s*>/gi;
+const PROMPT_TAG_CLOSE = /<\s*\/\s*original_prompt\s*>/gi;
+// After the phrase, the first quotation mark or line break; after the " or “ that opens the request,
+// the first ", ” or line break.
+const REQUEST_STOP = /["\u{201C}\u{AB}\u{BB}\u{2039}\u{203A}\u{201E}\u{300C}\u{300E}\n]/gu;
+const REQUEST_QUOTE_END = /["\u{201D}\n]/gu;
+// The text in each <original_prompt> block: from an opening tag to the first closing tag after it.
+function originalPrompts(text) {
+  const blocks = [];
+  for (let from = 0; ; from = PROMPT_TAG_CLOSE.lastIndex) {
+    PROMPT_TAG_OPEN.lastIndex = from;
+    if (!PROMPT_TAG_OPEN.exec(text)) return blocks;
+    PROMPT_TAG_CLOSE.lastIndex = PROMPT_TAG_OPEN.lastIndex;
+    const close = PROMPT_TAG_CLOSE.exec(text);
+    if (!close) return blocks;
+    blocks.push(text.slice(PROMPT_TAG_OPEN.lastIndex, close.index));
+  }
+}
+// The quoted request after each "The user's whole request": when the first quotation mark or line
+// break after the phrase is " or “, the text from there to the next ", ” or line break, if that is a
+// quotation mark and the text isn't empty. A phrase inside a quote already found is passed over.
+function wholeRequests(text) {
+  const quotes = [];
+  let resume = 0; // where the last quote found ends
+  let stop = -1; // the first quotation mark or line break after the last phrase
+  let end = -1; // the first ", ” or line break after the last opening quote
+  for (const m of text.matchAll(WHOLE_REQUEST_MARK)) {
+    if (m.index < resume) continue;
+    const after = m.index + m[0].length;
+    if (stop < after) {
+      REQUEST_STOP.lastIndex = after;
+      stop = REQUEST_STOP.exec(text)?.index ?? text.length;
+    }
+    if (text[stop] !== '"' && text[stop] !== '\u{201C}') continue;
+    if (end <= stop) {
+      REQUEST_QUOTE_END.lastIndex = stop + 1;
+      end = REQUEST_QUOTE_END.exec(text)?.index ?? text.length;
+    }
+    if (end > stop + 1 && (text[end] === '"' || text[end] === '\u{201D}')) {
+      quotes.push(text.slice(stop + 1, end));
+      resume = end + 1;
+    }
+  }
+  return quotes;
+}
+// Text in straight or curly double quotes, on one line. Curly quoted text holds no opening curly
+// quote: from each of a long run of unclosed ones, the match ran to the end of the line, which took
+// quadratic time. So in "\u{201C}a \u{201C}b\u{201D}" the quote is "b".
+const QUOTE = /"([^"\n]+)"|\u{201C}([^\u{201C}\u{201D}\n]+)\u{201D}/gu;
 // A rubric that judges the answers to a question round: it speaks of an answer, an option, a
 // recommendation, accepting or the ★. So "every recommended option the user accepted" counts as
 // well as "every answer" does.
 const ANSWER_CHECK = /\banswer(?:s|ed)?\b|★|\brecommend|\boptions?\b|\baccept/iu;
 // An option's answer as a rubric quotes it: the option's text before its ★ and the reason after
 // it, in normalizeQuote's form, without trailing punctuation or the · between options on one line.
-const answerKey = (text) => normalizeQuote(text.replace(/★[\s\S]*$/u, '')).replace(/[\s.,;:·•|]+$/u, '');
+// The run it drops starts where no such character comes before it: tried from each character of a
+// long run inside the text, the match took quadratic time.
+const answerKey = (text) => normalizeQuote(text.replace(/★[\s\S]*$/u, '')).replace(/(?<![\s.,;:·•|])[\s.,;:·•|]+$/u, '');
+
+// Where a quote of the request stands in a text the user typed: 'whole' when some occurrence of it
+// runs to the end of the request (only white space follows it to the end of the text, or
+// </command-args> comes right after it, where a recorded slash command's arguments end) and starts
+// a word (a quote that starts with a letter, digit or _ doesn't follow one); else 'mid-word' when
+// one runs to the end but starts inside a word, 'short' when it occurs but the request goes on
+// after it, and undefined when it doesn't occur. What comes before a quote that starts a word isn't
+// checked, so a lead-in such as "Use prompt-engine (quick mode) to" can stay out of it; a request
+// that grows at its start therefore isn't caught, which would need the rubrics to quote their
+// lead-ins too. Only white space follows an occurrence that ends where the text's trailing white
+// space starts, or later: found once for the text, since /\s*$/, tried at the end of each occurrence
+// of a quote such as a space, ran to the end of a long run of spaces each time, which took
+// quadratic time. trimEnd drops the characters that \s matches.
+const placeQuote = (text, quote) => {
+  const tail = text.trimEnd().length;
+  let place;
+  for (let i = text.indexOf(quote); i >= 0; i = text.indexOf(quote, i + 1)) {
+    const end = i + quote.length;
+    if (end < tail && !text.startsWith('</command-args>', end)) place ??= 'short';
+    else if (/^[\p{L}\p{M}\p{N}_]/u.test(quote) && /[\p{L}\p{M}\p{N}_]$/u.test(text.slice(Math.max(0, i - 2), i))) place = 'mid-word';
+    else return 'whole';
+  }
+  return place;
+};
+// The best place of a quote in any of the texts the user typed, and what an error says about it.
+const placeIn = (typed, quote) => {
+  const places = typed.map((t) => placeQuote(t, quote));
+  return ['whole', 'mid-word', 'short'].find((p) => places.includes(p));
+};
+const misplaced = (place, source) => (place === 'short' ? `is in ${source}, but the request goes on after it; quote it to its end, word for word`
+  : place === 'mid-word' ? `is in ${source}, but starts inside a word there; quote the request from the start of a word, word for word`
+  : `isn't in ${source} word for word`);
 
 // This repo's checks on each case's conversation, as described above. contract is
 // data/contract.json. A case with a file that didn't read is skipped.
@@ -720,7 +1048,6 @@ export function checkConversations(root, cases, { err, contract }) {
   if (missing.length) err(`data/contract.json: required lacks ${missing.join(', ')}, which the history checks in scripts/eval-cases.mjs look for; change the two together`);
   const full = headingRe(FULL);
   const next = headingRe(NEXT);
-  const saveLineRe = new RegExp(`${esc(NEXT)}[\\s\\S]*?${esc(SAVE)}([^\\n]*)`);
   for (const c of cases) {
     if (unread(root, c)) continue;
     const s = settings(c);
@@ -732,7 +1059,10 @@ export function checkConversations(root, cases, { err, contract }) {
     // criteria and the reply, so a rubric that judges against the request quotes it, and the quote
     // must be the case's own, word for word: in prompt.md's body or, in a history case, in what the
     // user typed in the recording. Only the text inside the tags or quotes counts, so a gloss next
-    // to it doesn't. A misquoted request is reported here only, not by the history quote rule below.
+    // to it doesn't. The quote also runs to the end of the request (placeQuote): a judge told that
+    // a shorter text is the whole request would count the rest as invented. It starts a word, too,
+    // so a quote cut inside one doesn't pass. A misquoted request is reported here only, not by the
+    // history quote rule below.
     const typed = [reply, ...(rec?.userTexts ?? [])];
     const source = rec ? 'prompt.md or a recorded user message' : 'prompt.md';
     const misquoted = new Set(); // grader file + "\0" + quote
@@ -741,16 +1071,18 @@ export function checkConversations(root, cases, { err, contract }) {
       if (typeof criteria !== 'string') continue;
       // A marker that doesn't parse would be skipped without a word: an opening tag without its
       // closing tag, an empty block, or the request's quote on another line or across a line break.
-      const blocks = [...criteria.matchAll(ORIGINAL_PROMPT)];
-      if ((criteria.match(/<original_prompt>/g) ?? []).length !== blocks.length || blocks.some((m) => m[1].trim() === '')) err(`${g.file}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`);
-      for (const m of blocks) {
-        if (m[1].trim() !== '' && !typed.some((t) => t.includes(m[1].trim()))) err(`${g.file}: the <original_prompt> text isn't in ${source} word for word (repo rule)`);
+      const blocks = originalPrompts(criteria).map((b) => b.trim());
+      if ((criteria.match(ORIGINAL_PROMPT_OPEN) ?? []).length !== blocks.length || blocks.includes('')) err(`${g.file}: an <original_prompt> tag without its closing tag or with more than its name in it, or an empty block, which validate.mjs can't check (repo rule)`);
+      for (const block of blocks) {
+        const place = block === '' ? 'whole' : placeIn(typed, block);
+        if (place !== 'whole') err(`${g.file}: the <original_prompt> text ${misplaced(place, source)} (repo rule)`);
       }
-      const requests = [...criteria.matchAll(WHOLE_REQUEST)];
+      const requests = wholeRequests(criteria);
       if ((criteria.match(WHOLE_REQUEST_MARK) ?? []).length !== requests.length) err(`${g.file}: "The user's whole request" isn't followed by the request in quotes on the same line, which validate.mjs can't check (repo rule)`);
-      for (const [, quote] of requests) {
-        if (typed.some((t) => t.includes(quote))) continue;
-        err(`${g.file}: the quoted request "${quote}" isn't in ${source} word for word (repo rule)`);
+      for (const quote of requests) {
+        const place = placeIn(typed, quote);
+        if (place === 'whole') continue;
+        err(`${g.file}: the quoted request "${quote}" ${misplaced(place, source)} (repo rule)`);
         misquoted.add(`${g.file}\0${quote}`);
       }
     }
@@ -815,7 +1147,7 @@ export function checkConversations(root, cases, { err, contract }) {
     // the menu's path are skipped, since the scaffold can put other text there. Graders on other
     // paths are skipped too, compared in samePath's form.
     const output = rec.assistantTexts.findLast((t) => full.test(t));
-    const savePath = savePathOf(output, saveLineRe);
+    const savePath = savePathOf(output);
     const checked = s.scaffold == null ? savePath : savePath?.replace(/(\.[^./\\]*)?$/, '-2$1');
     const fileGraders = c.graders.filter((g) => g.data.type === 'regex' && isMapping(g.data.target) && g.data.target.source === 'file');
     // A scaffold case's file graders can read files that the scaffold wrote, with no save at all.

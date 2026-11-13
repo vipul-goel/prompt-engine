@@ -36,6 +36,7 @@ const READS = [
   ['a no-break space after a value and an ideographic space before one', 'a: x\u{A0}\nb: \u{3000}x\nc: [y\u{A0}, z]\nd: {e: f\u{A0}}\n',
     { a: 'x\u{A0}', b: '\u{3000}x', c: ['y\u{A0}', 'z'], d: { e: 'f\u{A0}' } }],
   ['a kept block with only blank lines, and one that ends the text', 'a: |+\n\n\nb: 1\nc: |+\n  x\n', { a: '\n\n', b: 1, c: 'x\n' }],
+  ['a kept block whose last line of spaces ends with a line break', 'a: |+\n  x\n \n', { a: 'x\n\n' }],
 ];
 for (const [name, text, want] of READS) {
   test(`parseYaml reads ${name}`, () => assert.deepEqual(parseYaml(text, 'f.yaml'), want));
@@ -53,7 +54,11 @@ const REFUSES = [
   ['a tab inside a quoted value', 'a: "x\ty"\n', 'f.yaml:1: a tab'],
   ['a control character', 'a: 1\nb: x\u{7}y\n', 'f.yaml:2: control character U+0007'],
   ['a lone carriage return', 'a: x\ry: z\n', 'f.yaml:1: control character U+000D'],
+  // A file converted to CRLF twice: YAML reads CR CR LF as two line breaks, normalize() as one.
+  ['a line that ends in CR CR LF', 'a: 1\r\nb: |\r\r\n  x\r\r\n', 'f.yaml:2: the line ends in CR CR LF'],
   ['a line separator', 'a: x\u{2028}y\n', 'f.yaml:1: control character U+2028'],
+  ['a paragraph separator', 'a: x\u{2029}y\n', 'f.yaml:1: control character U+2029'],
+  ['a byte-order mark after the start', 'a: x\u{FEFF}y\n', 'f.yaml:1: control character U+FEFF'],
   ['a control character inside a block', 'a: |\n  x\u{85}\n', 'f.yaml:2: control character U+0085'],
   ['four spaces of indentation', 'a:\n    b: 1\n', 'f.yaml:2: unsupported indentation'],
   ['one space of indentation', 'a:\n b: 1\n', 'f.yaml:2: unsupported indentation'],
@@ -75,6 +80,12 @@ const REFUSES = [
   ['a block whose last lines have more spaces than its text', 'a: |\n  x\n    \nb: 1\n', 'f.yaml:1: a line of spaces after the block\'s last line has more spaces than its first line'],
   ['a nested block whose last lines have more spaces than its text', 'execution:\n  prompt: |-\n    x\n       \n  max_turns: 4\n', 'f.yaml:2: a line of spaces after the block\'s last line'],
   ['a block line indented less than the first', 'a: |\n    x\n  y\n', 'f.yaml:1: a line of the block is indented less than its first line'],
+  // Without a line break, a last line of only spaces isn't a line to YAML: Bun.YAML (which claude
+  // plugin eval uses), js-yaml and yaml read each of these blocks as "x\n", and this subset read
+  // "x\n\n".
+  ['a kept block that ends in a line of only spaces without a line break', 'a: |+\n  x\n ', 'f.yaml:3: a line of only spaces at the end of the file, without a line break'],
+  ['a kept folded block that ends in a line of only spaces without a line break', 'a: >+\n  x\n  ', 'f.yaml:3: a line of only spaces at the end of the file, without a line break'],
+  ['a nested kept block that ends in a line of only spaces without a line break', 'execution:\n  prompt: |+\n    x\n  ', 'f.yaml:4: a line of only spaces at the end of the file, without a line break'],
   ['a more-indented line in a folded block', 'a: >\n  x\n    y\n', 'f.yaml:1: a more-indented line in a > block'],
   ['a block with an indentation indicator', 'a: |2\n  x\n', 'f.yaml:1: unsupported YAML value |2'],
   ['a comment right after a block header', 'a: |#c\n  x\n', 'f.yaml:1: unsupported YAML value |#c'],
@@ -100,6 +111,10 @@ const REFUSES = [
   ['a value starting with "- "', 'a: - x\n', 'f.yaml:1: quote the value "- x"'],
   ['a value Psych reads as a symbol', 'a: :x\n', 'f.yaml:1: quote the value ":x"'],
   ...['True', 'yes', 'y', 'NULL', '+1', '012', '0x1F', '1e3', '.5', '.', '1_000', '1:30', '2026-11-07', '.inf'].map((v) => [`the plain value ${v}`, `a: ${v}\n`, `f.yaml:1: quote the value "${v}" (YAML parsers read it as a number, boolean, null or date`]),
+  // Values that only one entry of NOT_TEXT reads: a date with a time, a number the yaml package
+  // reads in YAML 1.1 mode, and YAML 1.1's merge and value keys.
+  ...['2026-11-07T10:00:00Z', '2026-11-07 10:00', 'e1', 'E-2', '<<', '='].map((v) => [`the plain value ${v}`, `a: ${v}\n`, `f.yaml:1: quote the value "${v}" (YAML parsers read it as a number, boolean, null or date`]),
+  ...['\u{FFFE}', '\u{FFFF}'].map((c) => [`the noncharacter U+${c.codePointAt(0).toString(16).toUpperCase()}`, `a: x${c}y\n`, `f.yaml:1: control character U+${c.codePointAt(0).toString(16).toUpperCase()}`]),
 ];
 for (const [name, text, message] of REFUSES) {
   test(`parseYaml refuses ${name}`, () => assert.throws(() => parseYaml(text, 'f.yaml'), (e) => e.message.startsWith(message) || assert.fail(`got: ${e.message}`)));
@@ -120,17 +135,31 @@ test('frontmatter reads the block after a BOM and CRLF, and trims the body', () 
   assert.deepEqual(frontmatter('---\n---\nbody\n', 'g.md'), { data: {}, body: 'body' });
 });
 
+test('frontmatter refuses a file whose lines end in CR CR LF, naming the line', () => {
+  assert.throws(() => frontmatter('---\r\ntype: regex\r\npattern: |\r\r\n  a\r\r\n---\r\nbody\r\n', 'g.md'), { message: /^g\.md:3: the line ends in CR CR LF/ });
+  assert.throws(() => frontmatter('---\ntype: llm\n---\nPASS if fine.\r\r\n', 'g.md'), { message: /^g\.md:4: the line ends in CR CR LF/ });
+});
+
 test('frontmatter ends at the first "---", as claude plugin eval does', () => {
   // On the closing line, text after "---" starts the body.
   assert.deepEqual(frontmatter('---\ntype: llm\n---more\n', 'g.md'), { data: { type: 'llm' }, body: 'more' });
-  assert.throws(() => frontmatter("---\npattern: 'a---b'\n---\n", 'g.md'), { message: 'g.md: "---" inside the front matter, where claude plugin eval ends it; keep "---" out of values and comments' });
-  assert.throws(() => frontmatter('---\n# see --- below\ntype: llm\n---\n', 'g.md'), /g\.md: "---" inside the front matter/);
-  assert.throws(() => frontmatter('---\ntype: llm\n', 'g.md'), { message: 'g.md: front matter without its closing "---"' });
+  assert.throws(() => frontmatter("---\npattern: 'a---b'\n---\n", 'g.md'), { message: 'g.md:2: "---" inside the front matter, where claude plugin eval ends it; keep "---" out of values and comments' });
+  assert.throws(() => frontmatter('---\n# see --- below\ntype: llm\n---\n', 'g.md'), /g\.md:2: "---" inside the front matter/);
+  assert.throws(() => frontmatter('---\ntype: llm\n', 'g.md'), { message: 'g.md:1: front matter without its closing "---"' });
 });
 
 test('frontmatter names the file line of a YAML error', () => {
   assert.throws(() => frontmatter('---\ntype: regex\npattern: "\\b"\n---\n', 'g.md'), /^Error: g\.md:3: unsupported escape \\b/);
   assert.throws(() => frontmatter('---\n\n\ntype: regex\nflags: True\n---\n', 'g.md'), /^Error: g\.md:5: quote the value "True"/);
+});
+
+// CONTRIBUTING.md says the check names the file and line of anything outside the YAML subset.
+test('frontmatter names the line of a "---" inside the front matter, and line 1 for one that never closes', () => {
+  assert.throws(() => frontmatter("---\ntype: regex\nflags: i\npattern: 'a---b'\n---\n", 'g.md'), { message: /^g\.md:4: "---" inside the front matter/ });
+  // Blank lines after the opening "---" and CRLF line endings don't shift the line.
+  assert.throws(() => frontmatter("---\n\n\npattern: 'a---b'\n---\n", 'g.md'), { message: /^g\.md:4: "---" inside the front matter/ });
+  assert.throws(() => frontmatter('---\r\ntype: regex\r\npattern: "a --- b"\r\n---\r\n', 'g.md'), { message: /^g\.md:3: "---" inside the front matter/ });
+  assert.throws(() => frontmatter('---\n\ntype: llm\nweight: 1\n', 'g.md'), { message: 'g.md:1: front matter without its closing "---"' });
 });
 
 // ---------- checkEvalCases on small trees ----------
@@ -139,9 +168,15 @@ const REGEX = "---\ntype: regex\npattern: 'x'\n---\n";
 
 function tree(files) {
   const dir = mkdtempSync(join(tmpdir(), 'pe-evalcases-'));
-  for (const [p, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(dir, p)), { recursive: true });
-    writeFileSync(join(dir, p), text);
+  try {
+    for (const [p, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, p)), { recursive: true });
+      writeFileSync(join(dir, p), text);
+    }
+  } catch (e) {
+    // A tree that can't be written leaves no folder behind.
+    rmSync(dir, { recursive: true, force: true });
+    throw e;
   }
   return dir;
 }
@@ -156,6 +191,19 @@ function check(files, prepare = () => {}) {
     rmSync(dir, { recursive: true, force: true });
   }
 }
+test('tree() removes its folder when a file can\'t be written', () => {
+  const t = mkdtempSync(join(tmpdir(), 'pe-leak-'));
+  const saved = Object.fromEntries(['TMPDIR', 'TEMP', 'TMP'].map((k) => [k, process.env[k]]));
+  try {
+    Object.assign(process.env, { TMPDIR: t, TEMP: t, TMP: t });
+    // "a" is a file, so the folder that a/b needs can't be made.
+    assert.throws(() => tree({ a: 'x', 'a/b': 'y' }));
+    assert.deepEqual(readdirSync(t), []);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    rmSync(t, { recursive: true, force: true });
+  }
+});
 const hasGit = spawnSync('git', ['--version']).status === 0;
 const git = (dir, ...args) => assert.equal(spawnSync('git', args, { cwd: dir }).status, 0, `git ${args.join(' ')}`);
 
@@ -169,7 +217,7 @@ test('checkEvalCases returns each case with what it read', () => {
     'evals/.DS_Store': 'x',
     'evals/results/run/out.json': '{}',
   });
-  assert.deepEqual(errors, []);
+  assert.deepEqual(errors, ['evals/demo/graders/notes.txt: claude plugin eval reads only the files in graders/ whose names end in .md, so it skips this one']);
   assert.deepEqual(cases, [{
     name: 'demo', dir: 'evals/demo',
     caseYaml: { schema_version: '1.1', name: 'demo', expected_outcome: 'Works.\n' },
@@ -212,6 +260,19 @@ test('checkEvalCases reads an unset min as 1, as the CLI does', () => {
   assert.deepEqual(errors, ['evals/demo/graders/01-x.md: min (1 when unset) is above max (0), so the grader never passes']);
 });
 
+// The CLI passes a tool_used grader when the matching calls number from min to max, and an unset
+// max has no limit: with min: 0 and no max, every run passes it, a run without the skill included.
+test('checkEvalCases refuses a tool_used grader that never fails: min: 0 without max', () => {
+  const { errors } = check({
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-skill.md': '---\ntype: tool_used\ntool: Skill\nmin: 0\narm: both\n---\n',
+    'evals/demo/graders/02-never.md': '---\ntype: tool_used\ntool: Write\nmin: 0\nmax: 0\n---\n',
+    'evals/demo/graders/03-at-most-two.md': '---\ntype: tool_used\ntool: Write\nmin: 0\nmax: 2\n---\n',
+    'evals/demo/graders/04-at-least-one.md': '---\ntype: tool_used\ntool: Skill\narm: both\n---\n',
+  });
+  assert.deepEqual(errors, ['evals/demo/graders/01-skill.md: min: 0 without max counts any number of calls, so the grader never fails; set max (max: 0 checks that the tool is never called), or drop min']);
+});
+
 test('checkEvalCases accepts an empty prompt.md body when case.yaml has execution.prompt, and a name set only in prompt.md', () => {
   const { errors } = check({
     'evals/demo/case.yaml': 'schema_version: "1.1"\nexecution:\n  prompt: Hi.\n',
@@ -231,14 +292,22 @@ test('checkEvalCases refuses an add_dirs entry the CLI refuses: the case folder,
     'evals/other/prompt.md': PROMPT,
     'evals/other/graders/01-x.md': REGEX,
   });
-  assert.deepEqual(errors, ['.', './graders', 'mocks/x', '../other'].map((d) => `evals/demo/case.yaml: add_dirs entry "${d}" is not a fixture folder in the case folder (one that isn't the case folder, graders/ or mocks/)`));
+  assert.deepEqual(errors, [
+    ...['.', './graders', 'mocks/x', '../other'].map((d) => `evals/demo/case.yaml: add_dirs entry "${d}" is not a fixture folder in the case folder (one that isn't the case folder, graders/ or mocks/)`),
+    'evals/demo/mocks: a case\'s own mocks aren\'t used in this repo, and validate.mjs doesn\'t check them (repo rule)',
+  ]);
 });
 
 test('checkEvalCases refuses a fixture path that leaves the case folder on any platform', () => {
+  // A plain file sits where joining each path to the case folder lands (<case>/tmp/ref.jsonl, and on
+  // POSIX a file named C:\setup.sh, which Windows can't hold), so only the path rule can refuse
+  // them: without the files, the plain-file check refused them whatever the path rule said.
   const { errors } = check({
     'evals/demo/case.yaml': 'schema_version: "1.1"\nname: demo\ncontext:\n  scaffold_script: C:\\setup.sh\n',
     'evals/demo/prompt.md': PROMPT,
     'evals/demo/graders/01-x.md': '---\ntype: baseline\nbaseline_file: /tmp/ref.jsonl\n---\nPASS if as good.\n',
+    'evals/demo/tmp/ref.jsonl': '{}\n',
+    ...(process.platform === 'win32' ? {} : { 'evals/demo/C:\\setup.sh': 'true\n' }),
   });
   assert.deepEqual(errors, [
     'evals/demo/case.yaml: context.scaffold_script "C:\\setup.sh" is not a plain file in the case folder',
@@ -261,6 +330,117 @@ test('checkEvalCases refuses a fixture that is a link or has a second name', { s
     'evals/demo/case.yaml: context.scaffold_script "setup.sh" is not a plain file in the case folder',
     'evals/demo/case.yaml: context.history_file "history.jsonl" is not a plain file in the case folder',
   ]);
+});
+
+// The same for a case folder, its case.yaml or prompt.md, its graders folder and a folder on a
+// fixture's path: git stores a link, not what it leads to, so a clone has nothing there, or a file
+// that holds a path, while the checks here passed through the link. Each is named, and nothing is
+// read through it; a case with a file left unread is skipped by the suite rules, as one that doesn't
+// parse is.
+test('checkEvalCases names a case, a case file, a graders folder or a fixture folder that is a link, and reads nothing through it', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => {
+  const outside = tree({
+    'case/prompt.md': promptMd(), 'case/graders/01-x.md': REGEX,
+    'prompt.md': promptMd(), 'case.yaml': 'schema_version: "1.1"\nname: b\n',
+    'graders/01-x.md': REGEX, 'fixtures/setup.sh': 'true\n', 'docs/a.txt': 'a\n', 'empty/a.txt': 'a\n',
+  });
+  try {
+    const at = (p) => join(outside, p);
+    const files = {
+      'evals/a/case.yaml': 'schema_version: "1.1"\nname: a\n',
+      'evals/a/graders/01-x.md': REGEX,
+      'evals/b/prompt.md': promptMd(),
+      'evals/b/graders/01-x.md': REGEX,
+      'evals/d/prompt.md': promptMd(),
+      'evals/e/case.yaml': 'schema_version: "1.1"\nname: e\ncontext:\n  scaffold_script: fixtures/setup.sh\n  add_dirs: [docs]\n',
+      'evals/e/prompt.md': promptMd('tags: [needs-write]\n'),
+      'evals/e/graders/01-x.md': REGEX,
+    };
+    const links = (dir) => {
+      symlinkSync(at('case'), join(dir, 'evals/c'));
+      symlinkSync(at('prompt.md'), join(dir, 'evals/a/prompt.md'));
+      symlinkSync(at('case.yaml'), join(dir, 'evals/b/case.yaml'));
+      symlinkSync(at('graders'), join(dir, 'evals/d/graders'));
+      symlinkSync(at('fixtures'), join(dir, 'evals/e/fixtures'));
+      symlinkSync(at('docs'), join(dir, 'evals/e/docs'));
+    };
+    const linked = (p, keep) => `${p}: a link; git stores the link, not what it leads to, so a clone has nothing there, or a file that holds a path, and validate.mjs doesn't read through it; keep ${keep}`;
+    const via = (field, rel, p) => `evals/e/case.yaml: ${field} "${rel}" goes through ${p}, a link; git stores the link, not what it leads to, so a clone has nothing there, or a file that holds a path; keep fixtures in the case folder itself`;
+    const expected = [
+      linked('evals/a/prompt.md', 'the file itself in evals/a'),
+      linked('evals/b/case.yaml', 'the file itself in evals/b'),
+      linked('evals/c', 'the case\'s files in evals/c itself'),
+      linked('evals/d/graders', 'the graders in evals/d/graders itself'),
+      via('context.scaffold_script', 'fixtures/setup.sh', 'evals/e/fixtures'),
+      via('add_dirs entry', 'docs', 'evals/e/docs'),
+    ];
+    const { errors, cases } = check(files, links);
+    assert.deepEqual(errors, expected);
+    assert.deepEqual(cases.map((c) => [c.name, c.caseYaml !== null, c.prompt !== null, c.graders.length]), [['a', true, false, 1], ['b', false, true, 1], ['d', false, true, 0], ['e', true, true, 1]]);
+    // The suite rules skip the cases with a file left unread, so no rule reports the model they don't pin.
+    const dir = tree(files);
+    try {
+      links(dir);
+      const suite = [];
+      checkSuiteRules(dir, checkEvalCases(dir, () => {}), (m) => suite.push(m));
+      assert.deepEqual(suite, []);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+// A fixture is looked up by its exact name, as claude plugin eval looks it up on a file system that
+// minds letter case, such as Linux CI's: on macOS's and Windows', setup.sh opened Setup.sh, so the
+// checks passed there and failed in CI with a message that didn't name the file. Each kind of
+// fixture whose name, or a folder on its path, the case folder holds only in another letter case
+// is named, with the name it holds, on every file system (de4b99f's rule for case.yaml and the rest).
+test('checkEvalCases names a fixture that the case folder holds only in another letter case, on every file system', () => {
+  const { errors } = check({
+    'evals/demo/case.yaml': 'schema_version: "1.1"\nname: demo\ncontext:\n  scaffold_script: setup.sh\n  history_file: history.jsonl\n  add_dirs: [fixtures/docs]\n',
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-x.md': '---\ntype: baseline\nbaseline_file: ref/out.jsonl\n---\nPASS if as good.\n',
+    'evals/demo/Setup.sh': 'true\n',
+    'evals/demo/History.jsonl': '{}\n',
+    'evals/demo/Fixtures/docs/a.txt': 'a\n',
+    'evals/demo/ref/Out.jsonl': '{}\n',
+    // A recording that no context.history_file names is looked for by its exact name too.
+    'evals/other/prompt.md': PROMPT,
+    'evals/other/graders/01-x.md': REGEX,
+    'evals/other/History.jsonl': '{}\n',
+  });
+  const differs = (where, what, rel, listed) => `${where}: ${what} "${rel}": the case folder has "${listed}", which only a file system that ignores letter case, such as macOS's or Windows', matches to that name; give both the same name`;
+  assert.deepEqual(errors, [
+    differs('evals/demo/case.yaml', 'context.scaffold_script', 'setup.sh', 'Setup.sh'),
+    differs('evals/demo/case.yaml', 'context.history_file', 'history.jsonl', 'History.jsonl'),
+    differs('evals/demo/case.yaml', 'add_dirs entry', 'fixtures/docs', 'Fixtures'),
+    differs('evals/demo/graders/01-x.md', 'baseline_file', 'ref/out.jsonl', 'ref/Out.jsonl'),
+    'evals/other/History.jsonl: no context.history_file in case.yaml names it, so claude plugin eval doesn\'t resume it; name it history.jsonl and set context.history_file: history.jsonl, or delete the file',
+  ]);
+});
+
+// The suite and conversation rules skip such a case, as one whose file didn't read: on macOS and
+// Windows they read the recording, and on Linux they didn't, so each reported other errors after it.
+test('checkSuiteRules and checkConversations skip a case whose recording is there only in another letter case', () => {
+  const other = { type: 'assistant', message: { id: 'msg_1', role: 'assistant', model: 'claude-other-5-5', content: [{ type: 'text', text: '### Full prompt\n```text\nWrite the notes.\n```\n\n### What next?\n1. Run it now \u{2605}' }], stop_reason: 'end_turn' } };
+  const files = recordedCase('rec', [userRow('write the notes'), other], '1', { '01-x.md': judge('The user\'s whole request was "write the notes".') });
+  files['evals/rec/History.jsonl'] = files['evals/rec/history.jsonl'];
+  delete files['evals/rec/history.jsonl'];
+  assert.deepEqual(histories(files).errors, [
+    'evals/rec/case.yaml: context.history_file "history.jsonl": the case folder has "History.jsonl", which only a file system that ignores letter case, such as macOS\'s or Windows\', matches to that name; give both the same name',
+  ]);
+});
+
+test('checkEvalCases names evals itself when it is a link, and reads no case through it', { skip: process.platform === 'win32' && 'links need extra rights on Windows' }, () => {
+  const outside = tree({ 'demo/prompt.md': promptMd(), 'demo/graders/01-x.md': REGEX });
+  try {
+    const { errors, cases } = check({ 'README.md': 'x\n' }, (dir) => symlinkSync(outside, join(dir, 'evals')));
+    assert.deepEqual(errors, ['evals: a link; git stores the link, not what it leads to, so a clone has nothing there, or a file that holds a path, and validate.mjs doesn\'t read through it; keep the cases in evals itself']);
+    assert.deepEqual(cases, []);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
 });
 
 test('checkEvalCases checks the form of each grader option, not only that it is there', () => {
@@ -301,6 +481,46 @@ test('checkEvalCases checks the form of each grader option, not only that it is 
   ]);
 });
 
+test('checkEvalCases wants count: followed by a number in a regex grader\'s match', () => {
+  const { errors } = check({
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-count.md': '---\ntype: regex\npattern: x\nmatch: count:12\n---\n',
+    'evals/demo/graders/02-count-word.md': '---\ntype: regex\npattern: x\nmatch: count:x\n---\n',
+  });
+  assert.deepEqual(errors, ['evals/demo/graders/02-count-word.md: match must be contains, not_contains or count:N']);
+});
+
+// claude plugin eval tests a regex grader's pattern once against the whole text: test() for contains
+// and not_contains, and for count:N the matches with g added. Under the sticky flag y each looks only
+// at the start of the text, so a not_contains check passes on any reply that doesn't start with what
+// it forbids. g is harmless there: each test is made with a new RegExp.
+test('checkEvalCases refuses the sticky flag y on a regex grader', () => {
+  const reply = 'Here is your prompt.\n\n### Full prompt\n```text\nx\n```\n';
+  assert.equal(new RegExp('Full prompt', 'i').test(reply), true);
+  assert.equal(new RegExp('Full prompt', 'iy').test(reply), false);
+  const { errors } = check({
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-no-draft.md': "---\ntype: regex\npattern: 'Full prompt'\nflags: iy\nmatch: not_contains\n---\n",
+    'evals/demo/graders/02-count.md': '---\ntype: regex\npattern: x\nflags: gy\nmatch: count:2\n---\n',
+    'evals/demo/graders/03-other-flags.md': "---\ntype: regex\npattern: 'Full prompt'\nflags: dgimsu\n---\n",
+  });
+  assert.deepEqual(errors, ['01-no-draft', '02-count'].map((n) => `evals/demo/graders/${n}.md: flags: y makes claude plugin eval look for the pattern only at the start of the text, since it tests the whole text once; leave y out, and write ^ (without the m flag) to match at the start (repo rule)`));
+});
+
+test('checkEvalCases refuses a grader type that is not a string, as claude plugin eval does', () => {
+  // A one-entry list looked up as an object key reads as its one string, so its options passed
+  // unchecked; the CLI refuses a type that isn't a string when it loads the case.
+  const { errors } = check({
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-ok.md': REGEX,
+    'evals/demo/graders/02-list.md': "---\ntype: [regex]\npattern: '('\nflags: zz\nmatch: sometimes\ntarget: nowhere\n---\n",
+    'evals/demo/graders/03-list-no-tool.md': '---\ntype: [tool_used]\n---\n',
+    'evals/demo/graders/04-quoted-list.md': '---\ntype: ["llm"]\n---\nPASS.\n',
+  });
+  const types = 'type must be one of regex, tool_used, tool_order, file_exists, llm, baseline';
+  assert.deepEqual(errors, ['02-list', '03-list-no-tool', '04-quoted-list'].map((n) => `evals/demo/graders/${n}.md: ${types}`));
+});
+
 test('checkEvalCases checks case values at the edges of the CLI\'s limits', () => {
   const at = (name, front) => ({ [`evals/${name}/prompt.md`]: `---\n${front}---\n\n${PROMPT}`, [`evals/${name}/graders/01-x.md`]: REGEX });
   const { errors } = check({
@@ -338,6 +558,15 @@ test('checkEvalCases reports only the parse error of a file that does not parse'
   assert.deepEqual(errors, ['evals/demo/case.yaml:2: duplicate key name', 'evals/other/graders/01-x.md:3: unsupported escape \\b; YAML reads it differently from a regex, so write \\\\ for a backslash']);
 });
 
+test('checkEvalCases names the line of a graders: list in case.yaml, which the subset can\'t read', () => {
+  const { errors } = check({
+    'evals/demo/case.yaml': 'schema_version: "1.1"\nname: demo\n\ngraders:\n  - type: regex\n    pattern: x\n',
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-x.md': REGEX,
+  });
+  assert.deepEqual(errors, ['evals/demo/case.yaml:4: graders: write each grader as graders/<name>.md, which validate.mjs checks (repo rule)']);
+});
+
 test('checkEvalCases reads a case.yaml with nothing but comments as no file, as claude plugin eval does', () => {
   const { errors, cases } = check({
     'evals/demo/case.yaml': '# kept for notes\n',
@@ -349,6 +578,74 @@ test('checkEvalCases reads a case.yaml with nothing but comments as no file, as 
   });
   assert.deepEqual(errors, ['evals/bare: no prompt (a prompt.md body, or execution.prompt in case.yaml)']);
   assert.deepEqual(cases.find((c) => c.name === 'demo').caseYaml, {});
+});
+
+// claude plugin eval looks for case.yaml, prompt.md and graders/ by those exact names, reads only the
+// .md files directly in graders/, and layers a case's own mocks/ over the suite's (its code, read in
+// 2.1.321). It skips anything else without a word, so each such entry is named, and so is a
+// recording that no context.history_file names. A name that differs only in letter case is read on
+// macOS and Windows and skipped on Linux.
+test('checkEvalCases names the entries that claude plugin eval skips for their name or place', () => {
+  const ASKED = 'schema_version: "1.1"\nname: NAME\nexecution:\n  prompt: Improve my prompt.\n';
+  const asked = (name) => ASKED.replace('NAME', name);
+  const { errors } = check({
+    'evals/a-yml/case.yml': asked('a-yml'),
+    'evals/a-yml/prompt.md': PROMPT,
+    'evals/a-yml/graders/01-x.md': REGEX,
+    'evals/b-case/Case.yaml': asked('b-case'),
+    'evals/b-case/prompt.md': PROMPT,
+    'evals/b-case/graders/01-x.md': REGEX,
+    'evals/c-markdown/case.yaml': asked('c-markdown'),
+    'evals/c-markdown/prompt.markdown': PROMPT,
+    'evals/c-markdown/graders/01-x.md': REGEX,
+    'evals/d-upper/case.yaml': asked('d-upper'),
+    'evals/d-upper/PROMPT.MD': PROMPT,
+    'evals/d-upper/graders/01-x.md': REGEX,
+    'evals/e-graders/prompt.md': PROMPT,
+    'evals/e-graders/graders/01-x.md': REGEX,
+    'evals/e-graders/graders/02-y.MD': REGEX,
+    'evals/e-graders/graders/03-z.markdown': REGEX,
+    'evals/e-graders/graders/safety/04-w.md': REGEX,
+    'evals/e-graders/graders/.DS_Store': 'x',
+    'evals/f-grader/prompt.md': PROMPT,
+    'evals/f-grader/graders/01-x.md': REGEX,
+    'evals/f-grader/grader/02-y.md': REGEX,
+    'evals/g-mocks/prompt.md': PROMPT,
+    'evals/g-mocks/graders/01-x.md': REGEX,
+    'evals/g-mocks/mocks/github/list_issues.md': '---\ntype: fixed\n---\n[]\n',
+    'evals/h-orphan/prompt.md': PROMPT,
+    'evals/h-orphan/graders/01-x.md': REGEX,
+    'evals/h-orphan/history.jsonl': '{}\n',
+    'evals/i-comments/case.yaml': '# notes only\n',
+    'evals/i-comments/prompt.md': PROMPT,
+    'evals/i-comments/graders/01-x.md': REGEX,
+    'evals/i-comments/history.jsonl': '{}\n',
+    // Named by context.history_file: resumed.
+    'evals/j-resumed/case.yaml': 'schema_version: "1.1"\nname: j-resumed\ncontext:\n  history_file: history.jsonl\n',
+    'evals/j-resumed/prompt.md': PROMPT,
+    'evals/j-resumed/graders/01-x.md': REGEX,
+    'evals/j-resumed/history.jsonl': '{}\n',
+    // Other files in a case folder, such as fixtures, are not checked here.
+    'evals/k-fixtures/prompt.md': PROMPT,
+    'evals/k-fixtures/graders/01-x.md': REGEX,
+    'evals/k-fixtures/notes.txt': 'x\n',
+  });
+  const skipped = (p, want) => `evals/${p}: claude plugin eval reads ${want}, not this name, so it skips this one; name it ${want}`;
+  const letterCase = (p, want) => `evals/${p}: claude plugin eval looks for ${want} by that exact name, which only a file system that ignores letter case, such as macOS's or Windows', matches to this one; name it ${want}`;
+  const orphan = (c) => `evals/${c}/history.jsonl: no context.history_file in case.yaml names it, so claude plugin eval doesn't resume it; set context.history_file: history.jsonl, or delete the file`;
+  assert.deepEqual(errors, [
+    skipped('a-yml/case.yml', 'case.yaml'),
+    letterCase('b-case/Case.yaml', 'case.yaml'),
+    skipped('c-markdown/prompt.markdown', 'prompt.md'),
+    letterCase('d-upper/PROMPT.MD', 'prompt.md'),
+    'evals/e-graders/graders/02-y.MD: claude plugin eval reads only the files in graders/ whose names end in .md, so it skips this one',
+    'evals/e-graders/graders/03-z.markdown: claude plugin eval reads only the files in graders/ whose names end in .md, so it skips this one',
+    'evals/e-graders/graders/safety: a folder; claude plugin eval reads only the .md files directly in graders/, so it skips the graders in it',
+    skipped('f-grader/grader', 'graders'),
+    'evals/g-mocks/mocks: a case\'s own mocks aren\'t used in this repo, and validate.mjs doesn\'t check them (repo rule)',
+    orphan('h-orphan'),
+    orphan('i-comments'),
+  ]);
 });
 
 // The git check (finding 67): a fixture the case names that git ignores.
@@ -396,6 +693,38 @@ test('checkEvalCases skips the git check when .git is not a repository (exit 128
   }
 });
 
+// With .git there, a skipped check says why, as validate.mjs's rules on tracked files do: a run
+// that only skipped it passed as if it had run. Without .git, it is skipped quietly.
+test('checkEvalCases warns when .git is there but git check-ignore fails or git is missing', () => {
+  const files = { ...ignoredCase(IGNORED), [`evals/demo/${IGNORED}`]: '{}\n' };
+  const warned = (prepare) => {
+    const dir = tree(files);
+    try {
+      prepare(dir);
+      const errors = [];
+      const warnings = [];
+      checkEvalCases(dir, (m) => errors.push(m), (m) => warnings.push(m));
+      assert.deepEqual(errors, []);
+      return warnings;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const SKIPPED = 'the check that .gitignore hides no file a case names (scaffold_script, history_file, baseline_file) was skipped: ';
+  // An empty .git folder: git check-ignore stops with "fatal: not a git repository", exit 128.
+  const [notRepo, ...more] = warned((dir) => mkdirSync(join(dir, '.git')));
+  assert.deepEqual(more, []);
+  assert.ok(notRepo?.startsWith(`${SKIPPED}git check-ignore failed: fatal: `), notRepo);
+  const path = process.env.PATH;
+  try {
+    process.env.PATH = '';
+    assert.deepEqual(warned((dir) => mkdirSync(join(dir, '.git'))), [`${SKIPPED}git isn't on PATH`]);
+  } finally {
+    process.env.PATH = path;
+  }
+  assert.deepEqual(warned(() => {}), []);
+});
+
 // ---------- checkSuiteRules: this repo's rules for how the cases run and score ----------
 const MODEL = 'claude-sonnet-5-5';
 // prompt.md with the given front matter lines and a model line, none when model is null.
@@ -429,6 +758,71 @@ test('checkSuiteRules scores a trigger case\'s Skill grader in both arms', () =>
     'evals/no-skill-grader: a case tagged trigger needs a tool_used grader on Skill (repo rule)',
     'evals/unset/graders/01-skill.md: a trigger case\'s Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)',
     'evals/with-only/graders/01-skill.md: a trigger case\'s Skill grader needs arm: both; without it, two-arm runs leave it out of the score (repo rule)',
+  ]);
+});
+
+// D27's rule wants the grader on Skill: one on another tool, even with arm: both, doesn't count.
+test('checkSuiteRules wants a trigger case\'s tool_used grader on Skill, not on another tool', () => {
+  const { schema, errors } = rules({
+    'evals/read-only/prompt.md': promptMd('tags: [trigger]\n'),
+    'evals/read-only/graders/01-read.md': '---\ntype: tool_used\ntool: Read\narm: both\n---\n',
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, ['evals/read-only: a case tagged trigger needs a tool_used grader on Skill (repo rule)']);
+});
+
+// claude plugin eval passes a tool_used grader when the calls number from min (1 when unset) to max
+// (no limit when unset). In a trigger case, a range that holds both 0 and 1 call, min: 0 with a max
+// of 1 or more, passes whether the skill starts or not. checkGrader names min: 0 without max.
+test('checkSuiteRules refuses a trigger case\'s Skill grader that passes whether the skill starts or not', () => {
+  const trigger = (name, range) => ({ [`evals/${name}/prompt.md`]: promptMd('tags: [trigger]\n'), [`evals/${name}/graders/01-skill.md`]: SKILL_CHECK(`${range}arm: both\n`) });
+  const { schema, errors } = rules({
+    ...trigger('zero-to-one', 'min: 0\nmax: 1\n'),
+    ...trigger('zero-to-fifty', 'min: 0\nmax: 50\n'),
+    ...trigger('starts', ''),
+    ...trigger('starts-once', 'min: 1\nmax: 1\n'),
+    ...trigger('never', 'min: 0\nmax: 0\n'),
+    // Outside a trigger case, "at most one call" is a check like any other.
+    'evals/smoke/prompt.md': promptMd('tags: [smoke]\n'),
+    'evals/smoke/graders/01-skill.md': SKILL_CHECK('min: 0\nmax: 1\n'),
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, ['fifty', 'one'].map((n) => `evals/zero-to-${n}/graders/01-skill.md: min: 0 with a max above 0 passes whether the skill starts or not; use min of 1 or more to check that it starts, or max: 0 to check that it doesn't (repo rule)`));
+});
+
+// claude plugin eval counts a call only when the grader's input_match matches the call's input, as
+// JSON text. One that matches no call that starts prompt-engine, such as the cases' own pattern with
+// a letter dropped, counts none: a max: 0 check then passes whether the skill starts or not, and a
+// check that it starts fails either way. Both directions, and the forms a call can take.
+test('checkSuiteRules refuses a trigger case\'s Skill grader whose input_match counts no call that starts prompt-engine', () => {
+  const OURS = '"skill"\\s*:\\s*"(?:[\\w-]+:)?prompt-engine"';
+  const trigger = (name, match, range = '') => ({ [`evals/${name}/prompt.md`]: promptMd('tags: [trigger]\n'), [`evals/${name}/graders/01-skill.md`]: SKILL_CHECK(`input_match: '${match}'\n${range}arm: both\n`) });
+  const PLUGIN = '{"skill":"prompt-engine:prompt-engine"}';
+  const PLUGIN_ARGS = '{"skill":"prompt-engine:prompt-engine","args":"improve my prompt"}';
+  const ALONE = '{"skill":"prompt-engine"}';
+  const ALONE_ARGS = '{"skill":"prompt-engine","args":"improve my prompt"}';
+  const { schema, errors } = rules({
+    ...trigger('ours-never', OURS, 'min: 0\nmax: 0\n'),
+    ...trigger('ours-starts', OURS),
+    ...trigger('dropped-never', OURS.replace('engine', 'engin'), 'min: 0\nmax: 0\n'),
+    ...trigger('dropped-starts', OURS.replace('engine', 'engin')),
+    ...trigger('plugin-only', '"prompt-engine:prompt-engine"', 'min: 0\nmax: 0\n'),
+    ...trigger('no-args', '^\\{"skill":"(?:prompt-engine:)?prompt-engine"\\}$'),
+    // Without input_match, every Skill call counts; one that doesn't compile is checkGrader's.
+    [`evals/any-skill/prompt.md`]: promptMd('tags: [trigger]\n'),
+    [`evals/any-skill/graders/01-skill.md`]: SKILL_CHECK('min: 0\nmax: 0\narm: both\n'),
+    ...trigger('broken', '(prompt-engine', 'min: 0\nmax: 0\n'),
+    // Outside a trigger case, the grader is a check like any other.
+    'evals/smoke/prompt.md': promptMd('tags: [smoke]\n'),
+    'evals/smoke/graders/01-skill.md': SKILL_CHECK(`input_match: '${OURS.replace('engine', 'engin')}'\n`),
+  });
+  assert.deepEqual(schema, ['evals/broken/graders/01-skill.md: input_match: Invalid regular expression: /(prompt-engine/: Unterminated group']);
+  const missing = (name, inputs) => `evals/${name}/graders/01-skill.md: input_match doesn't match ${inputs.join(' or ')}, the input of a Skill call that starts prompt-engine, so claude plugin eval doesn't count such a call and the grader can't tell whether the skill started; match the skill named prompt-engine and prompt-engine:prompt-engine, with and without args (repo rule)`;
+  assert.deepEqual(errors, [
+    missing('dropped-never', [PLUGIN, PLUGIN_ARGS, ALONE, ALONE_ARGS]),
+    missing('dropped-starts', [PLUGIN, PLUGIN_ARGS, ALONE, ALONE_ARGS]),
+    missing('no-args', [PLUGIN_ARGS, ALONE_ARGS]),
+    missing('plugin-only', [ALONE, ALONE_ARGS]),
   ]);
 });
 
@@ -626,6 +1020,58 @@ test('checkSuiteRules wants an llm no-invention grader in every output case, the
   assert.deepEqual(errors, [NEED('image-midjourney-quick'), NEED('research-quick-vector-databases'), NEED('video-veo-quick')]);
 });
 
+// A case that LINT_GRADER_CASES leaves out gets neither its lint graders nor the rule above, so an
+// output case is also known by a regex grader that looks for the Full prompt heading in the reply.
+test('checkSuiteRules names a case whose graders look for a Full prompt heading, when LINT_GRADER_CASES leaves it out', () => {
+  const NAMED = (name) => `evals/${name}: graders/01-x.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts/build.mjs, so that the build writes its lint graders and validate.mjs requires a no-invention judge (repo rule)`;
+  const one = (name, grader) => ({ [`evals/${name}/prompt.md`]: promptMd(), [`evals/${name}/graders/01-x.md`]: grader });
+  const { schema, errors } = rules({
+    ...one('newsletter', "---\ntype: regex\npattern: '#+\\s*Full prompt'\nflags: i\n---\n"),
+    ...one('in-body', '---\ntype: regex\ntarget: last_message\n---\n\n#+ full prompt\n'), // the pattern in the body, the target written out
+    ...one('counted', "---\ntype: regex\npattern: 'Full prompt'\nmatch: count:1\n---\n"),
+    // Not output cases by this rule: a question round with no Full prompt, a check of a saved file
+    // or of the trace, and an llm rubric.
+    ...one('asks', "---\ntype: regex\npattern: 'Full prompt'\nmatch: not_contains\n---\n"),
+    ...one('saved', "---\ntype: regex\npattern: 'Full prompt'\ntarget: {source: file, path: prompts/x.md}\n---\n"),
+    ...one('traced', "---\ntype: regex\npattern: 'Full prompt'\ntarget: trace\n---\n"),
+    ...one('judged', '---\ntype: llm\n---\n\nPASS if the reply has a Full prompt heading.\n'),
+    // A listed case, with its no-invention judge.
+    ...one('spanish-quick', "---\ntype: regex\npattern: 'Full prompt'\n---\n"),
+    'evals/spanish-quick/graders/02-no-invention.md': '---\ntype: llm\n---\n\nPASS if nothing is invented.\n',
+  });
+  assert.deepEqual(schema, []);
+  assert.deepEqual(errors, [NAMED('counted'), NAMED('in-body'), NAMED('newsletter')]);
+});
+
+// A pattern that writes \s+, [ ] or \x20 between the words spells them out too, and finds the same
+// heading. One with both words counts when it matches a reply with a Full prompt heading and its
+// block, and not the same reply with either word of the heading changed, so "Full|prompt" doesn't;
+// nor does a pattern without both words, such as "x", "prompt" or F\w+ p\w+.
+test('checkSuiteRules names an output case whatever its heading pattern writes between the words', () => {
+  const NAMED = (name) => `evals/${name}: graders/01-x.md looks for a Full prompt heading in the reply, so the case is an output case; add it to LINT_GRADER_CASES in scripts/build.mjs, so that the build writes its lint graders and validate.mjs requires a no-invention judge (repo rule)`;
+  const one = (name, pattern, flags = 'i') => ({ [`evals/${name}/prompt.md`]: promptMd(), [`evals/${name}/graders/01-x.md`]: `---\ntype: regex\npattern: '${pattern}'\nflags: ${flags}\n---\n` });
+  const { schema, errors } = rules({
+    ...one('spaces', '#+\\s*Full\\s+prompt'),
+    ...one('class', '#+\\s*Full[ ]prompt'),
+    ...one('hex', '#+\\s*Full\\x20prompt'),
+    ...one('bold', '\\*\\*FULL\\W+PROMPT\\*\\*'),
+    ...one('fenced', '#+\\s*Full\\s+prompt\\s*\\n```text', 'm'),
+    // Not output cases: patterns that a reply without the heading matches too, ones that don't spell
+    // out both words or that the heading doesn't satisfy, and one that doesn't compile.
+    ...one('any', 'x'),
+    ...one('word', 'prompt'),
+    ...one('either', 'Full|prompt'),
+    ...one('without-full', '(?:Full\\s+)?prompt'),
+    ...one('without-prompt', '#+\\s*Full(?:\\s+prompt)?'),
+    ...one('letters', '#+\\s*F\\w+\\s+p\\w+'),
+    ...one('asks', 'What next\\?'),
+    ...one('short', '#+\\s*Short\\s+version'),
+    ...one('broken', 'Full\\s+prompt('),
+  });
+  assert.deepEqual(schema, ["evals/broken/graders/01-x.md: pattern: Invalid regular expression: /Full\\s+prompt(/i: Unterminated group"]);
+  assert.deepEqual(errors, [NAMED('bold'), NAMED('class'), NAMED('fenced'), NAMED('hex'), NAMED('spaces')]);
+});
+
 // ---------- checkConversations: the history cases ----------
 const CONTRACT = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'contract.json'), 'utf8'));
 const REPLY_LINE = 'Reply `ok` to accept every ★, or answer like `2b 3: get managers to pilot a 4-day week`. Anything you skip gets the ★.';
@@ -731,6 +1177,36 @@ test('checkConversations names recording lines as the file numbers them, and che
   ]);
 });
 
+// The end of a recording, each part on its own: an output needs its What next? menu in the same
+// message, and the last assistant row has to say that it ended its turn.
+test('checkConversations wants a recorded output with its menu, in a last row that ended its turn', () => {
+  const output = '### Full prompt\n```text\nWrite the notes.\n```\n\n### What next?\n1. Run it now \u{2605}';
+  const noStop = assistantRow(output);
+  delete noStop.message.stop_reason;
+  const { errors } = histories({
+    ...recordedCase('no-menu', [userRow('write the notes'), assistantRow('### Full prompt\n```text\nWrite the notes.\n```')], '1', { '01-x.md': REGEX }),
+    ...recordedCase('no-stop', [userRow('write the notes'), noStop], '1', { '01-x.md': REGEX }),
+    ...recordedCase('whole', [userRow('write the notes'), assistantRow(output)], '1', { '01-x.md': REGEX }),
+  });
+  assert.deepEqual(errors, [
+    `evals/no-menu/history.jsonl: the last recorded assistant text is neither a question round (with "${CONTRACT.required.replyLine[0]}") nor an output with its Full prompt and What next? headings in one message; record it again (repo rule)`,
+    'evals/no-stop/history.jsonl: line 2, the last assistant row, has stop_reason (none), not end_turn, so the recorded turn didn\'t end; record it again (repo rule)',
+  ]);
+});
+
+// The grader's flags count: a case-insensitive pattern that matches the Full prompt only in
+// another letter case is fine, and so is one that the Short version matches only without them.
+test('checkConversations compares a saved-file regex with the recorded output under its own flags', () => {
+  const output = ['### Full prompt', '```text', '# Goal', 'Write the notes.', '```', '', '### Short version', '```text', 'Notes, goal first.', '```',
+    '', '### What next?', '1. Run it now \u{2605}', '3. Save to file: `out/notes.md`'].join('\n');
+  const { errors } = histories(recordedCase('flags', [userRow('write the notes'), assistantRow(output)], '3', {
+    '01-insensitive.md': savedFile('WRITE THE NOTES', 'flags: i\n'),
+    '02-sensitive.md': savedFile('Goal'),
+    '03-insensitive-short.md': savedFile('GOAL', 'flags: i\n'),
+  }));
+  assert.deepEqual(errors, ['evals/flags/graders/03-insensitive-short.md: pattern also matches the recorded Short version, so it can\'t tell the two apart (repo rule)']);
+});
+
 test('checkConversations checks regexes on the menu\'s save path against the recorded Full prompt, closed by a fence as long as its opener', () => {
   const output = [
     '### Full prompt', '````markdown', '# Goal', 'Write the notes.', '```text', 'an example block', '```', '# Output', 'Plain text.', '````',
@@ -775,6 +1251,41 @@ test('checkConversations holds the request text that a rubric quotes to the case
     'evals/followup/graders/02-misquoted.md: the quoted request "write the release notes" isn\'t in prompt.md or a recorded user message word for word (repo rule)',
     'evals/quick/graders/02-curly.md: the quoted request "escribe un post sobre mi nuevo trabajo" isn\'t in prompt.md word for word (repo rule)',
     'evals/quick/graders/04-spaces.md: the <original_prompt> text isn\'t in prompt.md word for word (repo rule)',
+  ]);
+});
+
+test('checkConversations wants a quoted request to run to the end of the request', () => {
+  const round = assistantRow(`1. Who?\n   a) Me ★\n\n${REPLY_LINE}`);
+  const command = (args) => `<command-message>prompt-engine:prompt-engine</command-message>\n<command-name>/prompt-engine:prompt-engine</command-name>\n<command-args>${args}</command-args>`;
+  const quick = (request) => `---\nmodel: ${MODEL}\n---\n\nUse prompt-engine in quick mode on this prompt:\n\n${request}\n`;
+  // Passed: a quote that ends where the request ends, after a lead-in on its line, at the end of a
+  // recorded message, or right before </command-args>.
+  const fine = histories({
+    'evals/lead-in/prompt.md': `---\nmodel: ${MODEL}\n---\n\nUse prompt-engine (quick mode) to write a Midjourney prompt: a cabin at night\n`,
+    'evals/lead-in/graders/01-no-invention.md': judge('The user\'s whole request was "write a Midjourney prompt: a cabin at night", in quick mode.'),
+    ...recordedCase('typed', [userRow('Use prompt-engine to improve this prompt:\nwrite a blog post about remote work\n'), round], 'ok', {
+      '01-request.md': judge('The user\'s whole request was "write a blog post about remote work". <original_prompt>write a blog post about remote work</original_prompt>'),
+    }),
+    ...recordedCase('command', [userRow(command('quick: write the launch notes for v2')), round], 'ok', {
+      '01-request.md': judge('The user\'s whole request was "write the launch notes for v2", and they replied "ok".'),
+    }),
+  });
+  assert.deepEqual(fine.errors, []);
+  // Reported: a request that goes on past the quote, which tells the judge it is shorter than it is.
+  const { errors } = histories({
+    'evals/quick/prompt.md': quick('write a launch email for my productivity app, 120 words, for existing users, with a 20% discount'),
+    'evals/quick/graders/01-no-invention.md': judge('The user\'s whole request was "write a launch email for my productivity app", in quick mode. It gives no length, audience or discount.'),
+    'evals/block/prompt.md': quick('Summarize the notes below in a table.\nKeep it under 200 words.'),
+    'evals/block/graders/01-kept.md': judge('<original_prompt>\nSummarize the notes below in a table.\n</original_prompt>\nPASS if the wording is kept.'),
+    ...recordedCase('followup', [userRow(command('quick: write the launch notes for v2, in French')), round], 'ok', {
+      '01-request.md': judge('The user\'s whole request was "write the launch notes for v2", and they replied "ok".'),
+    }),
+  });
+  const rest = 'but the request goes on after it; quote it to its end, word for word (repo rule)';
+  assert.deepEqual(errors, [
+    `evals/block/graders/01-kept.md: the <original_prompt> text is in prompt.md, ${rest}`,
+    `evals/followup/graders/01-request.md: the quoted request "write the launch notes for v2" is in prompt.md or a recorded user message, ${rest}`,
+    `evals/quick/graders/01-no-invention.md: the quoted request "write a launch email for my productivity app" is in prompt.md, ${rest}`,
   ]);
 });
 
@@ -857,10 +1368,55 @@ test('checkConversations reports a request marker that it cannot read, instead o
     'evals/quick/graders/03-unclosed.md': judge('<original_prompt>\nwrite a launch email\n</original-prompt>'),
     'evals/quick/graders/04-empty.md': judge('<original_prompt></original_prompt>'),
     'evals/quick/graders/05-fine.md': judge('The user\'s whole request was "write a launch email". <original_prompt>write a launch email</original_prompt>'),
+    // An opening tag with more than its name in it can't be read; white space inside a tag can.
+    'evals/quick/graders/06-attribute.md': judge('<original_prompt lang="en">write a launch email</original_prompt>'),
+    'evals/quick/graders/07-spaced-fine.md': judge('< original_prompt >write a launch email</ original_prompt >, and the user\u{2032}s whole request was "write a launch email".'),
   });
-  const tag = (f) => `evals/quick/graders/${f}: an <original_prompt> tag without its closing tag, or an empty block, which validate.mjs can't check (repo rule)`;
+  const tag = (f) => `evals/quick/graders/${f}: an <original_prompt> tag without its closing tag or with more than its name in it, or an empty block, which validate.mjs can't check (repo rule)`;
   const mark = (f) => `evals/quick/graders/${f}: "The user's whole request" isn't followed by the request in quotes on the same line, which validate.mjs can't check (repo rule)`;
-  assert.deepEqual(errors, [mark('01-next-line.md'), mark('02-two-lines.md'), tag('03-unclosed.md'), tag('04-empty.md')]);
+  assert.deepEqual(errors, [mark('01-next-line.md'), mark('02-two-lines.md'), tag('03-unclosed.md'), tag('04-empty.md'), tag('06-attribute.md')]);
+});
+
+// Word for word means in the request's own letter case and spacing too, unlike the looser
+// comparison of the quotes from a recording.
+test('checkConversations compares a quoted request with the case\'s in letter case and spacing', () => {
+  const { errors } = histories({
+    'evals/quick/prompt.md': `---\nmodel: ${MODEL}\n---\n\nwrite a launch email for my productivity app\n`,
+    'evals/quick/graders/01-case.md': judge('The user\'s whole request was "Write a launch email for my productivity app".'),
+    'evals/quick/graders/02-spacing.md': judge('The user\'s whole request was "write a launch  email for my productivity app".'),
+  });
+  assert.deepEqual(errors, [
+    'evals/quick/graders/01-case.md: the quoted request "Write a launch email for my productivity app" isn\'t in prompt.md word for word (repo rule)',
+    'evals/quick/graders/02-spacing.md: the quoted request "write a launch  email for my productivity app" isn\'t in prompt.md word for word (repo rule)',
+  ]);
+});
+
+test('checkConversations reads the request markers in any letter case, and wants a quoted request to start a word', () => {
+  const request = 'escribe un post de LinkedIn sobre mi nuevo trabajo';
+  const { errors } = histories({
+    'evals/quick/prompt.md': `---\nmodel: ${MODEL}\n---\n\nUsa prompt-engine en modo r\u{E1}pido:\n\n${request}\n`,
+    // The phrase and the tags in other letter cases are read, not skipped.
+    'evals/quick/graders/01-lowercase.md': judge('In quick mode, the user\'s whole request, in Spanish, was "escribe un post de LinkedIn sobre mi trabajo nuevo".'),
+    'evals/quick/graders/02-tag-case.md': judge('<Original_Prompt>\nSomething the user never wrote.\n</Original_Prompt>\nPASS if its wording is kept.'),
+    'evals/quick/graders/03-tag-unclosed.md': judge(`<ORIGINAL_PROMPT>\n${request}\n`),
+    // The request in guillemets, then a double-quoted phrase that ends the request: the marker
+    // can't be read, rather than the phrase taken for the request.
+    'evals/quick/graders/04-guillemets.md': judge('The user\'s whole request was \u{AB}escribe un post de LinkedIn sobre mi trabajo nuevo\u{BB}, a "nuevo trabajo" post.'),
+    // Quotes that run to the end of the request but start inside a word.
+    'evals/quick/graders/05-mid-word.md': judge('The user\'s whole request was "ribe un post de LinkedIn sobre mi nuevo trabajo".'),
+    'evals/quick/graders/06-mid-word-block.md': judge('<original_prompt>\nost de LinkedIn sobre mi nuevo trabajo\n</original_prompt>'),
+    // Fine: the request from the start of a word, after a lead-in, with the markers in other cases.
+    'evals/quick/graders/07-fine.md': judge(`the user\u{2019}s whole request, in Spanish, was "${request}". <ORIGINAL_PROMPT>${request}</ORIGINAL_PROMPT>`),
+  });
+  const midWord = 'is in prompt.md, but starts inside a word there; quote the request from the start of a word, word for word (repo rule)';
+  assert.deepEqual(errors, [
+    'evals/quick/graders/01-lowercase.md: the quoted request "escribe un post de LinkedIn sobre mi trabajo nuevo" isn\'t in prompt.md word for word (repo rule)',
+    'evals/quick/graders/02-tag-case.md: the <original_prompt> text isn\'t in prompt.md word for word (repo rule)',
+    'evals/quick/graders/03-tag-unclosed.md: an <original_prompt> tag without its closing tag or with more than its name in it, or an empty block, which validate.mjs can\'t check (repo rule)',
+    'evals/quick/graders/04-guillemets.md: "The user\'s whole request" isn\'t followed by the request in quotes on the same line, which validate.mjs can\'t check (repo rule)',
+    `evals/quick/graders/05-mid-word.md: the quoted request "ribe un post de LinkedIn sobre mi nuevo trabajo" ${midWord}`,
+    `evals/quick/graders/06-mid-word-block.md: the <original_prompt> text ${midWord}`,
+  ]);
 });
 
 test('checkConversations lets a rubric quote what the user typed, even where an option says the same', () => {
@@ -906,6 +1462,8 @@ test('checkConversations wants a rubric that judges the answers of the round the
       '10-options.md': judge('PASS if the prompt follows the options the user kept.'),
       // A rubric about the round's questions, not its answers, needs no quote either.
       '11-no-more-questions.md': judge('The reply asks no further questions.'),
+      // The \u{2605} alone marks an answer check, so a rubric about it quotes an answer too.
+      '12-star-unquoted.md': judge('PASS if the prompt follows each \u{2605}.'),
     }),
     // A recording that ends in an output: the answers were used already.
     ...recordedCase('output', [...recording, userRow('ok'), assistantRow('### Full prompt\n```text\nWrite the post.\n```\n\n### What next?\n1. Run it now ★')], 'Run it now', {
@@ -915,6 +1473,7 @@ test('checkConversations wants a rubric that judges the answers of the round the
   assert.deepEqual(errors, [
     quotesNone('round/graders/03-paraphrased.md'), quotesNone('round/graders/04-unquoted.md'), quotesNone('round/graders/05-partial.md'),
     quotesNone('round/graders/08-recommended-option.md'), quotesNone('round/graders/09-accepted.md'), quotesNone('round/graders/10-options.md'),
+    quotesNone('round/graders/12-star-unquoted.md'),
   ]);
 });
 
@@ -1262,3 +1821,57 @@ test('the translated cases want the labels in the user\'s language and accept de
     }
   }
 });
+
+// The module's patterns take time in step with the text they read. Each input here took quadratic
+// time on one long run of a character: the flow reader's checks of the entry so far, for each # and
+// each quote (about 10 seconds at 400,000 characters), and the trailing punctuation that answerKey
+// drops, in an option and in a rubric's quote (more than a minute at 200,000). The rest took
+// quadratic time on a run of an opening tag, phrase or heading that nothing closes, read again from
+// each: 400,000 to 500,000 characters of one took several seconds. Each must finish in under 2
+// seconds, which leaves room for a busy machine.
+const RUN = 200_000;
+const roundWith = (option) => `1. Who will read it?\n   a) ${option} ★ (they decide)\n   b) Employees\n\n${REPLY_LINE}`;
+const FAST = [
+  ['a flow entry with a run of #', () => parseYaml(`tags: [a${'#'.repeat(2 * RUN)}]\n`, 'f.yaml')],
+  ['a flow entry with a run of quotes', () => parseYaml(`tags: [a${"'".repeat(2 * RUN)}]\n`, 'f.yaml')],
+  ['an option with a run of dots inside it', () => histories(recordedCase('dots', [userRow('write a post'), assistantRow(roundWith(`Managers${'.'.repeat(RUN)}x`))], 'ok', {
+    '01-answers.md': judge('The answer "Employees" is used.'),
+  }))],
+  ['a rubric quote with a run of dots inside it', () => histories(recordedCase('dots', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
+    '01-answers.md': judge(`The answer "Managers${'.'.repeat(RUN)}x" is used.`),
+  }))],
+  ['"The user\'s whole request" repeated on one line, with no quote', () => histories(recordedCase('phrase', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
+    '01-request.md': judge("The user's whole request ".repeat(RUN / 25)),
+  }))],
+  // Each phrase opens a curly quote that nothing closes, so the end of each quote is looked for: from
+  // each, that search ran to the end of the line.
+  ['"The user\'s whole request" and an unclosed curly quote, repeated on one line', () => histories(recordedCase('curly', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
+    '01-request.md': judge("The user's whole request \u{201C}".repeat(2 * RUN / 26)),
+  }))],
+  ['an <original_prompt> tag repeated, never closed', () => histories(recordedCase('tags', [userRow('write a post'), assistantRow(roundWith('Managers'))], 'ok', {
+    '01-request.md': judge('<original_prompt>x '.repeat(2.5 * RUN / 19)),
+  }))],
+  ['a Full prompt heading and a fence repeated, never closed, in a recorded output', () => histories(recordedCase('fences', [userRow('write the notes'), assistantRow(`${'### Full prompt\n```x\n'.repeat(2 * RUN / 21)}\n### What next?\n3. Save to file: \`out/notes.md\``)], '3', {
+    '01-saved.md': savedFile('Goal'),
+  }))],
+  // Headings on one line with no fence after it, before the real ones: the rest of the line was
+  // read from each of them.
+  ['a Full prompt and a Short version heading, each repeated on one line, in a recorded output', () => histories(recordedCase('one-line', [userRow('write the notes'), assistantRow(`${'### Full prompt '.repeat(RUN / 16)}\n${'### Short version '.repeat(RUN / 18)}\n### Full prompt\n\`\`\`text\nGoal\n\`\`\`\n\n### What next?\n3. Save to file: \`out/notes.md\``)], '3', {
+    '01-saved.md': savedFile('Goal'),
+  }))],
+  ['"What next?" repeated with no Save to file after it, in a recorded output', () => histories(recordedCase('menu', [userRow('write the notes'), assistantRow(`### Full prompt\n\`\`\`text\nWrite the notes.\n\`\`\`\n\n${'What next? '.repeat(2 * RUN / 11)}`)], '3', {
+    '01-x.md': REGEX,
+  }))],
+  // A quote of one space occurs at each space of the run, and the end of the request was looked
+  // for from each: 50,000 spaces took more than 10 seconds.
+  ['a request quoted as one space, and a run of spaces in what the user typed', () => histories(recordedCase('space', [userRow(`write${' '.repeat(RUN / 4)}a post`), assistantRow(roundWith('Managers'))], 'ok', {
+    '01-request.md': judge('The user\'s whole request was " ".'),
+  }))],
+];
+for (const [name, fn] of FAST) {
+  test(`eval-cases.mjs finishes fast on ${name}`, () => {
+    const t0 = performance.now();
+    fn();
+    assert.ok(performance.now() - t0 < 2_000, `${Math.round(performance.now() - t0)} ms`);
+  });
+}
