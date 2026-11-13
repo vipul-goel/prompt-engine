@@ -13,16 +13,19 @@
 // machine slows a linear pattern in every try, though: some linear menu graders took about 400 ms
 // in JavaScriptCore at a load of 4, and over 1,000 ms at loads of 10 and more, which failed the
 // leg (step 1e). So a slow pattern fails only when its time doesn't grow linearly with the
-// reply's length, judged from three tries each on a quarter, a half and all of the reply, taken
-// in turns so that the three lengths see the same loads, by the median time of each length. It
-// fails when both doublings of the length take more than 2.8 times as long (2 for linear growth,
-// 4 for quadratic), or when the whole reply takes less than 1.5 times as long as its quarter, as
+// reply's length, judged from three rounds of tries on a quarter, a half and all of the reply,
+// each round in a new order, by the median of the rounds' ratios between two lengths. It fails
+// when both doublings of the length take more than 2.8 times as long (2 for linear growth, 4 for
+// quadratic), or when the whole reply takes less than 1.5 times as long as its quarter, as
 // JavaScriptCore did on the menu graders without their {0,200} bound. A jump at one doubling
 // alone doesn't fail: Bun's times jumped from about 20 ms to 1 s between two lengths of a linear
 // shape. Until step 1e's B2.2.5 the best try on the half and on the whole decided, and one quiet
-// moment during a try on the half failed linear patterns under a changing load. A time over ten
-// times LIMIT_MS fails without the growth test. The JavaScriptCore leg runs the shapes on which
-// linear patterns take hundreds of milliseconds there with fewer repeats, given after the
+// moment during a try on the half failed linear patterns under a changing load. Until its review,
+// the median time of each length decided, and one burst over the quarter's two tries in a row, or
+// one rise of the load from the middle or the end of the second round on, failed them too. A busy
+// machine can still fail a linear pattern: by a try over ten times LIMIT_MS, which fails without
+// the growth test, or by changes of load in two rounds. The JavaScriptCore leg runs the shapes on
+// which linear patterns take hundreds of milliseconds there with fewer repeats, given after the
 // shape's repeats. Graders that share a pattern and flags are timed once. A last test checks that
 // the menu graders match long correct replies in JavaScriptCore as in V8 (B2.2.4). No model calls.
 // Run with: node --test scripts/test/*.test.mjs
@@ -136,20 +139,26 @@ function slowness(time, full, half, quarter, limit) {
   }
   if (ms < limit) return '';
   if (ms > 10 * limit) return Math.round(ms) + ' ms';
-  // Three rounds over the three lengths, the second in reverse order, so that a load that rises or
-  // falls during the rounds reaches each length alike.
+  // Three rounds over the three lengths, each in a new order (quarter, half, all; half, all,
+  // quarter; all, quarter, half), so that no length is timed twice in a row.
   var texts = [quarter, half, full], names = ['a quarter of', 'half', 'all of'], t = [[], [], []];
   for (var r = 0; r < 3; r++) {
     for (var i = 0; i < 3; i++) {
-      var j = r === 1 ? 2 - i : i, x = time(texts[j]);
+      var j = (i + r) % 3, x = time(texts[j]);
       if (x > 10 * limit) return Math.round(x) + ' ms on ' + names[j] + ' the reply';
-      t[j].push(x);
+      // At least 1 ms, so that a length that took no time divides.
+      t[j].push(Math.max(1, x));
     }
   }
-  // The median of each length, and at least 1 ms, so that a length that took no time divides.
-  var m = t.map(function (a) { return Math.max(1, a.sort(function (a1, a2) { return a1 - a2; })[1]); });
+  // The growth from one length to another is the median of the three rounds' ratios: a round's
+  // tries follow one another, so a load that changes between two rounds leaves the ratios alone,
+  // and one change of load, or one burst over a few tries in a row, moves each ratio the wrong way
+  // in one round at most.
+  var median = function (a) { return a.slice().sort(function (a1, a2) { return a1 - a2; })[1]; };
+  var growth = function (a, b) { return median([0, 1, 2].map(function (k) { return t[a][k] / t[b][k]; })); };
+  var m = t.map(median);
   if (m[2] < limit) return '';
-  var superLinear = m[1] / m[0] > 2.8 && m[2] / m[1] > 2.8, flat = m[2] < 1.5 * m[0];
+  var superLinear = growth(1, 0) > 2.8 && growth(2, 1) > 2.8, flat = growth(2, 0) < 1.5;
   if (!superLinear && !flat) return '';
   return Math.round(m[2]) + ' ms, ' + Math.round(m[1]) + ' ms on half the reply and ' + Math.round(m[0]) + ' ms on a quarter';
 }
@@ -161,7 +170,7 @@ test('the timing test reads the regex graders', () => {
 // A busy machine slows every pattern, so a slow time fails a pattern only when its time doesn't
 // grow linearly with the reply's length (step 1e: at loads of 10 and more, the JavaScriptCore leg
 // failed linear menu graders that took about 400 ms at a load of 4).
-test('a slow pattern fails only when its time does not grow linearly, so a busy machine fails no linear one', () => {
+test('a slow pattern fails only when its time does not grow linearly, so a rise of the load or a burst over two tries fails no linear one', () => {
   // time(s) for a pattern whose tries on the reply, its half and its quarter take the times listed
   // for each, in turn; the last one again once the list runs out.
   const replay = (series) => {
@@ -189,6 +198,24 @@ test('a slow pattern fails only when its time does not grow linearly, so a busy 
   // As before, one try under the limit is enough, and so is a median under it during the growth test.
   assert.equal(verdict([1_500, 900, 1_500], [100], [50]), '', 'one fast try');
   assert.equal(verdict([1_500, 1_500, 1_500, 900, 1_500, 900], [100], [50]), '', 'fast again during the growth test');
+  // A load that changes while the tries run: try n, counted from 1 in the order slowness() makes
+  // them, takes its length's time times load(n). One burst over two tries in a row, or one rise of
+  // the load from some try on, fails no linear pattern, and a quadratic one still fails. Before the
+  // review of step 1e's B2.2.5, the rounds timed the quarter twice in a row, as tries 9 and 10,
+  // and the median of each length decided, so a burst over those two tries, or a rise from try 8
+  // or 9 on, failed the linear pattern as flat.
+  const loaded = (base, load) => {
+    let n = 0;
+    return (s) => base[s] * load(++n);
+  };
+  const linear = { full: 1_050, half: 525, quarter: 262 };
+  const quadratic = { full: 2_000, half: 500, quarter: 125 };
+  for (let p = 1; p <= 12; p++) {
+    for (const [name, load] of [[`tries ${p} and ${p + 1} three times as slow`, (n) => (n === p || n === p + 1 ? 3 : 1)], [`every try from try ${p} on three times as slow`, (n) => (n >= p ? 3 : 1)]]) {
+      assert.equal(slowness(loaded(linear, load), 'full', 'half', 'quarter', 1_000), '', `linear, ${name}`);
+      assert.notEqual(slowness(loaded(quadratic, load), 'full', 'half', 'quarter', 1_000), '', `quadratic, ${name}`);
+    }
+  }
 });
 
 test('every regex grader takes linear time on long repeated replies (V8)', () => {
