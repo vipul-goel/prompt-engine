@@ -65,6 +65,8 @@ const PATTERNS = [...byPattern.values()].map((p) => ({ ...p, name: p.ids.length 
 // for the shapes on which linear patterns took 0.4 to 0.8 s in macOS's jsc at a load of about 10
 // (step 1e, B2.2.5). With those repeats, the slow patterns that each of these shapes was made for
 // still took from 1.7 s to over a minute there at loads of 15 to 22, and V8 runs the full repeats.
+// The two runs on the Full prompt's fenced line also have fewer there, because V8 needs more of
+// them than JavaScriptCore to be slow on the patterns they were made for (below).
 const SHAPES = [
   // An unanchored search that starts with #+ reads the rest of the run from every # of it
   // (B1.2.1): 35 graders, among them every Full prompt heading check, took seconds at 40,000.
@@ -108,9 +110,12 @@ const SHAPES = [
   // The same runs, and single-dash words, on the Full prompt's fenced line: the Midjourney --ar
   // graders gave their description back one character at a time and read the rest of the line
   // again from each place, in V8 and JavaScriptCore, until they read it in a lookahead (step 1e,
-  // B2.1.2). In V8 they took over a second only from about 8,000 single-dash words on.
-  ["a run of spaces on the Full prompt's fenced line", '### Full prompt\n```text\nx', ' ', 3_000],
-  ["a run of tabs on the Full prompt's fenced line", '### Full prompt\n```text\nx', '\t', 3_000],
+  // B2.1.2). In V8 they took over a second only from about 8,000 single-dash words on. On a run of
+  // spaces or tabs, at loads of 10 to 15, they took 3.2 to 3.7 s in V8 at 16,000 and 2.3 to 4 s in
+  // macOS's jsc at 6,000, and under a second in each at a normal load at 3,000, which these rows
+  // had until the review of B2.1.2. The fixed graders took at most 18 ms at 12,000 in each engine.
+  ["a run of spaces on the Full prompt's fenced line", '### Full prompt\n```text\nx', ' ', 16_000, 6_000],
+  ["a run of tabs on the Full prompt's fenced line", '### Full prompt\n```text\nx', '\t', 16_000, 6_000],
   ["single-dash words on the Full prompt's fenced line", '### Full prompt\n```text\nx', ' -a', 8_000],
   // A heading repeated on one line: the prompt-fenced graders and coding's 06 read the rest of
   // the line from each heading on it. What I added sections whose headings don't start a line, so
