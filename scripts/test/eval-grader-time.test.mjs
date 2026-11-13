@@ -175,7 +175,7 @@ test('the timing test reads the regex graders', () => {
 // A busy machine slows every pattern, so a slow time fails a pattern only when its time doesn't
 // grow linearly with the reply's length (step 1e: at loads of 10 and more, the JavaScriptCore leg
 // failed linear menu graders that took about 400 ms at a load of 4).
-test('a slow pattern fails only when its time does not grow linearly, so a rise of the load or a burst over two tries fails no linear one', () => {
+test('a slow pattern fails only when its time does not grow linearly, so one rise of the load or one burst over two tries fails no linear one while each try stays under ten times the limit', () => {
   // time(s) for a pattern whose tries on the reply, its half and its quarter take the times listed
   // for each, in turn; the last one again once the list runs out.
   const replay = (series) => {
