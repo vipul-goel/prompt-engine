@@ -1,0 +1,42 @@
+---
+# After What next?: a starred Run it now, Fill placeholders or Try it here option, and Refine
+# later on. Not Done ★: output-format.md's "What next?" table keeps it for image and video
+# prompts. Only one option is starred ("the recommended one marked ★"), so a second ★ after the
+# first What next? fails (step 1e); the sections' order isn't checked. An option's ★ may follow a
+# note on its line ("Run it now — try it here ★"), up to 200 characters after the label and
+# before the next numbered option on that line, so in "1. Run it now 2. Refine ★" the ★ is
+# option 2's (step 1e). While placeholders other than secrets' are open, no Run it now ★ or Try
+# it here ★, with or without a note: the table's first row that fits is the one for open
+# placeholders that are neither secrets nor removed private details, so the ★ goes to Fill
+# placeholders (D1, D5, D46). They are open when Fill before running lists one, or when the
+# Full prompt holds one, with or without that section: the method asks for the section, listing
+# each placeholder, whenever placeholders remain, so leaving it out, writing it as a bold label or
+# listing the placeholders without their brackets doesn't hide the ones the Full prompt holds
+# (step 1e). A bold or plain label's own list isn't read, so FILL_OPEN's comment names what that
+# misses (B1.2.11).
+# A placeholder is a secret's when key, token, secret or password ends it, also after _, or when
+# it says api key anywhere: the rule of
+# secret-redaction-quick's 09, plus password, which SKILL.md counts as a secret. So
+# [[key feature]] is not one. The Fill before running section ends at the next line that starts
+# with #. The Full prompt is read from its first heading to the next heading of the output, and
+# there some [[...]] don't count, such as the generic [[placeholder]], an example after such as
+# and a marker the prompt tells the model to write; FILL_OPEN in scripts/eval/universal-test.mjs
+# lists them all. Those conditions and Refine sit in lookaheads, which the engine doesn't
+# backtrack into, and the menu is read from the first What next? on, which gives the same verdicts
+# as reading from any of them, so the time grows linearly with the reply's length
+# (scripts/test/eval-grader-time.test.mjs). The text up to that What next? is read with
+# [^W]*(?:W(?!hat next\?)[^W]*)*, and the text before the first Full prompt heading a run of # at
+# a time, so that their loops repeat at each W or run of #, not at each character: JavaScriptCore,
+# which runs the graders, stops after enough repeats and reports no match, so this check failed
+# correct replies of about 128 KB and more there until step 1e's B2.2.4. The option prefix
+# (^|\s)(\d[.)]|[-*•])[ \t]*\**, the ★ that ends a starred option and the open-placeholder
+# condition are shared with the image and video 05 graders and scripts/eval/universal-test.mjs
+# (OPTION_STAR and FILL_OPEN there). D46 also leaves out the placeholder of another person's
+# private detail that the method removed. This request holds none, so the condition doesn't model
+# it; private-detail-redaction-quick's 08 does.
+type: regex
+pattern: '^(?![^W]*(?:W(?!hat next\?)[^W]*)*What next\?[^★]*★[^★]*★)(?!(?=[\s\S]*?(?:^|\n)[ \t]*#+[ \t]*Fill before running[^\n]*(?:\n(?![ \t]*#)[^\n]*)*?\n(?![ \t]*#)[^\n]*?\[\[(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\]|[^#]*(?:(?<!#)#+(?![ \t]*Full prompt)[^#]*)*(?<!#)#+[ \t]*Full prompt[^\n]*(?:\n(?![ \t]*#+[ \t]*(?:Short version|What I added|Assumptions|Score|What next))[^\n]*)*?\n(?![ \t]*#+[ \t]*(?:Short version|What I added|Assumptions|Score|What next))[^\n]*?(?=\[\[)(?<!(?:such as|e\.g\.,?|for example,?|like|write|leave(?: an?)?|insert|put)[ \t]+\x60?)(?<!\]\]\x60?(?:,|[ \t]+or)[ \t]+\x60?)(?<![\w\])])\[\[(?!placeholders?\]\])(?![^\[\]\n]*(?:(?:\b|_)(?:key|token|secret|password)\]\]|(?:\b|_)api[ _-]?key(?:\b|_)))[^\[\]\n]+\]\])[^W]*(?:W(?!hat next\?)[^W]*)*What next\?[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**(Run it now|Try it here)\b(?:(?!\s\d[.)]\s)[^\n★]){0,200}★)[^W]*(?:W(?!hat next\?)[^W]*)*What next\?(?=[\s\S]*Refine)[\s\S]*?(^|\s)(\d[.)]|[-*•])[ \t]*\**(Run it now|Fill (in )?(the )?placeholders|Try it here)\b(?:(?!\s\d[.)]\s)[^\n★]){0,200}★'
+flags: i
+weight: 1
+---
+

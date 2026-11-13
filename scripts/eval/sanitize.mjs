@@ -1,0 +1,270 @@
+// Turns a raw Claude Code session transcript into a history fixture for `claude plugin eval`
+// (`context.history_file`), and scans text for data that looks private. record-history.mjs
+// uses both before it writes a fixture; validate.mjs runs the same scan on every committed
+// evals/*/history.jsonl. It is a module of its own so that tests and validate.mjs can import
+// it without running the recorder. Zero dependencies, and nothing runs on import.
+//
+// sanitize() keeps only the user and assistant events, and only the fields in KEEP_KEYS. In
+// every string except thinking blocks, it rewrites the plugin folder to /plugin, the working
+// folder to /workspace and the home folder to ~, each where a path starts and with the rest of
+// its path (a home folder that is a file-system root holds nothing private and stays as it is),
+// and the original session ID to FIXED_SESSION. Then it throws, listing "line N: kind", if the
+// plugin or working folder is left anywhere else in those strings, or if the scan finds that
+// anything still looks private. No scan recognises every secret or another machine's name, so
+// read a fixture before you commit it.
+
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+export const FIXED_SESSION = '00000000-0000-4000-8000-000000000001';
+const KEEP_KEYS = ['type', 'uuid', 'parentUuid', 'isSidechain', 'message', 'toolUseResult', 'sourceToolAssistantUUID', 'isMeta', 'timestamp', 'version', 'userType'];
+
+// [kind, pattern]. Every pattern runs in time linear in the line's length: the e-mail one starts
+// only where a local part can start and caps it at 64 characters, and the JWT one starts at the
+// start of a run of [\w-] characters, or right after a "-" with its first part capped at 1,000
+// characters. Without the cap, each eyJ in a long run such as eyJ-eyJ-… scanned to the run's end:
+// 200,000 such characters took 18 s in Node.
+// Most start at a word boundary, since a word can end in their prefix ("task-..." holds "sk-").
+// Those whose prefix a word rarely ends in (sk-ant-, sk-proj-, the GitHub, GitLab and Slack ones)
+// start anywhere, so that no escape or encoding that ends in a letter or digit hides them, whether
+// ESCAPES below knows it or not. AKIA and AIza keep the boundary: base64 text, such as an image in
+// a transcript, can hold either after a letter.
+export const PRIVATE_PATTERNS = [
+  ['Anthropic or OpenAI-style key', /(?:\b|(?=sk-(?:ant|proj)-))sk-[A-Za-z0-9_-]{20,}/g],
+  ['Stripe key', /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/g],
+  ['GitHub token', /gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{20,}/g],
+  ['GitLab token', /glpat-[\w-]{20,}/g],
+  ['Slack token', /xox[abprs]-[\w-]{10,}/g],
+  ['AWS key ID', /\bAKIA[0-9A-Z]{16}\b/g],
+  ['Google API key', /\bAIza[0-9A-Za-z_-]{35}/g],
+  ['npm token', /\bnpm_[A-Za-z0-9]{36}\b/g],
+  ['Hugging Face token', /\bhf_[A-Za-z0-9]{30,}/g],
+  ['JWT', /(?:(?<![\w-])eyJ[\w-]{10,}|(?<=-)eyJ[\w-]{10,1000})\.[\w-]{10,}\./g],
+  ['private key', /-----BEGIN [A-Z ]*PRIVATE KEY-----/g],
+  // A Windows path in any letter case and with either separator, since Windows ignores case;
+  // /Users and /home only as written, so that a URL path such as /users/42 passes.
+  ['home folder path', /\/(?:Users|home)\/[^/\s"\\]+|[A-Za-z]:(?:\\{1,2}|\/)[Uu][Ss][Ee][Rr][Ss](?:\\{1,2}|\/)[^\\/\s"]+/g],
+  ['claude.ai session ID', /\bsession_[A-Za-z0-9]{20,}/g],
+  ['e-mail address', /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]{1,64}@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.\p{L}{2,}/gu],
+];
+// Public by design: the commit-trailer address, the reserved example domains and git's SSH remotes.
+const ALLOWED = [/^noreply@anthropic\.com$/i, /@(?:[\w-]+\.)*example\.(?:com|org|net)$/i, /^git@(?:github|gitlab|bitbucket)\.(?:com|org)$/i];
+
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// A file-system root, such as "/" (the home folder of a container user without one) or a drive
+// (C:, C:\ or C:/), or no folder at all. It names no one, so it is neither rewritten nor looked
+// for: as a folder to rewrite, "/" matched every "//" and every "/" before a space or punctuation,
+// and C:\ every path on its drive.
+const isRoot = (p) => !p || /^(?:[A-Za-z]:)?[\\/]*$/.test(p);
+
+/**
+ * Committed text that is public by design: each evals/<case>/prompt.md (such as the fake key a
+ * safety case pastes) and the skill's own Markdown files, which build.mjs copies into the
+ * histories. A match that appears verbatim in this text is not reported.
+ */
+export function publicText(root) {
+  const files = [];
+  const evals = join(root, 'evals');
+  if (existsSync(evals)) for (const c of readdirSync(evals)) files.push(join(evals, c, 'prompt.md'));
+  const skill = join(root, 'skills', 'prompt-engine');
+  files.push(join(skill, 'SKILL.md'));
+  const refs = join(skill, 'references');
+  if (existsSync(refs)) for (const f of readdirSync(refs)) if (f.endsWith('.md')) files.push(join(refs, f));
+  return files.filter((p) => existsSync(p)).map((p) => readFileSync(p, 'utf8')).join('\n');
+}
+
+/**
+ * Patterns for one machine. Its home folder, unless that is a file-system root: where its last
+ * name ends (in any letter case for a Windows drive path, as sanitize() rewrites it), but anywhere
+ * in a path, since sanitize() leaves one inside another path as recorded, and /mnt/opt/al/backup,
+ * for a home of /opt/al, still names al. Its name (os.hostname() and the part before the first
+ * dot), when that has 6 or more characters, so it doesn't match ordinary words. The name is only
+ * looked for, never replaced: replacing a short one such as "mac" would turn "macOS" into
+ * something else.
+ */
+export function machinePatterns({ home, host } = {}) {
+  const extra = [];
+  if (!isRoot(home)) {
+    const boundary = '(?![\\w-]|\\.\\w)';
+    const flags = /^[A-Za-z]:[\\/]/.test(home) ? 'gi' : 'g';
+    extra.push(["this machine's home folder", new RegExp(`${esc(home)}${boundary}|${esc(JSON.stringify(home).slice(1, -1))}${boundary}`, flags)]);
+  }
+  for (const name of new Set([host, host?.split('.')[0]])) {
+    if (name && name.length >= 6 && name.toLowerCase() !== 'localhost') extra.push(["this machine's name", new RegExp(esc(name), 'gi')]);
+  }
+  return extra;
+}
+
+// Escapes and encodings that end in a letter or digit, so that a token right after one has no word
+// boundary where it starts:
+// - an ECMA-48 escape sequence, such as a colour code (ESC [ 38:2:255:0:0 m) or ESC ( B, with its
+//   escape character as itself or written out (\x1b, \u001b, \U0000001B, \033, Lua's \27 or \e). A
+//   written-out one needs a [ or an intermediate byte after it: else it is read as a backslash
+//   escape below, which leaves the character after it alone;
+// - a backslash escape written out: \n, \t, \a, an octal one such as \012, \x3d, and \u or \U with
+//   four or eight hex digits; in a deeper JSON level its backslash is escaped too, and the last
+//   backslash still matches;
+// - a %XX escape, also one whose % was encoded again (%253D), a quoted-printable =XX (=3D), and an
+//   HTML character reference by number, with or without its semicolon (&#61, &#x3D;).
+// No such list is complete (an HTML &amp without its semicolon is one more form), which is why the
+// distinctive prefixes above need no boundary. Each part is matched without backtracking into a
+// long run, so the scan stays linear.
+const ESCAPES = /\x1b(?:\[[0-?]*[ -/]*[@-~]|[ -/]*[0-~])|\\(?:u001[bB]|U0000001[bB]|x1[bB]|0?33|27|e)(?:\[[0-?]*[ -/]*[@-~]|[ -/]+[0-~])|\\(?:[nrtfvba]|[0-7]{1,3}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2})|%(?:25)*[0-9A-Fa-f]{2}|=[0-9A-F]{2}|&#(?:[0-9]+|[xX][0-9a-fA-F]+);?/g;
+// A hex reference without its semicolon ends where its hex digits end, as ESCAPES reads it, so it
+// takes in the first letter of a token right after it that starts with a hex digit: AKIA, AIza and
+// eyJ do. So a text with a hex reference is also read with each reference taken as each length it
+// can have, 1 to 6 digits.
+const HEX_REF = /&#[xX][0-9a-fA-F]/;
+const HEX_REF_OF = [1, 2, 3, 4, 5, 6].map((n) => new RegExp(`&#[xX][0-9a-fA-F]{${n}}`, 'g'));
+
+// The texts the patterns run on for one line. For a line of JSON, such as a history row,
+// every key and string value as decoded text; for any other line, the line itself. Each text
+// that holds an escape from ESCAPES is read twice: as it is, and with each escape turned into
+// a space, so that an escape just before a token can't hide where the token starts, whether
+// it is a JSON escape of the row, one in a pasted snippet or first message, or one in text
+// that a tool printed. One with a hex reference is read once more for each length it can have.
+function textsOf(line) {
+  const texts = [];
+  const add = (t) => {
+    texts.push(t);
+    const opened = t.replace(ESCAPES, ' ');
+    if (opened !== t) texts.push(opened);
+    if (HEX_REF.test(t)) for (const re of HEX_REF_OF) texts.push(t.replace(re, ' ').replace(ESCAPES, ' '));
+  };
+  let value;
+  if (/^\s*[[{]/.test(line)) try { value = JSON.parse(line); } catch { value = undefined; }
+  if (value === undefined) {
+    add(line);
+    return texts;
+  }
+  // With a list of values still to read rather than recursion: JSON.parse reads a row nested
+  // tens of thousands of levels deep, and a recursive walk overflowed the call stack on it.
+  const pending = [value];
+  while (pending.length) {
+    const v = pending.pop();
+    if (typeof v === 'string') add(v);
+    else if (Array.isArray(v)) for (const x of v) pending.push(x);
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { add(k); pending.push(x); }
+  }
+  return texts;
+}
+
+/**
+ * Lines that look private, as "line N: kind", one entry per line and kind. The matched text is
+ * never included: it may be a secret, and validate.mjs prints these lines in public CI logs.
+ * `extra` adds [kind, pattern] pairs (each pattern with the g flag); a match that appears
+ * verbatim in `allowText` is not reported.
+ */
+export function scanText(text, { extra = [], allowText = '' } = {}) {
+  const allowed = (m) => ALLOWED.some((a) => a.test(m)) || (allowText !== '' && allowText.includes(m));
+  // Every match counts, so an allowed first match doesn't hide a second one.
+  const found = (t, re) => {
+    for (const m of t.matchAll(re)) if (!allowed(m[0])) return true;
+    return false;
+  };
+  const hits = [];
+  text.split('\n').forEach((line, i) => {
+    const texts = textsOf(line);
+    for (const [kind, re] of [...PRIVATE_PATTERNS, ...extra]) {
+      if (texts.some((t) => found(t, re))) hits.push(`line ${i + 1}: ${kind}`);
+    }
+  });
+  return hits;
+}
+
+// One folder's rewrite. The folder matches with either separator (and in any case, for a
+// Windows drive path), and only at a path boundary at both ends. It starts where a path starts:
+// not after a letter, digit or mark of any script, _, ., ~ or -, nor right after :/, where a URL's
+// host starts. So a home of /root rewrites /root/a, file:///root/a and PATH=/bin:/root/bin, but
+// not https://github.com/acme/root, /var/root, /café/root or https://root/a, which are other
+// paths. }, * and # still start one, so /root in ${HOME}/root, src/**/root or #/root is
+// rewritten; a * rule would take in Markdown's bold, **/root/a**. And it ends where a name ends,
+// through letters of any script too, so /srv/people/al doesn't rewrite /srv/people/alex or
+// /srv/people/alé.
+// It becomes `to` followed by the rest of its path; for a Windows path, the rest's
+// backslashes become "/", so build.mjs recognises a /plugin/... Read. A file-system root
+// (isRoot) is left as it is.
+// A folder left anywhere else, inside another path or glued to text as in -I/opt/x/include, stays
+// as recorded: the rewrite can't tell the two apart. left(s) says whether s holds one, so that
+// sanitize() refuses a plugin or working folder there; the scan refuses a home folder there, since
+// it looks for one anywhere in a path. Both end a name at ASCII only, so a folder that a letter
+// outside ASCII follows, which the rewrite reads as another name, is refused too: in text written
+// without spaces, such as Japanese, a folder right before or after a word is refused, not rewritten.
+function prefixRule(prefix, to) {
+  if (isRoot(prefix)) return { rewrite: (s) => s, left: () => false };
+  const folder = prefix.replace(/[\\/]+$/, '');
+  const windows = /^[A-Za-z]:[\\/]/.test(folder);
+  const source = folder.split(/[\\/]/).map(esc).join('[\\\\/]');
+  const end = '(?![\\p{L}\\p{N}\\p{M}_-]|\\.[\\p{L}\\p{N}\\p{M}_])';
+  const re = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}_.~-]|:\\/)${source}((?:[\\\\/][^\\s"'<>|*?]*)?)${end}`, windows ? 'giu' : 'gu');
+  const anywhere = new RegExp(`${source}(?![\\w-]|\\.\\w)`, windows ? 'i' : '');
+  return {
+    rewrite: (s) => s.replace(re, (_, rest) => to + (windows ? rest.replaceAll('\\', '/') : rest)),
+    // The folder in what the rewrite doesn't take, each of its matches read as one NUL.
+    left: (s) => anywhere.test(s.replace(re, '\0')),
+  };
+}
+
+/**
+ * The fixture for a raw transcript (one JSON event per line). `repo` is the plugin folder,
+ * `cwd` the folder the session ran in, `home` and `host` this machine's home folder and name,
+ * and `allowText` the text from publicText(). Throws if the result still looks private.
+ */
+export function sanitize(raw, { cwd, repo, home, host, allowText = '' } = {}) {
+  const events = raw.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+  const original = events.find((e) => typeof e.sessionId === 'string' && e.sessionId)?.sessionId;
+  const kept = new Set(events.filter((e) => e.type === 'user' || e.type === 'assistant').map((e) => e.uuid));
+  const byUuid = new Map(events.map((e) => [e.uuid, e]));
+  // Re-link each kept event to its nearest kept ancestor, skipping dropped attachments.
+  const nearestKept = (uuid) => {
+    let cur = uuid;
+    while (cur && !kept.has(cur)) cur = byUuid.get(cur)?.parentUuid ?? null;
+    return cur ?? null;
+  };
+  // A path realpath reports under /private/var (macOS) may also appear in its /var form.
+  const forms = (p) => (!p ? [] : p.startsWith('/private/') ? [p, p.slice('/private'.length)] : [p]);
+  // The repository usually sits under the home folder, so the repository and the working
+  // folder are rewritten first. Each with the kind that names it where the rewrite leaves it;
+  // the home folder has none, since the scan looks for it anywhere in a path.
+  const rules = [
+    ...forms(repo).map((p) => [prefixRule(p, '/plugin'), "this machine's plugin folder"]),
+    ...forms(cwd).map((p) => [prefixRule(p, '/workspace'), "this machine's working folder"]),
+    ...forms(home).map((p) => [prefixRule(p, '~'), null]),
+  ];
+  let left; // the kinds of folder that the rewrite left in the row being read
+  const fix = (s) => {
+    for (const [rule, kind] of rules) {
+      if (kind && rule.left(s)) left.add(kind);
+      s = rule.rewrite(s);
+    }
+    return original ? s.split(original).join(FIXED_SESSION) : s;
+  };
+  const walk = (v) => {
+    if (typeof v === 'string') return fix(v);
+    if (Array.isArray(v)) return v.map(walk);
+    if (!v || typeof v !== 'object') return v;
+    // Anthropic's documentation says the API rejects a thinking block that was changed, so
+    // thinking blocks stay as recorded; the scan below refuses one that holds private data.
+    if (v.type === 'thinking' || v.type === 'redacted_thinking') return v;
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+  };
+  const lines = [];
+  const leftHits = [];
+  for (const e of events) {
+    if (!kept.has(e.uuid)) continue;
+    left = new Set();
+    const o = {};
+    for (const k of KEEP_KEYS) if (k in e) o[k] = walk(e[k]);
+    o.parentUuid = nearestKept(e.parentUuid);
+    o.sessionId = FIXED_SESSION;
+    o.cwd = '/workspace';
+    lines.push(JSON.stringify(o));
+    for (const kind of left) leftHits.push(`line ${lines.length}: ${kind}`);
+  }
+  const text = `${lines.join('\n')}\n`;
+  // By line, the scan's hits first on each.
+  const lineOf = (hit) => Number(hit.match(/^line (\d+)/)[1]);
+  const hits = [...scanText(text, { extra: machinePatterns({ home, host }), allowText }), ...leftHits].sort((a, b) => lineOf(a) - lineOf(b));
+  if (hits.length) throw new Error(`refusing to write the history; it still contains what looks like private data:\n  ${hits.join('\n  ')}`);
+  return text;
+}

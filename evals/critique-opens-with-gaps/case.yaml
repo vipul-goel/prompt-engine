@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: critique-opens-with-gaps
+expected_outcome: |
+  A request to critique a prompt, in standard mode, gets the normal question round: one line naming the prompt's biggest gaps (none of them something the prompt already gives), then numbered multiple-choice questions with the recommended option marked ★ and the line on replying `ok`. No score and no improved prompt yet.

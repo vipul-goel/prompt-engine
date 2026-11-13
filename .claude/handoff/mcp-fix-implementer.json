@@ -1,0 +1,182 @@
+[
+ {
+  "items": [
+   {
+    "finding": "1. BLOCKER: super-linear regexes in check_prompt",
+    "status": "fixed",
+    "details": "1a: data/lint-rules.json template-leftover is now \\{\\{[^{}\\n]{0,80}\\}\\} and open-placeholder \\[\\[[^\\[\\]\\n]{1,120}\\]\\] (no test showed a need to adjust); the other 5 rules were checked and are linear (slowest adversarial input 0.8-6.9 ms at 50k chars). The $comment documents the linear-time rule. 1b: mcp/src/check.ts collapses every whitespace run to one space, matches per line, and matches long lines in overlapping windows (2,000 chars, 300 overlap; one lead char so \\b and ^ stay correct, each match reported once) instead of truncating, so text past 2,000 chars is still checked. All own signals use bounded repetition only (number pattern \\b\\d[\\d,]{0,15}\\s{0,3}..., [\\w-]{1,40}, [\\w'-]{1,30}, \\d{1,4}, \\s?). Signals are combined into one alternation per area and target kind (fewer exec calls). For 'regardless of the data file': new isBoundedPattern() gate; rules with *, +, {n,}, {n,m} above 200 or after a group, or backreferences are skipped (SKIPPED_LINT_RULES; the summary says so, and an mcp test asserts none are skipped). 1c: kept PROMPT_MAX_CHARS = 100,000: warm tools/call check_prompt <= 61 ms for every adversarial shape; worst checkPrompt cold ~88 ms; first request of a fresh process for 50k one-letter lines 145-169 ms in three runs, of which ~50-65 ms is the server's own first-request start-up. 1d: 16 adversarial timing cases at 100k chars (text and Midjourney targets) in mcp/test/check.test.ts, bound 500 ms. 1e: scripts/test/lint-rules.test.mjs (zero-dependency node:test) builds 78-413 adversarial 50,000-char inputs per rule from the pattern's own literals and class characters, runs each under a vm timeout (2 s) so a catastrophic pattern fails rather than hangs, bound 500 ms; a control test proves it catches both old patterns (both time out). CONTRIBUTING.md documents the rule.",
+    "tests": "mcp/test/check.test.ts: 'time on adversarial input' (16 cases), isBoundedPattern accept/reject cases, SKIPPED_LINT_RULES empty, long-line window tests (match past 2,000 chars, edge-crossing match counted once at 11 shifts, no mid-line heading). scripts/test/lint-rules.test.mjs: 7 rule tests + validity + control. Reintroducing the old template pattern or the old \\d[\\d,]* signal in a scratch copy makes these fail."
+   },
+   {
+    "finding": "2. MAJOR: five-area signals are English-only",
+    "status": "fixed",
+    "details": "2a: check_prompt description, INSTRUCTIONS and the report header say the checks match English keywords and headings only. 2b: looksMostlyEnglish(): mostly non-Latin letters means non-English; else, with 12+ words, an English function-word share under 5% plus other-language function words (8%+) or accented words (15%+). Correct on 8 English samples (incl. terse image prompts and SD tag lists) and 18 other languages. Unmatched areas then report status 'unknown' (text: 'unknown (keyword checks are English-only)'); found areas stay found (e.g. --ar in a German Midjourney prompt); lint still runs. Schema change: dimensions[].present replaced by status ('found' | 'not found' | 'unknown'), plus top-level mostlyEnglish. 2c: brief step 4 says 'consider what it flags', and INSTRUCTIONS step 5 too. 2d: format words (json/yaml/csv/xml/markdown/html, schema) count only in output phrases ('as/in/into JSON', 'return/respond ... JSON', 'JSON object/array/output/response/schema', 'output/response schema'), so 'build a JSON parser in rust' and 'Design a database schema' no longer count as Output format.",
+    "tests": "check.test.ts 'language' (4 tests: detection samples, unknown statuses with lint still running, language-neutral matches still found, report wording) and \"doesn't count the prompt's subject as an output format\"; brief.test.ts 'treats check_prompt as an English heuristic to consider'."
+   },
+   {
+    "finding": "3. MINOR: result sizes",
+    "status": "fixed",
+    "details": "3a: excerptAround caps at EXCERPT_CHARS (100) with … at either cut; matches are also bounded by the patterns (open-placeholder at most 124 chars). 3b: the notes field has maxLength 1,000; mapFormAnswers truncates to 1,000 code points ending in …, sets notesCut, and 'next' says the notes were cut. 3c: ask_user results are bounded by the input schema plus the notes limit; the worst case (text mode, every field at its maximum, made of quotes and newlines that double when escaped) is 20,352 chars. The check_prompt text mirror now prints each rule message once. 3d: the size test covers enhance_prompt, 5 checklists, 4 hostile 100k check_prompt drafts (distinct findings per line, long single-line matches, one huge line) and ask_user in text mode, plus every form outcome (notes far over the limit, notes at the limit, decline, cancel); every result is asserted under 24,000 chars.",
+    "tests": "integration.test.ts 'tool result size' (2 tests); questions.test.ts 'cuts notes to the field limit and says so', 'truncates by characters'; check.test.ts 'cuts excerpts of long matches and long lines'."
+   },
+   {
+    "finding": "4. MINOR: cancel and decline",
+    "status": "fixed",
+    "details": "4a: elicitation 'cancel' returns textModeResult(..., 'form-closed'): status ask_in_chat with questionsText; next says the user closed the form, ask in the chat, don't guess. 4b: 'decline' returns status declined with the ★ answers marked source recommended, to list under Assumptions. The 'cancelled' status was removed from the output enum. 4c: ask_user description, INSTRUCTIONS step 3, the brief's server section, the adapted prompt-engine://questions Format A, mcp/README table and docs/manual-checks.md updated. 4d: decline and cancel tested over the legacy shim on stdio, modern stdio and modern HTTP, and over the real built CLI over stdio in both eras.",
+    "tests": "integration.test.ts: 3 paths x (decline, cancel, notes cut) = 9 tests; e2e.test.ts: 'legacy era / modern era: a declined form gives the ★ answers, a closed one asks in the chat'."
+   },
+   {
+    "finding": "5. MINOR: served resources contradict ask_user",
+    "status": "fixed",
+    "details": "brief.ts adaptReference(): for prompt-engine://questions, the 'Format A — the AskUserQuestion dialog' section is replaced by 'Format A — the ask_user tool (this server)' (closed form returns Format B; declined returns the ★ answers; never guess), and Format B's '(all other apps)' is dropped. For prompt-engine://output-format, the AskUserQuestion '(Recommended)' aside is removed, and the 'In Claude Code, use AskUserQuestion' line is replaced by 'End the same message with the menu as a numbered list ... Use ask_user for clarifying questions only.' If a passage stops matching because the source changed, a note is prepended saying to use ask_user. The brief was not affected beyond the server section. The skill's own files are unchanged.",
+    "tests": "integration.test.ts 'serves resources that point to ask_user, never to AskUserQuestion' (reads every listed resource through the client); brief.test.ts 'adapts the questions and output-format references to ask_user' and 'falls back to a note when a passage it adapts has changed'."
+   },
+   {
+    "finding": "6. MINOR: English form text",
+    "status": "fixed",
+    "details": "6a: new optional ask_user inputs notes_label (max 80) and notes_hint (max 200), defaulting to the English text; intro stays the form message. 6b: the 'Recommended: X (why)' prefix is replaced by the language-neutral 'X ★ (why)' in the field description; the default stays preselected. Titled enums are not used (plain enum kept for client compatibility), so no option title is marked. The only server-supplied words left in a form are the English defaults used when intro, notes_label or notes_hint are omitted; the brief and description tell the model to pass them in the user's language.",
+    "tests": "questions.test.ts 'has no fixed English words: the caller can give the notes label and hint'; integration.test.ts 'shows the intro, notes label and notes hint the model passes'."
+   },
+   {
+    "finding": "7. MINOR: --allowed-hosts / ALLOWED_HOSTS with a port",
+    "status": "fixed",
+    "details": "New shared SDK-free mcp/src/hosts.ts parseAllowedHosts(): lowercases, dedupes, brackets only values with 2+ colons, strips :port from hostnames, IPv4 and [IPv6]:port, and returns portsIgnored. cli.ts logs a one-line warning naming the setting (--allowed-hosts or PROMPT_ENGINE_ALLOWED_HOSTS). worker.ts parses once per isolate and console.warn's once. The help text and README say hostnames take no port.",
+    "tests": "hosts.test.ts (5 tests, including matching against the SDK's own Host check); e2e.test.ts 'ignores a port in an entry, with a warning, and still matches the hostname' (MCP.Example.com:8080 and ::1); new worker.test.ts calls the Worker's fetch with a fake env (port ignored with one warning, IPv6, missing ALLOWED_HOSTS gives 500, 404)."
+   },
+   {
+    "finding": "8. MINOR: tests that can't fail",
+    "status": "fixed",
+    "details": "The build freshness test asserts exit status 0 and 'generated files are up to date' (fails both on a stale file and on a build.mjs that crashes). The logging tests send rejected HTTP requests carrying LEAK markers (missing Mcp-Method, modern header without envelope, invalid envelope, malformed JSON body, text/plain) and assert every logged line is exactly 'rejected a request (<code>)' with no LEAK. A stdio test sends a non-JSON line and invalid JSON-RPC lines with SECRET markers, then checks the server still answers and logs only the fixed invalid-message phrase. The unknown checklist domain asserts code -32602. Cancel and decline outcomes were added (item 4). Each fix was checked by reintroducing the original bug in a scratch copy (12 cases); each was caught, and every -t filter was confirmed to match real tests.",
+    "tests": "brief.test.ts 'is up to date with the repository sources' and 'carries only what the server uses'; e2e.test.ts 'logs rejected and unreadable requests by reason code only' and 'logs a reason code, never the content, for messages it cannot read'; integration.test.ts 'rejects an unknown checklist domain with Invalid Params (-32602)'; log.test.ts (4 tests)."
+   },
+   {
+    "finding": "9. MINOR: README and logging claims",
+    "status": "fixed",
+    "details": "9a: new SDK-free mcp/src/log.ts describeError(). SDK rejections become 'rejected a request (<reason code>)', the code captured only if it matches [a-z0-9-]{1,64}. Unsupported media type, protocol errors (by numeric code), invalid JSON-RPC (ZodError) and JSON parse errors become fixed phrases. Any other error keeps its type and message with quoted text removed (and everything after an unclosed quote) and is cut to 200 chars. The reviewer's rejectlog.mjs now reports 'leaked: none'. 9b: the mcp/README Privacy bullet now states exactly what goes to stdout and stderr: nothing for successful requests, reason codes only for rejected or unreadable ones, and the Worker's own code logs only the port warning. 9c: README and CLI help say browser clients aren't supported (no CORS; preflight OPTIONS gets 405), and an e2e test checks for 405 and no access-control headers.",
+    "tests": "log.test.ts; e2e.test.ts \"doesn't support browser clients\" and the two logging tests."
+   },
+   {
+    "finding": "10. MINOR: why is optional",
+    "status": "fixed",
+    "details": "QuestionSchema why: z.string().min(1).max(120), now required; validateQuestions also rejects a blank why. The text batch always prints '★ (why)'. The tool description, brief and README updated. worker-smoke.mjs's question gained a why; inspector-gates already had one.",
+    "tests": "questions.test.ts 'rejects a recommendation without a reason' and 'always gives the reason next to the ★'; integration.test.ts 'rejects invalid ask_user input' (missing and blank why)."
+   },
+   {
+    "finding": "11. MINOR: tarball contents",
+    "status": "fixed",
+    "details": "11a: package.json files is ['dist', '!dist/worker.js']; npm pack --dry-run lists 11 files without worker.js (55.4 kB packed). 11b: SKILL_BODY and its skillBody parameter were removed from renderContentModule; the skillBody variable stays for the history refresh. 11c: content.ts regenerated (dist/generated/content.js 97.3 kB to 87.1 kB).",
+    "tests": "manifests.test.ts 'packs the built server without the Cloudflare Worker entry' runs npm pack --dry-run --json --ignore-scripts and checks the file list; the files assertion was updated; brief.test.ts asserts the generated exports are exactly CONTRACT, LINT_RULES, MEDIA_TARGETS, REFERENCES, UNIVERSAL_METHOD, VERSION."
+   },
+   {
+    "finding": "12. EXTRA: test copy filters",
+    "status": "fixed",
+    "details": "scripts/test/validate.test.mjs and version.test.mjs SKIP sets are now ['.git','node_modules','results','dist','dist-mcpb','mcpb','.wrangler'], with a comment.",
+    "tests": "node --test scripts/test/*.test.mjs: 24/24 pass."
+   },
+   {
+    "finding": "13. EXTRA: MCPB icon",
+    "status": "partial",
+    "details": "Created mcp/icon.png (512x512 RGBA, Lanczos resize of the unchanged .claude-plugin/icon.png). pack-mcpb.mjs now ships mcp/icon.png, and docs/publishing.md says to resize changes into it. However, mcpb validate still prints 'Icon validation passed. Recommended size is 512×512 pixels...' because @anthropic-ai/mcpb 2.1.2 emits it for every valid PNG without reading the dimensions (node_modules/@anthropic-ai/mcpb/dist/node/validate.js:69), so no icon change can remove it.",
+    "tests": "manifests.test.ts 'ships a 512x512 PNG icon' reads the PNG IHDR width and height."
+   }
+  ],
+  "gates": [
+   {
+    "command": "node scripts/build.mjs --check (repo root)",
+    "passed": true,
+    "result": "generated files are up to date (exit 0)"
+   },
+   {
+    "command": "node scripts/validate.mjs",
+    "passed": true,
+    "result": "validate: OK (10 skill files, 9967 chars in SKILL.md body, 5765 chars in universal core), exit 0"
+   },
+   {
+    "command": "node --test scripts/test/*.test.mjs",
+    "passed": true,
+    "result": "24 tests, 24 pass, 0 fail (2.6 s), including the new lint-rules timing tests (7 rules + validity + control)"
+   },
+   {
+    "command": "claude plugin validate . --strict",
+    "passed": true,
+    "result": "Validation passed; checks found nothing to report (exit 0)"
+   },
+   {
+    "command": "cd mcp && npm run build",
+    "passed": true,
+    "result": "exit 0"
+   },
+   {
+    "command": "cd mcp && npm test",
+    "passed": true,
+    "result": "9 test files, 162 tests passed (Node 22.22.0), exit 0"
+   },
+   {
+    "command": "cd mcp && PATH=<scratchpad>/node20bin:$PATH npm test (Node 20.20.2, same binary the previous implementer used)",
+    "passed": true,
+    "result": "9 test files, 162 tests passed, exit 0. Root tests, build --check and validate also pass on Node 20."
+   },
+   {
+    "command": "cd mcp && npm run test:inspector",
+    "passed": true,
+    "result": "32/32 Inspector gates ok in both eras, including tools/list --strict; 'all Inspector gates passed'"
+   },
+   {
+    "command": "cd mcp && npm run pack:mcpb",
+    "passed": true,
+    "result": "exit 0. Manifest schema validation passes; bundle has icon.png (54.7 kB, 512x512), LICENSE, manifest.json, server/index.js; the packed server starts and lists ask_user, check_prompt, enhance_prompt, get_checklist (366 KiB). One mcpb validate note remains: 'Icon validation warnings: - Icon validation passed. Recommended size is 512×512 pixels for best display in Claude Desktop.' mcpb 2.1.2 prints it for any valid PNG regardless of size."
+   },
+   {
+    "command": "cd mcp && npm pack --dry-run",
+    "passed": true,
+    "result": "11 files: LICENSE, README.md, package.json, dist/{brief,check,cli,hosts,log,questions,server}.js, dist/generated/content.js; dist/worker.js absent; 55.4 kB packed"
+   },
+   {
+    "command": "cd mcp && npm run test:worker",
+    "passed": true,
+    "result": "wrangler deploy --dry-run ok (1356.39 KiB / gzip 253.09 KiB); wrangler dev answered; tools/list, enhance_prompt, foreign Host 403, and a 2026-07-28 client's form answers all ok; 'worker checks passed'"
+   },
+   {
+    "command": "Reviewer probes re-run against the fixed build (scratchpad/probes)",
+    "passed": true,
+    "result": "rejectlog 'leaked: none', stdiolog 'none', dos tools/list 12 ms during the hostile request, perf/perf3/perf4 all <= 38 ms, hosts mcp.example.com:8080 now 200, eof exits 0 x4, bundle all 4 era/form combinations ok. Copies of notes, header, p1 and bundle with why added, and of heur with present renamed to status, run fine from scratchpad/fix/probes-patched/ (only notes, header, p1 and heur needed an edit). The originals of notes and header, which lack the now-required why, get the expected validation error."
+   }
+  ],
+  "files_changed": [
+   "/home/user/prompt-engine/data/lint-rules.json",
+   "/home/user/prompt-engine/scripts/build.mjs",
+   "/home/user/prompt-engine/scripts/test/lint-rules.test.mjs",
+   "/home/user/prompt-engine/scripts/test/validate.test.mjs",
+   "/home/user/prompt-engine/scripts/test/version.test.mjs",
+   "/home/user/prompt-engine/CONTRIBUTING.md",
+   "/home/user/prompt-engine/docs/manual-checks.md",
+   "/home/user/prompt-engine/docs/publishing.md",
+   "/home/user/prompt-engine/.github/pending-workflows/ci.yml",
+   "/home/user/prompt-engine/mcp/README.md",
+   "/home/user/prompt-engine/mcp/package.json",
+   "/home/user/prompt-engine/mcp/icon.png",
+   "/home/user/prompt-engine/mcp/scripts/pack-mcpb.mjs",
+   "/home/user/prompt-engine/mcp/scripts/worker-smoke.mjs",
+   "/home/user/prompt-engine/mcp/src/check.ts",
+   "/home/user/prompt-engine/mcp/src/questions.ts",
+   "/home/user/prompt-engine/mcp/src/server.ts",
+   "/home/user/prompt-engine/mcp/src/brief.ts",
+   "/home/user/prompt-engine/mcp/src/cli.ts",
+   "/home/user/prompt-engine/mcp/src/worker.ts",
+   "/home/user/prompt-engine/mcp/src/hosts.ts",
+   "/home/user/prompt-engine/mcp/src/log.ts",
+   "/home/user/prompt-engine/mcp/src/generated/content.ts",
+   "/home/user/prompt-engine/mcp/test/check.test.ts",
+   "/home/user/prompt-engine/mcp/test/questions.test.ts",
+   "/home/user/prompt-engine/mcp/test/integration.test.ts",
+   "/home/user/prompt-engine/mcp/test/brief.test.ts",
+   "/home/user/prompt-engine/mcp/test/e2e.test.ts",
+   "/home/user/prompt-engine/mcp/test/manifests.test.ts",
+   "/home/user/prompt-engine/mcp/test/hosts.test.ts",
+   "/home/user/prompt-engine/mcp/test/log.test.ts",
+   "/home/user/prompt-engine/mcp/test/worker.test.ts"
+  ],
+  "notes": "Nothing committed, pushed or reset. During my work the orchestrator committed d63abbf (universal prompt change); my regenerated content.ts includes it, and build --check is clean. Deviations and trade-offs to review: (1) Long lines are matched in overlapping 2,000-char windows rather than truncated, so no content is skipped; in addition check_prompt refuses data rules with unbounded or repeated-group repetition (isBoundedPattern), which is what makes it linear whatever the data file holds. (2) The decided template-leftover pattern also flags JSX double braces such as style={{ margin: 0 }} in coding prompts, which the old pattern didn't. (3) Bracketed text longer than 120 chars is no longer reported as an open placeholder, which is why excerpt.mjs now reports no finding. (4) Schema changes: check_prompt dimensions[].present became status ('found'|'not found'|'unknown') plus top-level mostlyEnglish; ask_user status no longer has 'cancelled'; why is required; new notes_label and notes_hint inputs. (5) Unreadable stdio lines that aren't JSON are silently dropped by the SDK (not logged); valid JSON that isn't JSON-RPC logs 'ignored a message that is not valid JSON-RPC (invalid-message)'; a malformed HTTP body isn't logged at all. (6) Item 13 is partial: mcpb 2.1.2 always prints the 512x512 'recommendation' for a valid PNG. Scratch artifacts (timing scripts, mutation script, patched probe copies) are in /tmp/claude-0/-home-user-prompt-engine/d32a46dc-34ea-5901-8086-72e22db65686/scratchpad/fix/; the scratch repo copy used for mutation tests was deleted.",
+  "probe_timings": "All on this machine, Node 22.22.0 unless noted. dos.mjs (--http, '{{' + 2,500 spaces with a concurrent tools/list): tools/list took 12 ms (was 7,727 ms); the hostile request finished at 111 ms including process warm-up. perf.mjs (14 cases x 100k chars, media/text targets): 1.2-37.8 ms each (worst if-words 37.8/23.9 ms; braces 10.6/9.0; brackets 7.3/6.8; digits 12.7/10.5; spaces 1.3/1.2), previously seconds to minutes. perf3.mjs ({{ + 3k/10k/30k spaces or tabs/newlines): 0-14 ms (was 13.5 s at 3k). perf4.mjs ({{ + 500-2,000 spaces): 0-15 ms (was up to 3.9 s). perf2.mjs: open-placeholder lint on '[['x50k is 0 ms (was 11.9 s); realistic CSV row checkPrompt 2-8 ms (was 4.1 s); its 'digits' column still shows 142 ms / 1,497 ms / 16,092 ms because the probe times its own copy of the old regex, not the server; the server's new bounded pattern on the same 100k input takes 6.2 ms (1.7 ms at 10k, 1.9 ms at 30k). cpu.mjs per request: tools/list 2.1 ms wall / 3.3 ms CPU, enhance_prompt 0.9 / 1.6, get_checklist image-video 1.3 / 2.7, check_prompt 2k chars 1.5 / 2.9. excerpt.mjs: 485 structured + 528 text chars at 500/5,000/60,000 (was 60,619 + 60,637); no finding because the 120-char placeholder bound excludes those bracketed spans. notes.mjs (copy with why added): 3,319 chars (was 105,074). Own end-to-end tools/call check_prompt timings at 100k chars through createMcpHandler, each case in a fresh process: first request 65-84 ms for single-line shapes and 145-169 ms over three runs for 50,000 one-letter lines; of that, 50-65 ms is the server's own first-request start-up (a fresh process's first tools/list takes about 51 ms). Later calls: 6-23 ms single-line, 31-61 ms many lines. Node 20.20.2 checkPrompt worst: 57.6 ms (single-line suite), 81.4 ms (many lines). Lint-rule harness at 50k chars: pressure-words 3.6 ms, visible-reasoning-request 2.0, magic-phrase 2.7, prefill-instruction 6.9, template-leftover 1.9, open-placeholder 0.8, vague-quality-words 3.1; both old patterns hit the 1 s timeout."
+ }
+]

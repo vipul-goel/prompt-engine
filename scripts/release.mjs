@@ -1,0 +1,115 @@
+#!/usr/bin/env node
+// Prepares release artifacts in dist/. Publishing itself (GitHub release, npm,
+// MCP Registry) happens in .github/workflows/release.yml, which calls this first.
+//
+//   node scripts/release.mjs --zip            # only dist/prompt-engine.zip (for Claude.ai / Skills API upload)
+//   node scripts/release.mjs                  # zip + universal files + MCPB bundle + checksums
+//   node scripts/release.mjs --tag v0.1.0     # same, and fail unless the tag matches the version
+//
+// --tag=v0.1.0 works too, and --tag combines with --zip. Any other argument, an empty or missing
+// --tag value or a second --tag is a usage error (exit 2) before anything is built.
+// Needs the `zip` and `unzip` commands, plus npm for the MCPB bundle. No other dependencies.
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, rmSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { join, sep } from 'node:path';
+import { parseArgs } from 'node:util';
+import { root, ZIP_EXCLUDES, normalize } from './build.mjs';
+
+// The command line, read strictly: a --tag form this script didn't read, an empty value or an
+// argument it didn't know built everything without the check that --tag asks for.
+const USAGE = 'usage: node scripts/release.mjs [--zip] [--tag v<version>]';
+let cli;
+try {
+  cli = parseArgs({ args: process.argv.slice(2), options: { zip: { type: 'boolean' }, tag: { type: 'string', multiple: true } } }).values;
+} catch (e) {
+  console.error(`${e.message}\n${USAGE}`);
+  process.exit(2);
+}
+if (cli.tag && (cli.tag.length > 1 || cli.tag[0] === '')) {
+  console.error(`--tag takes one value, such as v0.1.0\n${USAGE}`);
+  process.exit(2);
+}
+const tag = cli.tag?.[0];
+// Runs a command, which prints its own messages. One that fails ends the run with one line and exit
+// 1, which names node and the files under the checkout without their absolute paths: execFileSync's
+// throw printed a stack trace, with node's absolute path, after validate.mjs's list of errors. A
+// command that isn't installed is rethrown, for needs() below.
+const run = (cmd, cmdArgs, opts = {}) => {
+  try {
+    return execFileSync(cmd, cmdArgs, { cwd: root, stdio: 'inherit', ...opts });
+  } catch (e) {
+    if (e.code === 'ENOENT') throw e;
+    const what = [cmd === process.execPath ? 'node' : cmd, ...cmdArgs.map((a) => (a.startsWith(root + sep) ? a.slice(root.length + 1) : a))].join(' ');
+    console.error(`release.mjs stopped: ${what} ${typeof e.status === 'number' ? `exited with code ${e.status}` : `failed (${e.signal ?? e.code ?? e.message})`}`);
+    process.exit(1);
+  }
+};
+const dist = join(root, 'dist');
+
+// plugin.json's version, for the tag check (which stops a run before validate.mjs) and the last
+// line. normalize(), as validate.mjs reads it: a byte-order mark would make JSON.parse throw here.
+// A plugin.json that doesn't parse or is missing ends the run with one line that names it by its
+// path in the checkout, as a command that fails does: the throw printed a stack trace with the
+// checkout's absolute path. Control characters in the message, such as the line breaks of the
+// text that JSON.parse's message quotes, are written as escapes (\n). JSON that holds no object,
+// or no version, has none: no tag matches it, the tag check says so rather than naming a version
+// "vundefined", and without a tag validate.mjs names it.
+const pluginJson = join(root, '.claude-plugin', 'plugin.json');
+let version;
+try {
+  version = JSON.parse(normalize(readFileSync(pluginJson, 'utf8')))?.version;
+} catch (e) {
+  const why = e.code === 'ENOENT' ? 'missing' : e.message.replaceAll(pluginJson, '.claude-plugin/plugin.json').replace(/[\x00-\x1f]/g, (c) => JSON.stringify(c).slice(1, -1));
+  console.error(`release.mjs stopped: .claude-plugin/plugin.json: ${why}`);
+  process.exit(1);
+}
+if (tag !== undefined && (version == null || tag !== `v${version}`)) {
+  console.error(version == null ? `tag ${tag} does not match plugin version: .claude-plugin/plugin.json has no version; set it (and the versions it is synced with) first`
+    : `tag ${tag} does not match plugin version v${version}; bump .claude-plugin/plugin.json (and the versions it is synced with) first`);
+  process.exit(1);
+}
+
+run(process.execPath, ['scripts/validate.mjs']);
+mkdirSync(dist, { recursive: true });
+
+// 1. Skill zip: the archive's top-level entry must be the prompt-engine/ folder (claude.ai rejects a bare SKILL.md at the root).
+const zipPath = join(dist, 'prompt-engine.zip');
+rmSync(zipPath, { force: true });
+// zip and unzip are external commands. Stock Windows has neither, so say what to do instead of a stack trace.
+const needs = (cmd, fn) => {
+  try {
+    return fn();
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    console.error(`release.mjs needs the ${cmd} command, which isn't installed. On Linux, install the zip and unzip packages. On Windows, zip the skills/prompt-engine folder yourself instead: in File Explorer, right-click it, then Show more options > Send to > Compressed (zipped) folder (on Windows 10, Send to is in the first menu); the archive must have prompt-engine/ at its top level.`);
+    process.exit(1);
+  }
+};
+needs('zip', () => run('zip', ['-q', '-r', zipPath, 'prompt-engine', '-x', ...ZIP_EXCLUDES], { cwd: join(root, 'skills') }));
+const listing = needs('unzip', () => run('unzip', ['-Z1', zipPath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })).split('\n').filter(Boolean);
+if (!listing.includes('prompt-engine/SKILL.md') || listing.some((f) => !f.startsWith('prompt-engine/'))) {
+  console.error('zip layout is wrong: expected everything under prompt-engine/');
+  process.exit(1);
+}
+console.log(`dist/prompt-engine.zip (${listing.length} entries)`);
+if (cli.zip) process.exit(0);
+
+// 2. Universal copy-paste files.
+for (const f of ['prompt-engine.md', 'prompt-engine-knowledge.md']) copyFileSync(join(root, 'universal', f), join(dist, f));
+
+// 3. MCPB bundle for Claude Desktop, if the MCP server is present.
+const assets = ['prompt-engine.zip', 'prompt-engine.md', 'prompt-engine-knowledge.md'];
+if (existsSync(join(root, 'mcp', 'package.json'))) {
+  run('npm', ['run', 'pack:mcpb'], { cwd: join(root, 'mcp') });
+  const bundle = join(root, 'mcp', 'dist-mcpb', 'prompt-engine.mcpb');
+  if (!existsSync(bundle)) { console.error('mcp: pack:mcpb did not produce dist-mcpb/prompt-engine.mcpb'); process.exit(1); }
+  copyFileSync(bundle, join(dist, 'prompt-engine.mcpb'));
+  assets.push('prompt-engine.mcpb');
+}
+
+// 4. Checksums, for anyone checking a download: shasum -a 256 -c --ignore-missing SHA256SUMS (sha256sum on Linux).
+const sums = assets.map((f) => `${createHash('sha256').update(readFileSync(join(dist, f))).digest('hex')}  ${f}`);
+writeFileSync(join(dist, 'SHA256SUMS'), `${sums.join('\n')}\n`);
+console.log(`\nrelease artifacts for v${version} in dist/:\n${sums.join('\n')}`);

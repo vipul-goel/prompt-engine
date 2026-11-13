@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: strong-prompt-minimal-changes
+expected_outcome: |
+  Says the prompt is already strong; then asks at most 2 questions, or delivers an enhanced version that keeps the user's sentences in order and mostly word for word, lists each edit or short addition under What I added & why, isn't regrouped under new section headings, and is at most 1.5 times as long as the user's prompt (1,130 characters). Never carries out the prompt.

@@ -1,0 +1,63 @@
+name: Evals
+
+# Behavior evals with Claude Code's runner. These are real, billed model calls,
+# so this workflow only runs when started by hand. Secret: ANTHROPIC_API_KEY.
+# Each case pins its agent model in prompt.md; the judge is pinned below.
+on:
+  workflow_dispatch:
+    inputs:
+      max_cost_usd:
+        description: Hard cost ceiling for the run, in USD (a number such as 5, without a $ sign)
+        type: number
+        required: true
+        default: 5
+      runs:
+        description: Runs per case and arm. The cost grows with it, so keep 1; re-check a failing case locally with --case and --runs 3
+        type: number
+        required: true
+        default: 1
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # A step of its own, so the install never sees ANTHROPIC_API_KEY.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.312
+      - name: Run the eval suite
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RUNS: ${{ inputs.runs }}
+          MAX_COST_USD: ${{ inputs.max_cost_usd }}
+        run: |
+          # The inputs arrive as environment variables, never as script text. An empty
+          # --max-cost-usd means no ceiling in claude plugin eval 2.1.312, so refuse it.
+          case "$RUNS" in ''|*[!0-9]*) echo "::error::runs must be a whole number"; exit 1;; esac
+          case "$MAX_COST_USD" in ''|*[!0-9.]*) echo "::error::max_cost_usd must be a number such as 5"; exit 1;; esac
+          claude plugin eval . --trust-plugin --no-publish \
+            --runs "$RUNS" --max-cost-usd "$MAX_COST_USD" \
+            --judge-model claude-haiku-5-5 \
+            --allow-tools Write Edit --scaffold -j 3 --json eval-results.json
+      # In two-arm runs the with-only skill-fired checks are unscored indicators,
+      # so a run where the skill didn't start would still pass. This step fails it instead.
+      - name: Check that the skill started wherever a case expects it
+        if: ${{ !cancelled() }}
+        run: |
+          jq '{claudeVersion, suite, models: ([.cases[].model] | unique)}' eval-results.json
+          jq -r '[.cases[].arms.with[]?.graders[]? | select(.name | test("-skill-fired$"))] | "Skill started in \(map(select(.passed)) | length) of \(length) runs"' eval-results.json
+          jq -r '.cases[] | .name as $n | .arms.with[]?.graders[]? | select(.withOnly and (.passed | not)) | "Indicator failed: \($n) (\(.name))"' eval-results.json
+          jq -e '[.cases[].arms.with[]?.graders[]? | select(.withOnly)] as $i | ($i | length) > 0 and ([$i[] | select(.passed | not)] | length) == 0' eval-results.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: eval-results
+          path: |
+            eval-results.json
+            evals/results/

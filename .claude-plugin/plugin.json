@@ -1,0 +1,11 @@
+{
+  "name": "prompt-engine",
+  "displayName": "Prompt Engine",
+  "version": "0.1.0",
+  "description": "Turns rough prompts into detailed, LLM-ready prompts. Finds what's missing, asks multiple-choice questions with recommended answers, and explains every addition.",
+  "author": { "name": "vipul-goel", "url": "https://github.com/vipul-goel" },
+  "homepage": "https://github.com/vipul-goel/prompt-engine",
+  "repository": "https://github.com/vipul-goel/prompt-engine",
+  "license": "MIT",
+  "keywords": ["prompt-engineering", "prompts", "prompt-improver", "clarifying-questions", "skills"]
+}

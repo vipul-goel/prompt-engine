@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  skill:
+    name: Skill, plugin and universal prompt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Generated files are up to date
+        run: node scripts/build.mjs --check
+      - name: Validate (portability, lint, budgets, contract, manifests)
+        run: node scripts/validate.mjs
+      - name: Script tests (build, validator, version, release and eval scripts, workflows, lint-rule timing)
+        run: node --test scripts/test/*.test.mjs
+      - name: Skill zip layout
+        run: node scripts/release.mjs --zip
+      # scripts/test/workflows.test.mjs checks what the workflows promise; actionlint checks
+      # their syntax, expressions and, through shellcheck, their run: scripts.
+      - name: Workflow lint (actionlint, with the runner's shellcheck)
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          # SHA-256 of actionlint_1.7.12_linux_amd64.tar.gz (its line in that release's
+          # actionlint_1.7.12_checksums.txt). Update both together.
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          # actionlint skips the run: scripts when it finds no shellcheck, so stop instead.
+          shellcheck="$(command -v shellcheck)" || { echo "::error::shellcheck isn't installed on this runner"; exit 1; }
+          archive="${RUNNER_TEMP}/actionlint.tar.gz"
+          curl -fsSL -o "${archive}" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          # The check stops the step itself, not only through bash -e, which a line could turn off.
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c - || { echo "::error::The actionlint archive doesn't match ACTIONLINT_SHA256"; exit 1; }
+          tar xzf "${archive}" -C "${RUNNER_TEMP}" actionlint
+          "${RUNNER_TEMP}/actionlint" -shellcheck "${shellcheck}" .github/workflows/*.yml
+      - name: Claude Code plugin validation (with the directory profile)
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.312
+          claude plugin validate . --strict --profile directory
+
+  # The skill job's first three checks, on Windows. bash expands the test glob as it does
+  # on Linux. Not release.mjs --zip: it needs the zip and unzip commands, which stock
+  # Windows doesn't have.
+  windows:
+    name: Scripts on Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Generated files are up to date
+        run: node scripts/build.mjs --check
+      - name: Validate (portability, lint, budgets, contract, manifests)
+        run: node scripts/validate.mjs
+      - name: Script tests (build, validator, version, release and eval scripts, workflows, lint-rule timing)
+        run: node --test scripts/test/*.test.mjs
+
+  mcp:
+    name: MCP server (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: MCP Inspector gates (needs Node >= 22.19)
+        run: npm run test:inspector
+      - name: Install and start the packed npm package
+        run: npm run test:pack
+      - name: MCPB bundle (packs it, then starts the packed server)
+        run: npm run pack:mcpb
+      # release.yml's build and pack-check commands, which otherwise first run on a tag push:
+      # release.mjs's full build, given the tag this version would get (so its tag check passes),
+      # npm pack, and test:pack on that tarball. On Node 22, as the release builds. Nothing is
+      # published.
+      - name: The release build's commands (nothing is published)
+        if: matrix.node == 22
+        run: |
+          tag="v$(node -p 'require("../.claude-plugin/plugin.json").version')"
+          node ../scripts/release.mjs --tag "${tag}"
+          npm pack --pack-destination ../dist
+          npm run test:pack -- "../dist/prompt-engine-mcp-${tag#v}.tgz"
+      # node-version 22 doesn't mean 22.19.0, so the lowest version mcp/package.json's
+      # engines allow gets its own run of the two package checks.
+      - name: Switch to the lowest supported Node (22.19.0)
+        if: matrix.node == 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.19.0
+      - name: The packed server and the npm package start on Node 22.19.0
+        if: matrix.node == 22
+        run: |
+          [ "$(node --version)" = v22.19.0 ] || { echo "::error::expected Node v22.19.0, got $(node --version)"; exit 1; }
+          npm run pack:mcpb
+          npm run test:pack

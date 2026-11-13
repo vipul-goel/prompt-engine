@@ -1,0 +1,7 @@
+# Build outputs (dist/ and node_modules/ are ignored by the root .gitignore)
+mcpb/server/
+dist-mcpb/
+# State from wrangler dev and wrangler deploy --dry-run
+.wrangler/
+# What scripts/license.mjs records while mcp/LICENSE is its copy of the root LICENSE
+.license-copy.sha256

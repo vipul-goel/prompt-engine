@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: coding-vague-asks-questions
+expected_outcome: |
+  Standard mode: replies only with a short round of numbered multiple-choice questions specific to adding login, each with a recommended answer, and explains how to reply (ok accepts all). No final prompt yet.

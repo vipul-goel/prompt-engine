@@ -1,0 +1,58 @@
+name: Re-verify tool data
+
+# Image and video tools change often. Once a week, keep one issue open that lists
+# entries in data/media-targets.json that haven't been rechecked for 45 days.
+# GitHub turns off a public repository's scheduled workflows after 60 days without
+# activity, so the 45-day window plus the week between runs has to end before then.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  stale:
+    # A fork skips the check: its issues start turned off, and the issue belongs here.
+    if: github.repository == 'vipul-goel/prompt-engine'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Find stale entries
+        id: stale
+        run: |
+          # shellcheck disable=SC2016 # The $ signs belong to JavaScript template literals.
+          node -e '
+            const d = require("./data/media-targets.json");
+            const limit = Date.now() - 45 * 864e5;
+            // NaN counts as stale: a missing date, or one Date.parse cannot read (month 13, day 32).
+            // A day past the end of a month rolls over instead: 2026-02-30 reads as 2026-03-02.
+            const stale = d.targets.filter(t => !(Date.parse(t.last_verified) >= limit))
+              .map(t => `- ${t.name} (last checked ${t.last_verified}, status ${t.status})`);
+            require("fs").writeFileSync("stale.md", stale.join("\n"));
+            console.log(stale.length + " stale entries");
+          '
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -s stale.md ] || exit 0
+          title="Re-verify image/video tool data"
+          { echo "These image and video tool entries in data/media-targets.json are over 45 days old or have no valid last_verified date. Recheck each against the vendor's current docs, update the entry and its last_verified date, then run node scripts/build.mjs."; echo; cat stale.md; } > body.md
+          # Reuse the open issue with exactly this title that this workflow opened, if there is
+          # one. The repository is public, so anyone can open an issue with the same title; gh
+          # names the author of one that GITHUB_TOKEN opened app/github-actions. The match is
+          # picked inside gh's jq, with no pipe, so a failed lookup fails the step (bash -e)
+          # instead of opening a second issue.
+          existing="$(gh issue list --state open --author app/github-actions --search "in:title \"$title\"" --json number,title,author --jq "[.[] | select(.title == \"$title\" and .author.login == \"app/github-actions\")][0].number // empty")"
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file body.md
+            gh issue comment "$existing" --body "Still stale on $(date -u +%F)."
+          else
+            gh issue create --title "$title" --body-file body.md
+          fi

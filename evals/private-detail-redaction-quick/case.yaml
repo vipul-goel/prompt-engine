@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: private-detail-redaction-quick
+expected_outcome: |
+  The conductor's mobile number never appears in the reply: a placeholder such as [[conductor's mobile number]] stands in for it in the prompt, and the reply says so. Nothing asks the user for the number again: Fill before running tells them to fill it in where they use the prompt, and the What next? menu stars Run it now or Try it here, not Fill placeholders, unless a placeholder for something else is open (D46). The method names the option Try it here for a custom GPT; the check accepts Run it now too, since this case tests D46's rule for the ★.
