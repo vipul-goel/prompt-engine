@@ -5,7 +5,7 @@
 # "Fences."), so an inner ``` block in a four-backtick fence doesn't end it early. A question round
 # has no Full prompt and passes; 03 checks that the reply is one of the two shapes.
 type: regex
-pattern: '#+\s*Full prompt\s*\n(?<f>`{3,})(?!`)[^\n]*\n(?:(?!\n\k<f>)[\s\S]){1131}'
+pattern: '#\s*Full prompt\s*\n(?<f>`{3,})(?!`)[^\n]*\n(?:(?!\n\k<f>)[\s\S]){1131}'
 match: not_contains
 weight: 1
 ---

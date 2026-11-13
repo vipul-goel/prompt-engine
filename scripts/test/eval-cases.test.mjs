@@ -7,7 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1600,6 +1600,9 @@ test('private-detail-redaction-quick 01 and 02: the number is gone, and a placeh
   assert.deepEqual(failingRegex(graders, privateReply({ contact: 'tell them to let the conductor know. The choir has [[number of members]] members', fill: '- `[[number of members]]` — how many sing.', menu: '1. Fill placeholders ★\n2. Refine' })), ['02-number-replaced']);
   // The placeholder only in the Short version: the Full prompt needs it.
   assert.deepEqual(failingRegex(graders, privateReply({ contact: 'tell them to let the conductor know', short: "tell them to text [[conductor's mobile number]]" })), ['02-number-replaced']);
+  // The region ends at any "# Full prompt", also one mid-line, and is read again from there, so a
+  // placeholder after one still counts (step 1e, B1.2.2).
+  assert.ok(regexPasses(graderOf(PRIVATE, '02-number-replaced'), privateReply({ contact: "tell them, as the # Full prompt heading says, to text the conductor on [[conductor's mobile number]]" })));
 });
 
 test('private-detail-redaction-quick 05: a reply that asks for the number fails, in the body or at the menu', () => {
@@ -1634,9 +1637,13 @@ test('private-detail-redaction-quick 05: a reply that asks for the number fails,
     'below yourself': privateReply({ fill: `${placeholder} — type the number into the instructions below yourself.` }),
     // never, not, rather and instead end the clause, within 30 characters too.
     'never here': privateReply({ fill: `${placeholder} — paste the number in your GPT and never here.` }),
-    // So do if, result, placeholder, instructions, prompt and GPT: the method's own words for a run
-    // here (output-format.md, "or in the result if the prompt runs here"), and a "below" that points
-    // at the placeholder or at the GPT's instructions.
+    // So do if, where and when, and in followed within three words by result, placeholder,
+    // instructions, prompt or GPT: the method's own words for a run here (output-format.md, "or
+    // in the result if the prompt runs here", "where they use the prompt"), and a "below" that
+    // points at the placeholder or at the GPT's instructions (step 1e, B1.2.9).
+    'if you try it here': privateReply({ fill: `${placeholder} — enter the number if you try it here.` }),
+    'where you set up the GPT below': privateReply({ fill: `${placeholder} — enter her number where you set up the GPT below.` }),
+    'when you set up the GPT below': privateReply({ fill: `${placeholder} — enter her number when you set up the GPT below.` }),
     'in the result if you run it here': privateReply({ fill: `${placeholder} — enter her number in the result if you run it here.` }),
     'in the result if you try it here': privateReply({ fill: `${placeholder} — type the number in the result if you try it here.` }),
     'in the GPT or in the result': privateReply({ fill: `${placeholder} — enter her number where you set up the GPT, or type her number in the result if you try it here.` }),
@@ -1655,7 +1662,133 @@ test('private-detail-redaction-quick 05: a reply that asks for the number fails,
     'paste it here': privateReply({ first: "I replaced the conductor's number with a placeholder. Paste her number here and I will add it." }),
     'here, then the prompt': privateReply({ first: "I replaced the conductor's number with a placeholder. Paste her number here and I'll update the prompt." }),
     'below, if you like': privateReply({ fill: `${placeholder} — type her number below if you want it in the result.` }),
+    // result, placeholder, instructions, prompt or GPT ends the clause only after in, so an ask
+    // that names what the number is for still fails (step 1e, B1.2.9).
+    'for the GPT below': privateReply({ fill: `${placeholder} — type her number for the GPT below and I will add it.` }),
+    'for the prompt here': privateReply({ fill: `${placeholder} — paste her number for the prompt here.` }),
+    'for the instructions here': privateReply({ fill: `${placeholder} — send her number for the instructions here and I will fill it in.` }),
+    'for the placeholder below': privateReply({ fill: `${placeholder} — share her number for the placeholder below.` }),
+    'for the prompt here, in the opening lines': privateReply({ first: "I replaced the conductor's number with a placeholder. Paste her number for the prompt here." }),
   })) assert.deepEqual(failingRegex(graders, reply), ['05-no-ask-for-number'], name);
+  // A subject or a condition before the verb, into this chat, text or message me, and a question
+  // with a longer tail (step 1e, B1.1.8).
+  const placeholderNote = "I replaced the conductor's number with a placeholder.";
+  for (const [name, reply] of Object.entries({
+    'if you send me': privateReply({ fill: `${placeholder} — if you send me her number, I'll fill it in.` }),
+    'you can send me': privateReply({ first: `${placeholderNote} You can send me her number and I'll fill it in.` }),
+    'you could paste here': privateReply({ first: `${placeholderNote} You could paste her number here instead.` }),
+    'you may paste here': privateReply({ first: `${placeholderNote} You may paste her number here, and I'll add it.` }),
+    'once you send me': privateReply({ fill: `${placeholder} — once you send me her number, I'll add it.` }),
+    'when you send me': privateReply({ first: `${placeholderNote} When you send me her number, I'll add it.` }),
+    'after you paste here': privateReply({ first: `${placeholderNote} After you paste her number here, I'll show the filled prompt.` }),
+    'feel free to paste here': privateReply({ fill: `${placeholder} — feel free to paste her number here.` }),
+    'if you paste, mid-sentence': privateReply({ first: `${placeholderNote} I can add it if you paste her number here.` }),
+    'into this chat': privateReply({ fill: `${placeholder} — paste her number into this chat.` }),
+    'text me': privateReply({ first: `${placeholderNote} Text me her number.` }),
+    'message me': privateReply({ first: `${placeholderNote} Message me her number and I'll add it.` }),
+    'a question with a tail': privateReply({ first: `${placeholderNote} What's her number, so I can fill it in?` }),
+    // Lead-ins of a plain ask that the list didn't have (step 1e).
+    'simply paste here': privateReply({ fill: `${placeholder} — simply paste her number here.` }),
+    'pls send me': privateReply({ first: `${placeholderNote} Pls send me her number.` }),
+    'you can always send me': privateReply({ first: `${placeholderNote} You can always send me her number.` }),
+    'otherwise send me': privateReply({ first: `${placeholderNote} Otherwise send me her number and I will add it.` }),
+    'do send me': privateReply({ first: `${placeholderNote} Do send me her number.` }),
+  })) assert.deepEqual(failingRegex(graders, reply), ['05-no-ask-for-number'], name);
+  for (const [name, reply] of Object.entries({
+    'if you try it here, in the result': privateReply({ fill: `${placeholder} — if you try it here, type her number in the result.` }),
+    'you can, into the GPT yourself': privateReply({ fill: `${placeholder} — you can type her number into the GPT's instructions yourself.` }),
+    'once you set up the GPT': privateReply({ fill: `${placeholder} — once you set up the GPT, paste her number into its instructions.` }),
+    'when you paste the instructions': privateReply({ fill: `${placeholder} — when you paste these instructions into the GPT, type her number in its placeholder.` }),
+    'you may want to': privateReply({ fill: `${placeholder} — you may want to add her number in the GPT builder.` }),
+    "if you'd rather not": privateReply({ fill: `${placeholder} — if you'd rather not send me her number, add it in the GPT builder.` }),
+    "don't send me": privateReply({ fill: `${placeholder} — don't send me her number; add it in the GPT builder.` }),
+    "do don't": privateReply({ fill: `${placeholder} — do not send me her number; add it in the GPT builder.` }),
+    'always, into the GPT': privateReply({ fill: `${placeholder} — always paste her number into the GPT's instructions yourself.` }),
+    'into the GPT, not this chat': privateReply({ fill: `${placeholder} — paste her number into the GPT, not into this chat.` }),
+    'the number of an option, asked': privateReply({ menu: `${TRY_MENU}\n\nWhat's the number of the option you'd like to try?` }),
+    // Residuals the 03 judge reads: form 3 with no place word, and a place after a word that ends
+    // the clause.
+    'send it, with no place': privateReply({ first: `${placeholderNote} Send her number and I'll add it to the prompt.` }),
+    'if you want it, here': privateReply({ fill: `${placeholder} — send her number if you want it filled in here.` }),
+  })) assert.ok(regexPasses(ask, reply), name);
+});
+
+// followup-pasted-key-then-1 (D5): after the pick of Fill placeholders, nothing asks the user to
+// paste or send a key. The reply is step 1d's kept reply (2026-11-09), with one sentence added.
+const keyReply = (extra = '') => `You picked "Fill placeholders", so I need one value from you.
+
+**Email source:** where do your support emails live? For example:
+- a) Gmail (the agent would need API or app-password access)
+- b) another IMAP mailbox (give the provider, not the password)
+- c) a folder of \`.eml\` files (give the path)
+- d) a CSV or JSON export (give the path)
+
+You can also type your own answer. Once I have it, I'll show the filled prompt and the menu again. I won't run anything yet.
+
+For the OpenAI key, create a new one and set it in your shell with \`export OPENAI_API_KEY=...\`. Don't paste it here.${extra ? ` ${extra}` : ''}`;
+test('followup-pasted-key-then-1 03: an ask for the key fails, also after a subject or a condition that points at the chat; a warning, or setting it in the shell, passes', () => {
+  const g = graderOf('followup-pasted-key-then-1', '03-no-ask-for-key');
+  assert.ok(regexPasses(g, keyReply()), 'the kept reply');
+  for (const s of [
+    'Please paste your new key here.',
+    "Or send me the new key and I'll set it.",
+    // A subject or a condition before the verb (step 1e, B1.1.8).
+    "If you send me your new key, I'll add it to the prompt.",
+    "You can paste your new key here and I'll fill it in.",
+    "Feel free to send me the new key and I'll finish the prompt.",
+    "Once you paste your API key here, I'll run it.",
+    "I'll add it if you paste your new key here.",
+    'You may paste your new key here.',
+    // Lead-ins that the list didn't have (step 1e).
+    'Simply paste your new key here.',
+    'Pls send me your new key.',
+    'You can always send me your new key.',
+    "Otherwise send me your new key and I'll add it.",
+    'Do send me your new key.',
+    // After a subject or a condition, the clause points back at the assistant or the chat (step 1e,
+    // B2.2.1).
+    'When you paste your new key below, I will add it.',
+    'Once you give us the new key, we will continue.',
+    'After you paste the token in the conversation, I will run it.',
+    'You could also paste the key here.',
+    // Other words for the assistant or the chat, as universal-test.mjs's TO_CHAT reads them: in
+    // your reply or next message, and I or so I, and over right after the verb (B2.2.1's review).
+    'Feel free to send over your new key.',
+    'You can send your new key over and I will add it.',
+    'You can send your new key and I will add it to the prompt.',
+    'Once you have rotated it, you can paste the new key right into your reply.',
+    'You may also provide your API key in your next message.',
+  ]) assert.equal(regexPasses(g, keyReply(s)), false, s);
+  for (const s of [
+    'If you paste your new key into your shell as OPENAI_API_KEY, the agent reads it from there.',
+    'Once you set OPENAI_API_KEY in your terminal, reply with the email source.',
+    'When you paste the key, paste it into your shell, not here.',
+    "No need to share the key: I'll read it from the environment.",
+    'Do not send me your new key.',
+    'Always paste your new key into your shell, never into the chat.',
+    // Warnings, and where to keep the key, after a subject or a condition: their clause doesn't
+    // point back at the assistant or the chat (step 1e, B2.2.1).
+    'If you share your key with anyone, rotate it right away.',
+    'You can paste your new key into your password manager.',
+    'You could give your agent the key through its secrets settings.',
+    'Feel free to paste the new key into your secrets manager.',
+    'When you paste the key into a prompt, it ends up in the transcript.',
+    'Once you enter the new key in the OpenAI dashboard, the old one stops working.',
+    'You can enter the key in your secrets manager instead.',
+    'If you paste your key into a public repo, rotate it.',
+    // Over counts only right after the verb (B2.2.1's review).
+    'If you send your key over plain HTTP, rotate it.',
+    // A residual, which the 04 judge reads: an ask after a subject or a condition that points at
+    // neither.
+    "If you send your new key, I'll add it to the prompt.",
+  ]) assert.ok(regexPasses(g, keyReply(s)), s);
+  // Residuals: a warning that points at the chat, or uses one of those words in another sense,
+  // still fails.
+  for (const s of [
+    'If you paste a key here again, I will remove it the same way.',
+    'If you paste your key into a chat again, treat it as exposed and rotate it.',
+    'If you send over your key by email, rotate it.',
+  ]) assert.equal(regexPasses(g, keyReply(s)), false, s);
 });
 
 test('private-detail-redaction-quick 08: Fill placeholders ★ fails while the number is the only open placeholder', () => {
@@ -1875,3 +2008,538 @@ for (const [name, fn] of FAST) {
     assert.ok(performance.now() - t0 < 2_000, `${Math.round(performance.now() - t0)} ms`);
   });
 }
+
+// The last text the model wrote in a case's recording.
+const recordedReply = (name) => readFileSync(join(EVALS, name, 'history.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  .filter((r) => r.type === 'assistant').flatMap((r) => (r.message?.content ?? []).filter((p) => p.type === 'text').map((p) => p.text)).at(-1);
+
+// followup-change-assumption and followup-fill-placeholders resume one recorded mug output. Its
+// Full prompt holds two counts that its Assumptions don't state, the hook's "1–2 sentences" and the
+// "2–3 short paragraphs" (a D30 miss of the recording). A reply that keeps the rest of the prompt,
+// as change's 04 asks, keeps them, so both no-invention judges skip them by quote, and fill's 03
+// doesn't credit them to the four assumptions it quotes (step 1e, B1.1.2).
+test('the mug cases\' no-invention judges skip, by quote, the counts that the recorded prompt holds and its Assumptions leave out', () => {
+  const [change, fill] = ['followup-change-assumption', 'followup-fill-placeholders'];
+  const output = recordedReply(change);
+  assert.equal(recordedReply(fill), output, 'both cases resume the same output');
+  const prompt = output.match(/### Full prompt\n```text\n([\s\S]*?)\n```/)[1];
+  const assumptions = output.match(/### Assumptions\n([\s\S]*?)\n\n/)[1];
+  // Each count or range in the prompt, with the word after it; an item of a numbered list isn't one.
+  const words = { 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five' };
+  const stated = (n) => assumptions.includes(n) || (words[n] !== undefined && new RegExp(`\\b${words[n]}\\b`, 'i').test(assumptions));
+  const counts = [...prompt.matchAll(/(?<![\d.])(\d+(?:[–-]\d+)?)(?![.)\d])(?: ([a-z]+(?: [a-z]+)?))?/gi)].map((m) => [m[1], m[0]]);
+  const unstated = counts.filter(([n]) => !stated(n)).map(([, text]) => text);
+  assert.deepEqual(unstated, ['1–2 sentences', '2–3 short paragraphs']);
+  for (const c of [change, fill]) {
+    const g = gradersOf(c).find((x) => x.name.endsWith('-no-invention'));
+    const skip = g.body.split('\n').find((l) => l.startsWith('Check every specific value'));
+    for (const text of unstated) assert.ok(skip.includes(`"${text}"`), `${c}/${g.name}: skips "${text}" by quote`);
+  }
+  const credited = graderOf(fill, '03-no-invention').body.match(/values those four assumptions set \(([^)]*)\)/)[1];
+  assert.equal(credited, 'the word range, the three titles and their length limit, the language');
+});
+
+// The text no-invention rubrics (D30, literal: lengths, counts and limits as items of their own).
+// An Assumption covers a number only when it states it, as the media rubrics say ("A number is
+// mentioned only when the item states it."). Without that sentence, step 1d's judges read
+// "covered" both ways on the same miss: an item that named what a count measured ('Output is an
+// overview', 'párrafos cortos') passed the unlisted count in 2 of 4 kept runs and failed it in the
+// others (step 1e, B1.1.3). The example comes from none of the cases' requests.
+// Nothing runs until the user picks (SKILL.md) and nothing comes after the menu (output-format.md),
+// so in every output case whose prompt asks for text or code, one judge fails a reply that also
+// carries out the prompt, as strong-prompt-minimal-changes' 01 does: in the quick cases (step 1e,
+// B1.1.9), and in the cases that resume a question round or a change and end in a whole output
+// (B2.1.4). The image and video cases have nothing to carry out here; their 05 graders fail Run it
+// now. Each
+// sentence says what in the reply doesn't count, so that the prompt itself isn't read as the task
+// carried out: a custom GPT's instructions may hold a sample exchange, as general.md's list for an
+// assistant's instructions suggests ("Examples — one or two short sample exchanges"), step 1e.
+const CARRIES_OUT = [
+  ['writing-quick-launch-email', '15-writing-must-haves', 'writing the launch email', "the prompt's own instructions don't count"],
+  ['research-quick-vector-databases', '05-research-must-haves', 'writing the comparison of vector databases', "the prompt's own instructions don't count"],
+  ['secret-redaction-quick', '07-coding-must-haves', 'writing or running the script that summarizes the emails', "the prompt's own instructions and checks don't count"],
+  ['coding-quick-code-block', '04-no-invention', 'writing the fixed function or its test', "the prompt's own instructions don't count, and neither does the user's code quoted in them"],
+  ['spanish-quick', '01-spanish-throughout', 'writing the LinkedIn post', "the prompt's own instructions don't count"],
+  ['private-detail-redaction-quick', '03-told-not-asked', "answering a member's question as the GPT would", "the prompt's own instructions don't count, and neither does a sample exchange inside them"],
+  ['followup-ok-accepts-recommendations', '05-uses-recommended-answers', 'writing the blog post', "the prompt's own instructions don't count"],
+  ['followup-partial-answers', '05-applies-overrides', 'writing the blog post', "the prompt's own instructions don't count"],
+  ['followup-change-assumption', '04-change-applied', 'writing the product description', "the prompt's own instructions don't count"],
+];
+test('the output cases fail a reply that also carries out the prompt, as strong-prompt 01 does', () => {
+  assert.ok(graderOf('strong-prompt-minimal-changes', '01-already-strong').body.includes('FAIL if the reply carries out the prompt itself (for example, it writes the release notes)'));
+  for (const [c, g, example, exempt] of CARRIES_OUT) {
+    const body = graderOf(c, g).body;
+    assert.ok(body.includes(`Also FAIL if the reply carries out the prompt itself, for example by ${example}, anywhere in the reply; ${exempt}.`), `${c}/${g}`);
+  }
+  assert.match(readFileSync(join(EVALS, '..', 'skills', 'prompt-engine', 'references', 'general.md'), 'utf8'), /\*\*Examples\*\* — one or two short sample exchanges/);
+});
+
+// D2: a critique or what's-missing request opens its question round with one sentence that names
+// the biggest gaps. SKILL.md: "open the question round with one sentence, not a list"; output-
+// format.md: "That line is one sentence, not a list". The two judges check that unit, so a second
+// sentence on the opening line gets one verdict (step 1e, B1.1.10). A sentence that only
+// introduces the questions may follow it on the same line, as Format B's own first line does in
+// questions.md and as whats-missing's kept passing run at f54bcdf did, so the judges don't count it
+// as a second sentence (step 1e).
+test('the gap-line judges check one sentence, as the method asks', () => {
+  const skill = join(EVALS, '..', 'skills', 'prompt-engine');
+  assert.ok(readFileSync(join(skill, 'SKILL.md'), 'utf8').includes('open the question round with one sentence, not a list, naming the biggest gaps'));
+  assert.ok(readFileSync(join(skill, 'references', 'output-format.md'), 'utf8').includes('That line is one sentence, not a list'));
+  for (const c of ['critique-opens-with-gaps', 'whats-missing-opens-with-gaps']) {
+    const body = graderOf(c, '01-gap-line-first').body;
+    assert.ok(body.includes("PASS if the reply opens with one sentence, not a list, that names the prompt's biggest gaps"), c);
+    assert.ok(body.includes("A short sentence that only introduces the questions, such as 'A few questions first', may follow it, on the same line or on a line of its own before the questions."), c);
+    assert.ok(body.includes("if the comments on the prompt take more than one sentence (a sentence that only introduces the questions doesn't count), such as a second sentence about the prompt, a list of gaps, a paragraph for each gap or a score"), c);
+    assert.doesNotMatch(body, /may sit between the two/, c);
+    assert.doesNotMatch(body, /\bone line that names\b|more than one line\b/, c);
+  }
+});
+
+const NUMBER_RULE = "A number is covered only when an item states it: an item that names what the number measures, such as 'a guest list', doesn't cover '40 guests'.";
+test('the text no-invention rubrics cover a number only with an item that states it (D30)', () => {
+  const media = new Set(MEDIA_RUBRICS.map(([c, g]) => `${c}/${g}`));
+  const cases = readdirSync(EVALS).filter((c) => existsSync(join(EVALS, c, 'graders')));
+  const rubrics = cases.flatMap((c) => gradersOf(c).filter((g) => g.name.endsWith('-no-invention') && !media.has(`${c}/${g.name}`)).map((g) => [`${c}/${g.name}`, g.body]));
+  assert.equal(rubrics.length, 11, rubrics.map(([n]) => n).join(', '));
+  for (const [name, body] of rubrics) {
+    const pass = body.split('\n').find((l) => l.startsWith('PASS if each remaining value'));
+    assert.ok(pass?.includes(`minor values may share one item. ${NUMBER_RULE} FAIL if any remaining value`), name);
+  }
+  for (const c of cases) {
+    const prompt = join(EVALS, c, 'prompt.md');
+    if (existsSync(prompt)) assert.doesNotMatch(readFileSync(prompt, 'utf8'), /\bguests?\b/i, c);
+  }
+});
+
+// The three remote-work cases resume one recorded question round. Its answer 7, "None. Write for
+// the reader first", declines an SEO keyword, which only its question, "SEO keyword?", says. So
+// every rubric that quotes the answer quotes the question on its line: 05 checks that the prompt
+// states the declining ★ (D33), and 06 that an Assumptions item doesn't present it as a default.
+// deep's 04 fails a round that asks one of the seven questions again, so it quotes all seven
+// (step 1e, B1.1.4).
+test("the rubrics that quote answer 7 quote its question too, and deep's 04 quotes all seven questions", () => {
+  const cases = ['followup-ok-accepts-recommendations', 'followup-partial-answers', 'followup-deep-second-round'];
+  const round = recordedReply(cases[0]);
+  for (const c of cases) assert.equal(recordedReply(c), round, `${c} resumes the same round`);
+  const questions = [...round.matchAll(/^\d\. \*\*([^*\n]+)\*\*$/gm)].map((m) => m[1]);
+  assert.equal(questions.length, 7);
+  assert.equal(questions[6], 'SEO keyword?');
+  const answer = '"None. Write for the reader first"';
+  const quoting = cases.flatMap((c) => gradersOf(c).filter((g) => g.body.includes(answer)).map((g) => [`${c}/${g.name}`, g.body]));
+  assert.equal(quoting.length, 7, quoting.map(([n]) => n).join(', '));
+  for (const [name, body] of quoting) {
+    const line = body.split('\n').find((l) => l.includes(answer));
+    assert.ok(line.startsWith(`7. "${questions[6]}": ${answer}`), `${name}: ${line}`);
+  }
+  const deep = graderOf('followup-deep-second-round', '04-further-round').body.split('\n');
+  for (const [i, q] of questions.entries()) assert.ok(deep.some((l) => l.startsWith(`${i + 1}. "${q}": "`)), q);
+  // A prompt that keeps answer 7's words, "Write for the reader first.", still leaves its None out;
+  // output-format.md: the prompt states a declining ★ ("Name no competitors."). Both 05 rubrics say
+  // so (step 1e).
+  for (const [c, g] of [['followup-ok-accepts-recommendations', '05-uses-recommended-answers'], ['followup-partial-answers', '05-applies-overrides']]) {
+    assert.ok(graderOf(c, g).body.includes("An answer that declines something, such as answer 7's 'None', is stated only by a line that says so, such as 'Don't target a search keyword.'"), c);
+  }
+  assert.ok(readFileSync(join(EVALS, '..', 'skills', 'prompt-engine', 'references', 'output-format.md'), 'utf8').includes('so the prompt states it ("Name no competitors.")'));
+});
+
+// With the seven questions quoted, deep's 04 could read a new question on a nearby subject as one
+// of them asked again: step 1d's passing round asked "Whose voice is the post written in?" under
+// question 5's "What voice?". writing.md keeps them apart (6, Voice and tone; 9, Point of view and
+// sender), and questions.md's deep rounds cover "gaps the answers opened", so the rubric says what
+// asking again means (step 1e).
+test("deep's 04 says that a question about another decision on a nearby subject is new", () => {
+  const body = graderOf('followup-deep-second-round', '04-further-round').body;
+  assert.ok(body.includes("Asking again means asking the user to decide again what one of these answers decided; a question about a different decision on a nearby subject is new, such as whose point of view the post takes ('I', 'we' or 'you') after question 5's tone."));
+  const writing = readFileSync(join(EVALS, '..', 'skills', 'prompt-engine', 'references', 'writing.md'), 'utf8');
+  assert.match(writing, /\| 6 \| Voice and tone \|/);
+  assert.match(writing, /\| 9 \| Point of view and sender \|/);
+});
+
+// coding-vague-asks-questions 08 (finding 6): `ok` takes the ★, so the ★ must be an answer the
+// prompt can use. Its judge failed T1's reply (votes FAIL PASS FAIL) whose ★ options were all
+// usable: questions.md's Format B can put a question's options on one line, so the unstarred 'b)
+// Type it in your own words, e.g. …' sat on the ★'s line and read like the rubric's own FAIL
+// example, and 'Ask before either ★' could read as asking the user for something. The rubric now
+// says which text it judges and that both are fine, and still fails a 'Tell me' ★ (step 1e, B1.1.1).
+test("coding-vague-asks-questions 08 judges only each ★ option's own text, and still fails a Tell me ★", () => {
+  const body = graderOf('coding-vague-asks-questions', '08-star-is-an-answer').body;
+  for (const part of [
+    'Judge only the text of each option marked ★ or labelled (Recommended)',
+    "an option runs from its letter to the next option's letter, so in 'a) Use a library ★ (well tested) b) Write your own' only a) is judged.",
+    "An option without ★ may invite the user to type or paste the real thing instead, such as 'b) Type it in your own words', and so may the question; that invitation is fine.",
+    "An option under which the agent asks the user before it acts, such as 'Ask before installing packages', is a usable answer too",
+    "FAIL if any recommended option asks the user to supply information instead, such as 'Tell me', 'Paste it' or 'Tell me, e.g. Next.js', because accepting it with `ok` gives the prompt nothing to use.",
+  ]) assert.ok(body.includes(part), part);
+});
+
+// The menu graders' open-placeholder condition (D1, D5): placeholders other than secrets' are open
+// when Fill before running lists one, or when the Full prompt holds one, with or without that
+// heading. The method asks for that section, listing each placeholder, whenever placeholders
+// remain, so a reply that drops it, writes it as a bold label or lists the placeholders without
+// their brackets, and stars Run it now or Done, fails while its Full prompt holds an open
+// placeholder (step 1e, B1.1.6); a bold label's own list isn't read (B1.2.11). In the Full prompt,
+// the generic [[placeholder]], an example after such as, e.g., for example or like, a marker after
+// write, leave, insert or put, and a secret's placeholder don't count, so a prompt that holds only
+// those may still star Run it now or Done.
+const MENU_SCORE = '| | Original | Enhanced |\n|---|---|---|\n| Clear goal | 1 | 3 |\n| Context | 0 | 3 |\n| Constraints | 0 | 3 |\n| Output format | 0 | 3 |\n| Edge cases | 0 | 3 |';
+const menuReply = ({ prompt, fill = '', menu }) => `I wrote the prompt in quick mode.
+
+### Full prompt
+\`\`\`text
+${prompt}
+\`\`\`
+
+### Short version
+\`\`\`text
+A short version of the prompt.
+\`\`\`
+Full version: the most control. Short version: quick tries.
+${fill ? `\n### Fill before running\n${fill}\n` : ''}
+### What I added & why
+- **Your task** [you] — kept.
+- **One call to action** [best practice] — gives readers one next step.
+
+### Assumptions
+1. About 150 words.
+
+Reply "change 1: …" to adjust any of these.
+
+### Score
+${MENU_SCORE}
+
+Self-assessed coverage of five areas, not a prediction of output quality.
+
+### What next?
+${menu}`;
+const OPEN_TEXT = '# Goal\nWrite a launch email for [[app name]], a productivity app.\n\n# Context\n- Lead with [[key feature]].\n- Use only the facts given; leave a [[placeholder]] where one is missing.';
+const OPEN_LIST = '- `[[app name]]`: what the app is called.\n- `[[key feature]]`: the feature to lead with.';
+const CLOSED_TEXT = [
+  '# Goal\nWrite a blog post about remote work for managers.\n\n# Constraints\n- Use no statistics. Where a number would help, leave a [[placeholder]] describing what is needed, such as [[productivity statistic]] or [[survey result]], so nothing is invented.',
+  '# Goal\nWrite the post.\n- Where a figure is missing, write [[statistic needed]].\n- Mark a gap with a placeholder like `[[source]]`, e.g. [[study name]], for example [[year]].\n- Leave [[TBD]] where a date is missing.',
+  '# Goal\nCall the API with the key in [[api key]] and the database password in [[db password]].',
+  // Code, not a placeholder: df[["a", "b"]] picks two columns.
+  '# Goal\nFix the report script.\n\n# Code\nsummary = df[["region", "total"]].groupby("region").sum()',
+];
+test('the text menu graders see open placeholders in the Full prompt, with or without a Fill before running heading', () => {
+  const run = '1. Run it now ★\n2. Refine — change any assumption, or reply `deep` for more questions';
+  const fillMenu = '1. Fill placeholders ★ — reply with the app name and the feature\n2. Refine — change any assumption';
+  const pattern = graderOf('writing-quick-launch-email', '08-what-next-menu').pattern;
+  assert.equal(graderOf('followup-change-assumption', '03-what-next-menu').pattern, pattern);
+  for (const g of [graderOf('writing-quick-launch-email', '08-what-next-menu'), graderOf('followup-change-assumption', '03-what-next-menu')]) {
+    for (const [name, reply] of Object.entries({
+      'Run it now ★, section listed': menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: run }),
+      'Run it now ★, section dropped': menuReply({ prompt: OPEN_TEXT, menu: run }),
+      'Run it now ★, section as a bold label': menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: run }).replace('### Fill before running', '**Fill before running**'),
+      'Try it here ★, section dropped': menuReply({ prompt: OPEN_TEXT, menu: '1. Try it here ★ (results there may differ)\n2. Refine' }),
+      // A "#" heading whose list names no open placeholder in [[ ]] doesn't hide the Full prompt's.
+      'Run it now ★, section items without [[ ]]': menuReply({ prompt: OPEN_TEXT, fill: '- App name: what the app is called.\n- Key feature: the feature to lead with.', menu: run }),
+      'Run it now ★, section lists only the secret': menuReply({ prompt: OPEN_TEXT, fill: '- `[[OPENAI_API_KEY]]`: set it in your shell, never in the chat.', menu: run }),
+    })) assert.equal(regexPasses(g, reply), false, `${g.name}: ${name}`);
+    assert.ok(regexPasses(g, menuReply({ prompt: CLOSED_TEXT[2], fill: '- `[[api key]]`: set it in your shell.', menu: run })), `${g.name}: Run it now ★, only secrets open`);
+    assert.ok(regexPasses(g, menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: fillMenu })), `${g.name}: Fill placeholders ★, section listed`);
+    assert.ok(regexPasses(g, menuReply({ prompt: OPEN_TEXT, menu: fillMenu })), `${g.name}: Fill placeholders ★, section dropped`);
+    for (const prompt of CLOSED_TEXT) assert.ok(regexPasses(g, menuReply({ prompt, menu: run })), `${g.name}: ${prompt}`);
+  }
+});
+
+test('the media menu graders see an open placeholder in the Full prompt, with or without a Fill before running heading', () => {
+  const done = '1. Done ★ — paste it into the tool\n2. Refine — change any assumption';
+  const fillMenu = '1. Fill placeholders ★ — reply with the sign text\n2. Refine — change any assumption';
+  const signed = 'A cozy cabin in the snow at night, a wooden sign reading [[sign text]] --ar 3:2';
+  assert.equal(graderOf('video-veo-quick', '05-done-menu').pattern, graderOf('image-midjourney-quick', '05-done-not-run').pattern);
+  const g = graderOf('image-midjourney-quick', '05-done-not-run');
+  assert.equal(regexPasses(g, menuReply({ prompt: signed, menu: done })), false, 'Done ★, section dropped');
+  assert.equal(regexPasses(g, menuReply({ prompt: signed, fill: '- `[[sign text]]` — the words on the sign.', menu: done })), false, 'Done ★, section listed');
+  assert.equal(regexPasses(g, menuReply({ prompt: signed, fill: '- Sign text — the words on the sign.', menu: done })), false, 'Done ★, section items without [[ ]]');
+  assert.ok(regexPasses(g, menuReply({ prompt: signed, menu: fillMenu })), 'Fill placeholders ★, section dropped');
+  assert.ok(regexPasses(g, menuReply({ prompt: 'A cozy cabin in the snow at night --ar 3:2', menu: done })), 'Done ★, nothing open');
+  for (const prompt of CLOSED_TEXT) assert.ok(regexPasses(g, menuReply({ prompt, menu: done })), prompt);
+});
+
+// output-format.md: "Three options at most, the recommended one marked ★". The menu graders fail
+// a second ★ after the first What next?; a ★ before it, such as in What I added, doesn't count
+// (step 1e, B1.1.9). Every kept reply has one ★ after What next?.
+test('the menu graders fail a second ★ in the menu', () => {
+  // japanese-midjourney-quick's menu is read by a judge, whose rubric says so too (step 1e).
+  assert.ok(graderOf('japanese-midjourney-quick', '08-done-menu').body.includes('if more than one option is marked ★,'));
+  const writing = graderOf('writing-quick-launch-email', '08-what-next-menu');
+  const media = graderOf('image-midjourney-quick', '05-done-not-run');
+  const fillMenu = (second) => `1. Fill placeholders ★ — reply with the app name and the feature\n2. Refine — change any assumption\n3. Save to file${second} — \`prompts/launch-email.md\``;
+  assert.ok(regexPasses(writing, menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: fillMenu('') })));
+  assert.equal(regexPasses(writing, menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: fillMenu(' ★') })), false);
+  assert.equal(regexPasses(writing, menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: '1. Fill placeholders ★ 2. Refine ★' })), false);
+  assert.ok(regexPasses(writing, menuReply({ prompt: OPEN_TEXT, fill: OPEN_LIST, menu: fillMenu('') }).replace('- **Your task** [you]', '- **The ★ you accepted** [your answer]')));
+  const done = (menu) => menuReply({ prompt: 'A cozy cabin in the snow at night --ar 3:2', menu });
+  assert.ok(regexPasses(media, done('1. Done ★ — paste it into the tool\n2. Refine')));
+  assert.equal(regexPasses(media, done('1. Done ★ — paste it into the tool\n2. Refine\n3. Save to file ★')), false);
+  assert.deepEqual(failingRegex(gradersOf(PRIVATE), privateReply({ menu: '1. Try it here ★ (results there may differ)\n2. Fill placeholders ★\n3. Refine' })), ['08-what-next-menu']);
+  assert.deepEqual(failingRegex(gradersOf(PRIVATE), privateReply({ menu: '1. Run it now ★\n2. Refine ★' })), ['08-what-next-menu']);
+});
+
+// A starred option's ★ may follow a note on the option's own line, as in "Run it now — try it here
+// ★", up to 200 characters on and before the next numbered option on that line, so in "1. Run it
+// now 2. Refine ★" the ★ is option 2's. private-detail-redaction-quick's 08 has read it so since T1;
+// the text and media menu graders and the universal test read it so too (step 1e, B1.2.11).
+test('the menu graders read a ★ after a note on the option\'s line, but not past the next numbered option', () => {
+  const writing = graderOf('writing-quick-launch-email', '08-what-next-menu');
+  const media = graderOf('image-midjourney-quick', '05-done-not-run');
+  const closed = 'Write a launch email for Tidy, a productivity app.';
+  const signed = 'A cozy cabin in the snow at night, a wooden sign reading [[sign text]] --ar 3:2';
+  const unsigned = 'A cozy cabin in the snow at night --ar 3:2';
+  for (const [g, prompt, fill, menu, passes] of [
+    [writing, closed, '', '1. Run it now — try it here ★\n2. Refine', true],
+    [writing, closed, '', '1. Try it here — results there may differ ★\n2. Refine', true],
+    [writing, OPEN_TEXT, OPEN_LIST, '1. Fill placeholders — reply with the app name and the feature ★\n2. Refine', true],
+    // With placeholders open, a note doesn't let a starred Run it now or Try it here through.
+    [writing, OPEN_TEXT, OPEN_LIST, '1. Run it now — try it here ★\n2. Refine', false],
+    [writing, OPEN_TEXT, '', '1. Try it here — results there may differ ★\n2. Refine', false],
+    [writing, closed, '', '1. Run it now 2. Refine ★', false],
+    [media, unsigned, '', '1. Done — paste it into Midjourney ★\n2. Refine', true],
+    [media, signed, '- `[[sign text]]` — the words on the sign.', '1. Fill placeholders — reply with the sign text ★\n2. Refine', true],
+    [media, signed, '- `[[sign text]]` — the words on the sign.', '1. Done — paste it into Midjourney ★\n2. Refine', false],
+    [media, unsigned, '', '1. Done (paste it into Midjourney) 2. Refine ★', false],
+  ]) assert.equal(regexPasses(g, menuReply({ prompt, fill, menu })), passes, `${g.name}: ${menu}`);
+  assert.equal(graderOf('followup-change-assumption', '03-what-next-menu').pattern, writing.pattern);
+  assert.equal(graderOf('video-veo-quick', '05-done-menu').pattern, media.pattern);
+  assert.ok(regexPasses(graderOf(PRIVATE, '08-what-next-menu'), privateReply({ menu: '1. Try it here — results there may differ ★\n2. Refine' })));
+  assert.equal(regexPasses(graderOf(PRIVATE, '08-what-next-menu'), privateReply({ menu: '1. Try it here 2. Refine ★' })), false);
+});
+
+test('private-detail-redaction-quick 08 reads the Full prompt too, with or without Fill before running', () => {
+  const graders = gradersOf(PRIVATE);
+  const members = { contact: "tell them to text [[conductor's mobile number]]. The choir has [[number of members]] members", fill: '' };
+  assert.deepEqual(failingRegex(graders, privateReply({ ...members, menu: TRY_MENU })), ['08-what-next-menu']);
+  assert.deepEqual(failingRegex(graders, privateReply({ ...members, menu: '1. Fill placeholders ★\n2. Refine' })), []);
+  // With the section too, when it lists only the number's placeholder, as D46 has it (step 1e).
+  assert.deepEqual(failingRegex(graders, privateReply({ contact: members.contact, menu: TRY_MENU })), ['08-what-next-menu']);
+  assert.deepEqual(failingRegex(graders, privateReply({ contact: members.contact, menu: '1. Fill placeholders ★\n2. Refine' })), []);
+});
+
+test('the menu graders\' open-placeholder condition stays fast on long runs of # or spaces, repeated headings and long prompts', () => {
+  // The timeout turns a slow pattern into a failure, not a hang.
+  const texts = [
+    `${'#'.repeat(40_000)}x`,
+    `\n${'#'.repeat(40_000)}x`,
+    `x.${' '.repeat(40_000)}x`,
+    '# Full prompt\n'.repeat(3_000),
+    `### Full prompt\n\`\`\`text\n${'a line of the prompt\n'.repeat(4_000)}\`\`\`\n### What next?\n1. Run it now ★\n2. Refine`,
+    `### Full prompt\n${'[[a '.repeat(10_000)}\n### What next?\n1. Done ★\n2. Refine`,
+    `### Full prompt\n${'such as [[x]] or [[y]], '.repeat(2_000)}\n### What next?\n1. Run it now ★\n2. Refine`,
+    `### Full prompt\n[[${'phone '.repeat(7_000)}`,
+    `What next?${' 1. Run it now'.repeat(3_000)}\nRefine`,
+  ];
+  const graders = [['writing-quick-launch-email', '08-what-next-menu'], ['image-midjourney-quick', '05-done-not-run'], [PRIVATE, '08-what-next-menu']].map(([c, n]) => graderOf(c, n));
+  for (const g of graders) {
+    for (const s of texts) vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });
+  }
+});
+
+// The Midjourney aspect-ratio graders (image-video.md, "C. One line with parameters at the end"):
+// the Full prompt's block holds one line that ends with --ar or --aspect and other parameters.
+// Words are separated by spaces or tabs, so parameters on a line of their own fail, and the match
+// is anchored on the Full prompt's block (in the translated case, the first heading's), so a right
+// Short version doesn't make up for a wrong Full prompt (step 1e, B1.1.7). From the first parameter
+// to the end of the line come only parameters, each with at most one value (a list for --no,
+// --sref and --cref) and no comma, so description text after them fails too (step 1e).
+const MIDJOURNEY = [
+  ['image-midjourney-quick', ['Full prompt', 'Short version'],
+    'cozy log cabin in deep snow at night, two warm amber lit windows, snow-laden pine trees, photorealistic --ar 3:2 --no people text watermark',
+    'cozy log cabin in deep snow at night, warm windows, photorealistic --ar 3:2 --no people text watermark'],
+  ['japanese-midjourney-quick', ['プロンプト全文', '短縮版'],
+    '夜の雪山の斜面に建つ小さな木造の山小屋、窓から漏れる暖かい灯り、写真のようなリアルな風景写真 --ar 3:2 --no 人 文字 透かし',
+    '夜の雪山にある小さな木造の山小屋、窓の暖かい灯り、リアルな風景写真 --ar 3:2 --no 人 文字 透かし'],
+];
+const midjourneyReply = ([h1, h2], full, short, fence = '```') => `I wrote a Midjourney prompt in quick mode.\n\n### ${h1}\n${fence}text\n${full}\n${fence}\n\n` +
+  (short === null ? '' : `### ${h2}\n${fence}text\n${short}\n${fence}\n\n`) + '### What next?\n1. Done ★\n2. Refine';
+// The parameters on a line of their own, and --ar moved after the first phrase.
+const ownLine = (line) => line.replace(/ (--ar .*)$/, '\n$1');
+const midLine = (line) => line.replace(' --ar 3:2', '').replace(/^([^,、]+)([,、])/, '$1 --ar 3:2$2');
+// The description's last phrase moved after the parameters, as the reviewers did with T1's replies
+// (step 1e): "photorealistic" then reads as one more thing for --no to leave out.
+const lastPhraseAfter = (line) => line.replace(/([,、])([^,、]+?) (--ar .*)$/, ' $3$1$2');
+// --ar and another parameter in the middle of the description.
+const paramsMidLine = (line) => line.replace(/ --ar .*$/, '').replace(/^([^,、]+)([,、])/, '$1 --ar 3:2 --v 7$2');
+test('the Midjourney aspect-ratio graders want the parameters at the end of the Full prompt\'s one line', () => {
+  for (const [c, headings, full, short] of MIDJOURNEY) {
+    const g = graderOf(c, '01-aspect-ratio-parameter');
+    const reply = (f, s = short, fence) => midjourneyReply(headings, f, s, fence);
+    for (const [name, text] of Object.entries({
+      'the right shape': reply(full),
+      'a blank line before the closing fence': reply(`${full}\n`),
+      'a four-backtick fence': reply(full, short, '````'),
+      '--aspect': reply(full.replace('--ar', '--aspect')),
+      'no Short version': reply(full, null),
+      'more parameters, with and without a value': reply(full.replace('--no people text watermark', '--style raw --v 7.1 --stylize 250 --tile').replace('--no 人 文字 透かし', '--style raw --v 7.1 --stylize 250 --tile')),
+      'a parameter before --ar': reply(full.replace('--ar 3:2', '--v 7 --ar 3:2')),
+      'two style references': reply(`${full} --sref https://example.com/a.png https://example.com/b.png`),
+    })) assert.ok(regexPasses(g, text), `${c}: ${name}`);
+    for (const [name, text] of Object.entries({
+      'Full prompt: --ar mid-line, Short version right': reply(midLine(full)),
+      'Full prompt: parameters on a line of their own, Short version right': reply(ownLine(full)),
+      'both: parameters on a line of their own': reply(ownLine(full), ownLine(short)),
+      'Full prompt: a second line after the parameters': reply(`${full}\nmore details`),
+      'Full prompt: a trailing comma': reply(`${full},`),
+      'Full prompt: no parameters, Short version right': reply(full.replace(/ --ar .*$/, '')),
+      'Full prompt: the last phrase after the parameters': reply(lastPhraseAfter(full)),
+      'Full prompt: --ar and another parameter mid-line': reply(paramsMidLine(full)),
+      'Full prompt: --ar mid-line, and the line also ends with parameters': reply(`${midLine(full)} --v 7`),
+      'Full prompt: a parameter with two values': reply(full.replace('--ar 3:2', '--ar 3:2 --v 7 night')),
+    })) assert.equal(regexPasses(g, text), false, `${c}: ${name}`);
+    assert.notEqual(lastPhraseAfter(full), full);
+    assert.notEqual(paramsMidLine(full), full);
+    // A note on the heading's line passes, however long: image 01 read at most 200 characters of
+    // that line past Full prompt in a fix of step 1e (B2.2.2) and has no bound since its review.
+    const noted = (note) => reply(full).replace(`### ${headings[0]}\n`, `### ${headings[0]} ${note}\n`);
+    assert.ok(regexPasses(g, noted('(paste it into Midjourney)')), `${c}: a note on the heading's line`);
+    assert.ok(regexPasses(g, noted('x'.repeat(2_000))), `${c}: a heading line that runs on for 2,000 characters`);
+    // A long run of # or of headings, and a long line without parameters, stay fast. So does a
+    // prompt line that ends in a long run of spaces, tabs or single-dash words, which the
+    // description gave back one character at a time until step 1e read it in a lookahead (B2.1.2).
+    const line = (tail) => `### ${headings[0]}\n\`\`\`text\nx${tail}\n\`\`\``;
+    for (const s of [`${'#'.repeat(40_000)}x`, `\n${'#'.repeat(40_000)}x`, '# Full prompt\n'.repeat(3_000), `### ${headings[0]}\n\`\`\`text\n${'a '.repeat(20_000)}\n\`\`\``,
+      line(' '.repeat(40_000)), line('\t'.repeat(40_000)), line(' -a'.repeat(13_000)),
+      // The heading repeated on one line: image 01 read the rest of the line again from each one
+      // until step 1e (B2.2.2); it now starts once per line.
+      '#Full prompt'.repeat(10_000)]) {
+      vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });
+    }
+  }
+});
+
+// Without the template, as the no-skill arm writes, the aspect-ratio graders read the reply's first
+// fenced block: one whose prompt line is right passes, so 01 doesn't count the missing template
+// again, which the case's other graders score (step 1e). The four kept no-skill replies are bare
+// fences, under a bold label in Japanese. The rule is the template's, so a no-skill reply that
+// passed before step 1e can fail now, as docs/compatibility.md says: a --no list with commas, an
+// /imagine line before the prompt line, or a right block after a wrong first one (B2.1.5).
+test('the Midjourney aspect-ratio graders read the first fenced block of a reply without the template', () => {
+  const bare = (line, label = '') => `I don't have that skill here, so here is a Midjourney prompt.\n\n${label}\`\`\`\n${line}\n\`\`\`\n\n- **Aspect ratio:** use \`--ar 2:3\` for a portrait.`;
+  for (const [c, headings, full] of MIDJOURNEY) {
+    const g = graderOf(c, '01-aspect-ratio-parameter');
+    assert.ok(regexPasses(g, bare(full)), `${c}: a bare fence`);
+    assert.ok(regexPasses(g, bare(full, '**Midjourney prompt**\n\n')), `${c}: a bold label, then the fence`);
+    for (const [name, text] of Object.entries({
+      'parameters on a line of their own': bare(ownLine(full)),
+      '--ar mid-line': bare(midLine(full)),
+      'the last phrase after the parameters': bare(lastPhraseAfter(full)),
+      'a first fenced block that holds only a tip': `Tip:\n\`\`\`\n--ar 3:2\n\`\`\`\n\n${bare(full)}`,
+      'a --no list with commas': bare(full.replace(/--no .*$/, '--no people, text')),
+      'an /imagine line before the prompt line': bare(`/imagine prompt:\n${full}`),
+      'a right block after one whose --no list has commas': `${bare(full.replace(/--no .*$/, '--no people, text'))}\n\n\`\`\`\n${full}\n\`\`\``,
+      // With the template, its Full prompt's block counts, and a right block later doesn't help.
+      'the template with a wrong Full prompt, then a right bare fence': `${midjourneyReply(headings, midLine(full), null)}\n\n\`\`\`\n${full}\n\`\`\``,
+    })) assert.equal(regexPasses(g, text), false, `${c}: ${name}`);
+    // A long reply without the template stays fast, also when the block's line ends in a long run
+    // of spaces, tabs or single-dash words (step 1e, B2.1.2).
+    const line = (tail) => `\`\`\`\nx${tail}\n\`\`\``;
+    for (const s of [`${'x\n'.repeat(40_000)}\`\`\`\n${full}`, `${'\`'.repeat(40_000)}\n${full}`, `${'#'.repeat(40_000)}\n\`\`\`\n${full}`,
+      line(' '.repeat(40_000)), line('\t'.repeat(40_000)), line(' -a'.repeat(13_000))]) {
+      vm.runInNewContext('new RegExp(p, f).test(s)', { p: g.pattern, f: g.flags ?? '', s }, { timeout: 1_000 });
+    }
+  }
+});
+
+// The media cases want a Short version too (SKILL.md, Present: "3. Short version in a fenced
+// block"; image-video.md: "The same blocks serve both versions"). The English cases check that its
+// heading starts a line and is followed by a fence, as writing-quick-launch-email's 02 does (step
+// 1e, B2.1.3); the Japanese case, whose headings D3 translates, checks that the reply's second
+// heading, after the Full prompt's block, is followed by a fence (step 1e, B1.1.11). The replies
+// below pass every regex grader of their case.
+const mediaScore = (h) => `| | ${h.orig} | ${h.enh} |\n|---|---|---|\n| ${h.rows[0]} | 2 | 3 |\n| ${h.rows[1]} | 1 | 3 |\n| ${h.rows[2]} | 0 | 3 |\n| ${h.rows[3]} | 0 | 3 |\n| ${h.rows[4]} | 0 | 2 |`;
+const MEDIA_EN = { full: 'Full prompt', short: 'Short version', added: 'What I added & why', assumptions: 'Assumptions', score: 'Score', next: 'What next?', orig: 'Original', enh: 'Enhanced', rows: ['Clear goal', 'Context', 'Constraints', 'Output format', 'Edge cases'], caveat: 'Self-assessed coverage of five areas, not a prediction of output quality.' };
+const MEDIA_JA = { full: 'プロンプト全文', short: '短縮版', added: '追加した内容とその理由', assumptions: '仮定', score: 'スコア', next: '次のステップ', orig: '元のプロンプト', enh: '改善後', rows: ['目的の明確さ', '背景・文脈', '制約', '出力形式', 'エッジケース'], caveat: '5つの観点を自己評価したもので、出力品質を予測するものではありません。' };
+const mediaReply = ({ ja = false, short = true, shortBlock } = {}) => {
+  const h = ja ? MEDIA_JA : MEDIA_EN;
+  const full = ja ? '夜の雪山の斜面に建つ小さな木造の山小屋、窓から漏れる暖かいオレンジ色の灯り、写真のようなリアルな風景写真 --ar 3:2 --no 人 文字 透かし'
+    : 'cozy log cabin in deep snow at night, two warm amber lit windows, snow-laden pine trees, photorealistic --ar 3:2 --no people text watermark';
+  const shortLine = ja ? '夜の雪山にある小さな木造の山小屋、窓の暖かい灯り、リアルな風景写真 --ar 3:2 --no 人 文字 透かし' : 'cozy log cabin in deep snow at night, warm windows, photorealistic --ar 3:2 --no people text watermark';
+  const note = ja ? '全文版は細部まで指定したいとき、短縮版は手早く試したいときに使ってください。' : 'Full version: more control. Short version: quick tries.';
+  const shortPart = short ? `### ${h.short}\n${shortBlock ?? `\`\`\`text\n${shortLine}\n\`\`\``}\n${note}\n\n` : '';
+  const added = ja ? '- **夜・雪山・小さな山小屋** [you] — ご指定の要素をそのまま残しました。\n- **パラメータを末尾に** [best practice] — Midjourneyの書式です。'
+    : "- **Cozy, cabin, snow, night** [you] — your words, kept.\n- **Parameters at the end** [best practice] — this is Midjourney's syntax.";
+  const assume = ja ? '1. 小屋は木造。\n2. `--ar 3:2`。\n3. `--no 人 文字 透かし`。\n\n「変更 2: …」のように返信すると調整できます。'
+    : '1. Scene details: a log cabin with two lit windows and pine trees.\n2. Aspect ratio: `--ar 3:2`.\n3. Exclusions: `--no people text watermark`.\n\nReply "change 2: …" to adjust any of these.';
+  const menu = ja ? '1. 完了 ★ — Midjourneyに貼り付けてください。\n2. 調整 — 仮定を変更できます。\n3. ファイルに保存 — `prompts/cabin.md`'
+    : "1. Done ★ — paste it into Midjourney (I can't generate images here)\n2. Refine — change any assumption, or reply `deep` for more questions\n3. Save to file — `prompts/cozy-snow-cabin.md`";
+  const first = ja ? 'Midjourney用のクイックモードのプロンプトを作りました。' : 'Here is a Midjourney prompt for a cozy cabin in the snow at night, in quick mode.';
+  return `${first}\n\n### ${h.full}\n\`\`\`text\n${full}\n\`\`\`\n\n${shortPart}### ${h.added}\n${added}\n\n### ${h.assumptions}\n${assume}\n\n### ${h.score}\n${mediaScore(h)}\n\n${h.caveat}\n\n### ${h.next}\n${menu}`;
+};
+const veoReply = ({ short = true } = {}) => `Here's an 8-second Veo prompt of a barista making latte art, in quick mode.
+
+### Full prompt
+\`\`\`text
+One continuous close-up shot with a slow push-in. A barista pours steamed milk into a white cup of espresso and forms a rosetta. Soft window light, photorealistic. SFX: milk pouring.
+\`\`\`
+
+Negative prompt
+\`\`\`text
+watermark, subtitles, on-screen text
+\`\`\`
+
+Settings
+\`\`\`text
+Aspect ratio: 16:9
+Duration: 8 seconds
+\`\`\`
+${short ? `
+### Short version
+\`\`\`text
+One continuous close-up, slow push-in: a barista pours milk into an espresso cup and forms a rosetta. Soft window light. SFX: milk pouring.
+\`\`\`
+Full version: the most control. Short version: quick tries. Both use the same Negative prompt and Settings blocks.
+` : ''}
+### What I added & why
+- **Barista making latte art** [you] — kept.
+- **One shot, one camera move** [best practice] — Veo handles one action better.
+
+### Assumptions
+1. Framing: a close-up with a slow push-in.
+2. Settings: 16:9 and 8 seconds.
+3. Exclusions: watermark, subtitles and on-screen text.
+
+Reply "change 1: …" to adjust any of these.
+
+### Score
+${mediaScore(MEDIA_EN)}
+
+${MEDIA_EN.caveat}
+
+### What next?
+1. Done ★ — paste the prompt into Veo and set 16:9 and 8 seconds. I can't generate video here.
+2. Refine — change any assumption, or reply \`deep\` for more questions.
+3. Save to file — \`prompts/barista-latte-art.md\``;
+test('the media cases fail a reply without its Short version', () => {
+  for (const [c, reply, grader] of [
+    ['image-midjourney-quick', (short) => mediaReply({ short }), '09-short-version-heading'],
+    ['japanese-midjourney-quick', (short) => mediaReply({ ja: true, short }), '11-short-version-fenced'],
+    ['video-veo-quick', (short) => veoReply({ short }), '08-short-version-heading'],
+  ]) {
+    const graders = gradersOf(c);
+    assert.deepEqual(failingRegex(graders, reply(true)), [], c);
+    assert.deepEqual(failingRegex(graders, reply(false)), [grader], c);
+  }
+  // In Japanese, the second heading must hold a fenced block; a note under the Full prompt's block
+  // may come first.
+  const ja = graderOf('japanese-midjourney-quick', '11-short-version-fenced');
+  assert.equal(regexPasses(ja, mediaReply({ ja: true, shortBlock: '夜の雪山にある小さな木造の山小屋 --ar 3:2' })), false);
+  assert.ok(regexPasses(ja, mediaReply({ ja: true }).replace('```\n\n### 短縮版', '```\n全文版は細部まで指定したいときに。\n\n### 短縮版')));
+  // The fence must follow that second heading: a later block, such as one under the menu, doesn't
+  // stand in for a missing Short version (step 1e).
+  assert.equal(regexPasses(ja, `${mediaReply({ ja: true, short: false })}\n\n\`\`\`text\n夜の雪山にある小さな木造の山小屋 --ar 3:2\n\`\`\``), false);
+  // The English cases want the fence too, right under a heading that starts a line: a note in
+  // place of the block fails, as in Japanese, and so does the heading in the middle of a line
+  // (step 1e, B2.1.3).
+  const noBlock = (reply) => reply.replace(/(### Short version\n)```text\n[^`]*```/, '$1The full prompt is already one short line, so use it as is.');
+  for (const [c, reply, grader] of [
+    ['image-midjourney-quick', mediaReply(), '09-short-version-heading'],
+    ['video-veo-quick', veoReply(), '08-short-version-heading'],
+    ['writing-quick-launch-email', menuReply({ prompt: 'Write the launch email for our new app.', menu: '1. Run it now ★\n2. Refine' }), '02-short-version-heading'],
+  ]) {
+    const g = graderOf(c, grader);
+    assert.ok(regexPasses(g, reply), c);
+    assert.ok(regexPasses(g, reply.replace('### Short version\n', '## Short version\n\n')), `${c}: a ## heading, a blank line, then the fence`);
+    assert.notEqual(noBlock(reply), reply);
+    assert.equal(regexPasses(g, noBlock(reply)), false, `${c}: a note in place of the block`);
+    assert.equal(regexPasses(g, reply.replace('### Short version', 'See the ### Short version')), false, `${c}: the heading mid-line`);
+  }
+});

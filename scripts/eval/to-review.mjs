@@ -9,13 +9,16 @@
 //   node scripts/eval/to-review.mjs <result.json> <workspace>/iteration-N
 //
 // Layout: eval-<case>/eval_metadata.json, and per arm and run,
-// eval-<case>/<with_skill|without_skill>/run-<k>/{outputs/response.md, grading.json, timing.json}.
+// eval-<case>/<with_skill|without_skill>/run-<k>/{outputs/response.md, grading.json, timing.json},
+// plus outputs/tool-calls.md when the run's trace was kept.
 // Folder names stay the same from one iteration to the next, because the viewer matches a
 // run's feedback by its path; eval_id (the case's index in the result) is in the metadata.
 // Each arm folder also gets a copy of eval_metadata.json, because the public viewer looks for
 // it only in the run folder and its parent. With --keep-temp, the reply and the tool calls
 // come from each run's trace. Without it, the reply comes from the evidence an llm judge of
-// the last message was shown, when there is one.
+// the last message was shown, when there is one. The viewer shows every file in outputs/
+// except transcript.md, user_notes.md and metrics.json, so the tool calls aren't in a file
+// named transcript.md.
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -94,7 +97,7 @@ result.cases.forEach((c, n) => {
           : '(The trace was not kept and no llm grader saw the final reply. Rerun with --keep-temp, or read the report.html in the results folder.)';
       }
       writeFileSync(join(runDir, 'outputs', 'response.md'), text + '\n');
-      if (fin) writeFileSync(join(runDir, 'outputs', 'transcript.md'), fin.tools.map((t) => `- ${t}`).join('\n') + '\n');
+      if (fin) writeFileSync(join(runDir, 'outputs', 'tool-calls.md'), fin.tools.map((t) => `- ${t}`).join('\n') + '\n');
       // Every grader is listed, but passed, failed and total count only scored ones: indicators
       // (with-only graders in a two-arm run) are labelled and left out, as in the CLI's score.
       // pass_rate is that run score, which weighs graders, so it differs from passed/total

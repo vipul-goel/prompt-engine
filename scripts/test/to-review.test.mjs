@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -85,7 +85,7 @@ test('without a trace, takes the reply from a last-message judge, or says where 
     const a1 = readFileSync(join(out, 'eval-case-a', 'with_skill', 'run-1', 'outputs', 'response.md'), 'utf8');
     assert.match(a1, /^Reply A1\n/);
     assert.match(a1, /trace was not kept[\s\S]*01-judge[\s\S]*100,000 characters/);
-    assert.ok(!existsSync(join(out, 'eval-case-a', 'with_skill', 'run-1', 'outputs', 'transcript.md')));
+    assert.deepEqual(readdirSync(join(out, 'eval-case-a', 'with_skill', 'run-1', 'outputs')), ['response.md']);
     const b1 = readFileSync(join(out, 'eval-case-b', 'with_skill', 'run-1', 'outputs', 'response.md'), 'utf8');
     assert.doesNotMatch(b1, /the saved file/);
     assert.match(b1, /--keep-temp[\s\S]*report\.html/);
@@ -105,6 +105,12 @@ test('an llm grader with no focus counts as one that read the last message', () 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+// The files skill-creator's eval-viewer/generate_review.py leaves out of a run's outputs
+// (METADATA_FILES, line 31, in anthropics/skills at 3d59511 and in the claude.ai example
+// skill-creator of 2026-10-28). The tool calls go in a file the viewer shows (step 1e, B1.2.8),
+// so no file the script writes in a run's outputs/ may have one of these names.
+const VIEWER_SKIPS = new Set(['transcript.md', 'user_notes.md', 'metrics.json']);
+
 test('with a kept trace, takes the final reply and the tool calls from it', () => {
   const tdir = mkdtempSync(join(tmpdir(), 'pe-trace-'));
   const trace = join(tdir, 'trace.jsonl');
@@ -116,7 +122,9 @@ test('with a kept trace, takes the final reply and the tool calls from it', () =
   try {
     const run1 = join(out, 'eval-case-a', 'without_skill', 'run-1');
     assert.equal(readFileSync(join(run1, 'outputs', 'response.md'), 'utf8'), 'Final reply\n');
-    assert.match(readFileSync(join(run1, 'outputs', 'transcript.md'), 'utf8'), /^- Skill \{"skill":"prompt-engine"\}/);
+    assert.deepEqual(readdirSync(join(run1, 'outputs')).sort(), ['response.md', 'tool-calls.md']);
+    for (const f of readdirSync(join(run1, 'outputs'))) assert.ok(!VIEWER_SKIPS.has(f), `${f} is a file the viewer leaves out`);
+    assert.match(readFileSync(join(run1, 'outputs', 'tool-calls.md'), 'utf8'), /^- Skill \{"skill":"prompt-engine"\}/);
     assert.equal(json(join(run1, 'timing.json')).total_tokens, 15);
   } finally { rmSync(dir, { recursive: true, force: true }); rmSync(tdir, { recursive: true, force: true }); }
 });

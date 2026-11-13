@@ -11,7 +11,7 @@
     },
     {
       "id": "visible-reasoning-request",
-      "pattern": "(think|reason|(by|your) (reasoning|thinking)) step[-‐‑ ]by[-‐‑ ]step|your step[-‐‑ ]by[-‐‑ ]step (reasoning|thinking)|<thinking>|show your (reasoning|thinking)|chain[- ]of[- ]thought|scratchpad|explain your reasoning before",
+      "pattern": "(think|reason|(by|your)[^\\S\\n](reasoning|thinking))[^\\S\\n]step(?:[-‐‑]|[^\\S\\n])by(?:[-‐‑]|[^\\S\\n])step|your[^\\S\\n]step(?:[-‐‑]|[^\\S\\n])by(?:[-‐‑]|[^\\S\\n])step[^\\S\\n](reasoning|thinking)|<thinking>|show[^\\S\\n]your[^\\S\\n](reasoning|thinking)|chain(?:-|[^\\S\\n])of(?:-|[^\\S\\n])thought|scratchpad|explain[^\\S\\n]your[^\\S\\n]reasoning[^\\S\\n]before",
       "flags": "i",
       "severity": "warning",
       "selfCheck": true,
@@ -19,7 +19,7 @@
     },
     {
       "id": "magic-phrase",
-      "pattern": "take a deep breath|think (really )?hard|you are (a|an) world[- ]class|this is very important to my career",
+      "pattern": "take[^\\S\\n]a[^\\S\\n]deep[^\\S\\n]breath|think[^\\S\\n](really[^\\S\\n])?hard|you[^\\S\\n]are[^\\S\\n](a|an)[^\\S\\n]world(?:-|[^\\S\\n])class|this[^\\S\\n]is[^\\S\\n]very[^\\S\\n]important[^\\S\\n]to[^\\S\\n]my[^\\S\\n]career",
       "flags": "i",
       "severity": "info",
       "selfCheck": false,
@@ -27,7 +27,7 @@
     },
     {
       "id": "prefill-instruction",
-      "pattern": "prefill (the|your|an?) (response|answer|reply|assistant)|assistant turn begins with",
+      "pattern": "prefill[^\\S\\n](the|your|an?)[^\\S\\n](response|answer|reply|assistant)|assistant[^\\S\\n]turn[^\\S\\n]begins[^\\S\\n]with",
       "flags": "i",
       "severity": "warning",
       "selfCheck": false,
@@ -51,7 +51,7 @@
     },
     {
       "id": "vague-quality-words",
-      "pattern": "\\b(masterpiece|best quality|8k|ultra[- ]detailed|award[- ]winning)\\b",
+      "pattern": "\\b(masterpiece|best[^\\S\\n]quality|8k|ultra(?:-|[^\\S\\n])detailed|award(?:-|[^\\S\\n])winning)\\b",
       "flags": "i",
       "severity": "info",
       "selfCheck": false,
