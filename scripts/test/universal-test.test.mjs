@@ -378,6 +378,16 @@ test('ok or thanks at the menu: the prompt is ready, and no fenced block or scor
     'Your prompt is ready. Send me a 1 to run it or a 2 to refine it.',
     'The prompt is ready. Tell me your preference: 1 or 2.',
     'Your prompt is ready. Just tell me the option number.',
+    // The word as in "give me the word", an option's name after a colon, and from after the pick
+    // (B2.2.7's review).
+    'The prompt is ready. Just give me the word.',
+    "The prompt is ready. Give me the word 'go' and I'll run it.",
+    'The prompt is ready. Tell me your choice: Run it now or Refine.',
+    'The prompt is ready. Tell me your pick from the menu.',
+    // Residuals: asks for a value that the check takes for the pick, after which, and with the
+    // values after a comma (B2.2.7's review).
+    'The prompt is ready. Tell me which tone you prefer.',
+    'The prompt is ready. Tell me your preference, formal or casual, and I will update it.',
     // Without me or us: the prompt, an option or the number of one, changes, and a negated verb are
     // no values, and paste, give or provide without a word for this chat say how to use the prompt.
     'Your prompt is ready. Paste the prompt into ChatGPT or any chat app, or reply 2 to refine it.',
@@ -409,6 +419,20 @@ test('ok or thanks at the menu: the prompt is ready, and no fenced block or scor
     // A digit after a, then a hyphen: not "a 1" (step 1e, B2.2.7's review).
     ['The prompt is ready. Send me a 5-word tagline.', [ASKS]],
     ['Your prompt is ready. Send me the number of seats you need.', [ASKS]],
+    // The same words, with what follows them naming a value: a colon and no digit or option, the
+    // word that isn't "give me the word", a range after a number, and in, for or of after the noun
+    // or after you want or the like (step 1e, B2.2.7's review). At 5d014cd each passed.
+    ['The prompt is ready. Tell me your preference: formal or casual?', [ASKS]],
+    ['The prompt is ready. Tell me a number: how many emails should it summarize?', [ASKS]],
+    ['The prompt is ready. Tell me your choice: formal or casual?', [ASKS]],
+    ['The prompt is ready. Send me the Word document with your notes and I will add them.', [ASKS]],
+    ['The prompt is ready. Tell me the word you want in the headline.', [ASKS]],
+    ['The prompt is ready. Give me a number between 100 and 300 for the word count.', [ASKS]],
+    ['The prompt is ready. Give me a number from 1 to 10 for the urgency.', [ASKS]],
+    ['The prompt is ready. Tell me the options you want in the email: a discount, a deadline or both.', [ASKS]],
+    ['The prompt is ready. Send me the options you want in the email.', [ASKS]],
+    ['The prompt is ready. Tell me the preference you have for the subject line.', [ASKS]],
+    ['The prompt is ready. Tell me your choice of tone.', [ASKS]],
     ['The prompt would be ready to run once you fill the placeholders.', ['says the prompt is ready']],
     ["Your prompt is ready. Here's the post:\n\nRemote work changed how managers lead.", [ASKS]],
     // Asks without me or us (step 1e).

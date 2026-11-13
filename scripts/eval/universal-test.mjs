@@ -212,9 +212,11 @@ export const CHANGED = [
 // ("I need the app name", "Which app is it?", "What app is this for?"), a put-off ready as above,
 // an ask whose verb doesn't start its clause ("you could send the date"), and a task started
 // without such words ("Below is the email it writes"); and it flags a question about something
-// other than values ("What are your thoughts?") and a request to send the result on ("Send the
-// email to your list"), and takes a value named after your choice for the pick ("tell me your
-// choice of tone").
+// other than values ("What are your thoughts?"), a request to send the result on ("Send the
+// email to your list") and a pick named with words that PICK reads as a value ("tell me your pick
+// for the next step"); and it takes some asks for a value for the pick: one after which ("tell me
+// which tone you prefer"), one whose values follow a comma ("tell me your preference, formal or
+// casual") and others that PICK's words start but VALUE_AFTER_PICK doesn't list.
 const PUT_OFF = /\b(?:not|never|no longer|almost|nearly|once|until|after|as soon as|if|whether)\b|n['’]t\b|\b(?:will|would|could|should|might|may|shall|can)\s+(?:\w+\s+){0,2}?be\b/i;
 const saysReady = (t) => t.split('\n').some((line) => /\bprompts?\b/i.test(line) && [...line.matchAll(/\bready\b/gi)]
   .some((m) => !PUT_OFF.test(line.slice(Math.max(0, m.index - 200), m.index).split(/[.!?;:,—–]/).at(-1))));
@@ -225,14 +227,27 @@ const TO_CHAT = String.raw`(?=[^.!?\n]{0,120}?\b(?:below|here|in (?:this|the|our
 const CLAUSE_START = String.raw`(?:^|[\n.!?:;,—–]|\s(?:and|or|then)\s)[^\S\n]*(?:(?:[-*•]|\d+[.)])\s+)?\**(?:(?:please|just|simply|kindly)\s+)?`;
 // The pick, as the words after send, tell, give, share, paste or provide and me or us name it: a
 // digit, alone or after a or an ("a 1", not "a 10-word tagline"); which, when, if, whether, how,
-// what to or what you; your pick or your choice; the, your, a or an and then number, option, pick,
-// choice or preference, also with option or menu before number ("the option number"), unless for,
-// on, about or regarding follows, or of and anything but the options ("the number of the option",
-// not "the number of emails"); the or your go-ahead; and the word, but not the word count or limit
-// (step 1e, B2.2.7).
-const PICK = String.raw`[\x60"']?\d|an?\s+[\x60"']?\d[\x60"']?(?![\w-])|which|when|if|whether|how|what (?:to|you)|your (?:pick|choice)` +
-  String.raw`|(?:the|your|an?)\s+(?:(?:option|menu)\s+)?(?:number|options?|picks?|choices?|preference)\b(?!\s+(?:for|on|about|regarding)\b)(?!\s+of\s+(?!(?:the|an?|your)\s+(?:options?|choices?|picks?|one)\b))` +
-  String.raw`|(?:the|your)\s+go-ahead|the\s+word\b(?!\s+(?:count|limit)\b)`;
+// what to or what you; your pick or your choice, or the, your, a or an and then number, option,
+// pick, choice or preference, also with option or menu before number ("the option number"),
+// unless what follows names a value (VALUE_AFTER_PICK); the or your go-ahead; and the word as in
+// "give me the word", followed by the end of its clause or line, a quote, or and, or, then, when,
+// whenever, once, if, to, so, now or first, so not "the word count" or "the Word document" (step
+// 1e, B2.2.7). What names a value: for, on, about or regarding, also after you want, need, have,
+// like or prefer, or you'd or you would like or prefer, which may also take in ("the options you
+// want in the email"); between, from, up to, under, over and the like after a or an number ("a
+// number between 100 and 300"); of and anything but the options ("the number of the option", not
+// "the number of emails"); and a colon followed by anything but a digit or the start of an
+// option's name ("your preference: 1 or 2", not "your preference: formal or casual?"). Until
+// B2.2.7's review, only for, on, about, regarding and of were read, after the, your, a or an and
+// those words, and your pick or your choice took anything after them.
+const VALUE_AFTER_PICK = String.raw`(?!\s+(?:you\s+|you['’]d\s+|you\s+would\s+)?(?:(?:want|need|have|like|prefer)\s+)?(?:for|on|about|regarding)\b)` +
+  String.raw`(?!\s+(?:you\s+|you['’]d\s+|you\s+would\s+)(?:want|need|have|like|prefer)\s+in\b)` +
+  String.raw`(?!(?<=\ban?\s+number)\s+(?:between|from|up to|under|over|below|above|at (?:most|least)|no (?:more|fewer|less) than)\b)` +
+  String.raw`(?!\s+of\s+(?!(?:the|an?|your)\s+(?:options?|choices?|picks?|one)\b))` +
+  String.raw`(?![ \t]*:(?![ \t]*\**[\x60"']?(?:\d|(?:run|refine|fill|try|done|save|option)\b)))`;
+const PICK = String.raw`[\x60"']?\d|an?\s+[\x60"']?\d[\x60"']?(?![\w-])|which|when|if|whether|how|what (?:to|you)` +
+  String.raw`|(?:your\s+(?:pick|choice)|(?:the|your|an?)\s+(?:(?:option|menu)\s+)?(?:number|options?|picks?|choices?|preference))\b${VALUE_AFTER_PICK}` +
+  String.raw`|(?:the|your)\s+go-ahead|the\s+word(?=[ \t]*(?:[.,;:!?)\n]|$)|\s+(?:and|or|then|when|whenever|once|if|to|so|now|first)\b|\s*[\x60"'“‘])`;
 const ASKS_OR_STARTS = new RegExp(String.raw`${UNGOVERNED}\b(?:send|tell|give|share|paste|provide)\s+(?:me|us)\b(?!\s+(?:${PICK})\b)` +
   String.raw`|${UNGOVERNED}\b(?:send|give|provide)\s+(?:these|the following)\b` +
   String.raw`|${CLAUSE_START}(?:(?:send|share)(?:\s+(?:over|along))?|(?:paste|give|provide)${TO_CHAT}(?:\s+(?:in|below|here))?)${VALUE}` +
