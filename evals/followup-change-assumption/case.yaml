@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: followup-change-assumption
+context:
+  history_file: history.jsonl
+expected_outcome: |
+  The user changes assumption 2 with a change N reply: one line says what changed, then the whole output again, with the change in the Full prompt and the rest kept, a new score, and the What next? menu with Fill placeholders ★, since the mug's details are still open.

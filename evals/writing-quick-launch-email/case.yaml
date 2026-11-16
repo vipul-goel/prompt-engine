@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: writing-quick-launch-email
+expected_outcome: |
+  Quick mode: full output template (full prompt, short version, what I added with tags, assumptions, score table with caveat, what next menu); facts the user did not give appear as placeholders or assumptions.

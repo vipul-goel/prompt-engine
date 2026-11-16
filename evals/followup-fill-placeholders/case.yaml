@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: followup-fill-placeholders
+context:
+  history_file: history.jsonl
+expected_outcome: |
+  At the What next? menu, with the mug's details still open as placeholders, the user picks 1, Fill placeholders, and gives the details in the same message. The reply shows the full prompt again with those details filled in, then the What next? menu again (D1). It runs nothing: it doesn't write the description or any other part of the listing, and it adds no mug detail the user didn't give.

@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: save-to-file-existing
+context:
+  history_file: history.jsonl
+  scaffold_script: place-existing-file.sh
+expected_outcome: |
+  The user picks option 3 while a file already exists at the save path the menu showed: the full prompt goes to prompts/etsy-mug-description-2.md instead, the existing file stays as it was, and the reply gives the new path.

@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: followup-menu-ok-runs-nothing
+context:
+  history_file: history.jsonl
+expected_outcome: |
+  At the What next? menu of a coding prompt, a bare ok is not a pick: the reply says the prompt is ready, names the options and waits. Nothing is written, edited or run.

@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: research-quick-vector-databases
+expected_outcome: |
+  Quick mode: full template; the research prompt includes a source policy, a recency rule, uncertainty handling and defined comparison criteria, without stating prices or benchmarks as facts.

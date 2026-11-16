@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: coding-quick-code-block
+expected_outcome: |
+  Quick mode on a prompt that holds a ```python block: the full prompt keeps the user's code (in its own fence or in tags) inside a text fence longer than any run of backticks in it, so the inner block can't end the prompt early; the short version, if it holds the code, follows the same rule. Values the user didn't give are placeholders or assumptions.
