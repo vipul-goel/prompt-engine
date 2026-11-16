@@ -27,7 +27,8 @@ These notes are for the people who maintain Prompt Engine, and for the Claude Co
     - `evals/*/graders/lint-prompt*.md` (lint graders, from `data/lint-rules.json`)
 - **SKILL.md frontmatter** may only use `name`, `description` (at most 200 characters, one line, no `<>` or quotes), `license`, `allowed-tools` and `metadata`. Claude.ai and the Skills API reject other keys.
 - **Method text** has no capitalized pressure words and no requests to show reasoning. The validator enforces both through `data/lint-rules.json`.
-- **Method examples** use languages and domains that no eval case, universal-test prompt or manual check uses (K2, D47). A model can copy an example's words into its reply, and then a case tests the example, not the method.
+- **Worked examples** in the method use languages and domains that no eval case uses (step 1d's rule on method examples; D47 applied it to the writing, research and coding worked examples). A model can copy an example's words into its reply, and then a case tests the example, not the method.
+  - The output template, Format B in `questions.md` and the universal core's sample question still use the remote-work request that some checks use. Whether to move them is an open owner question. Don't move them before the owner answers.
 - **Honesty.** The owner wants honesty above all: never state unverified facts as facts in docs or prompts. Use the status labels in `docs/compatibility.md`.
 - **Commits.** Commit messages end with a `Co-Authored-By` trailer. Never push to `main` directly; work on a branch.
 
