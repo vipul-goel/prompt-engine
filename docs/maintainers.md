@@ -7,6 +7,7 @@ These notes are for the people who maintain Prompt Engine, and for the Claude Co
 - This file holds the standing rules and procedures. It ships with the plugin, like every file on `main`.
 - Status notes, handoff records and review records never go on `main`. They live on the `maintainer-notes` branch, which shares no history with `main` and is never merged into it. Commit to that branch from its own worktree.
 - On that branch, `handoff/plan.md` is the approved build plan, with the owner's decisions. `handoff/repo-review-verified.json` holds the review findings and the owner's answers. The finding numbers and the D and K numbers in this repository's docs and code refer to that file. `STATUS.md` holds the release run's status notes.
+- `STATUS.md` is the shared copy of the status notes. A maintainer's untracked `.claude/CLAUDE.md` can hold the working copy. Each time you mark a step done there, copy its text, without the import line, into `STATUS.md` under that file's header, and commit it on `maintainer-notes`.
 - To read them without switching branches, run `git fetch origin maintainer-notes`, then `git show origin/maintainer-notes:STATUS.md`.
 - To have Claude Code load this file in your sessions, keep an untracked `.claude/CLAUDE.md` whose first line is `@../docs/maintainers.md`. Claude Code resolves an import from the folder of the file that holds it. Git ignores that file.
 
@@ -122,6 +123,7 @@ Run it before a release's pull request leaves draft (D25). Follow the Claude Cod
 - **Description tuning.** If you tune the description with skill-creator's `run_loop`, run each query in its own project folder. Parallel runs that share one `.claude/commands/` folder see each other's copies and give false negatives.
 - **Choosing eval cases.** `claude plugin eval --case` takes a single glob, with no braces and no repeats. Run several commands, or use `--tag`.
 - **macOS.** There is no `timeout` command: use `perl -e 'alarm shift; exec @ARGV' <seconds> <command>`.
+- **Commits from before D39's move.** Check one out only in a separate worktree. Those commits track `.claude/`. A checkout overwrites your ignored `.claude/` files without a warning, and checking out a later commit then deletes them.
 - **Invisible characters in source.** The Edit tool can write a `\uXXXX` escape as the literal character. Write `\u{XXXX}` instead, and check the bytes after editing tests about invisible characters. In a regular expression, `\u{XXXX}` works only with the `u` flag: without it, `/^\u{FEFF}/` matches the text `u{FEFF}` and strips no BOM.
 - **Headless skill runs.** `claude -p --safe-mode` also hides a plugin loaded with `--plugin-dir`. Without `--safe-mode`, your own installed and synced skills compete with it. `claude plugin eval --ablation none` runs only the skill arm, and `--output-dir` keeps results out of `evals/results/`.
 - **Eval scoring.**
