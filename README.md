@@ -28,11 +28,11 @@ You:   ok
 ## Why use it
 
 - **It asks before it guesses.** It asks only questions whose answers would change the prompt, up to 8. Each comes with a recommended answer, so `ok` takes one second. Start with `quick:` to skip the questions, or with `deep:` for a more thorough interview.
-- **It's built not to invent facts.** Anything only you know, such as your product name, prices or dates, becomes a `[[placeholder]]` to fill in, and the choices it makes for you are listed as assumptions you can change. Tests still find small picks left off that list in some replies, mostly in image and video prompts ([Known limits](docs/compatibility.md#known-limits)).
-- **It's built to explain itself.** It lists the main things it added, each with its reason and a tag saying whether it came from you, from your answers or from best practice. In one of three test runs of a Japanese image prompt on 2026-11-10, the reply left this list out; the skill has been changed since, and that test hasn't run again ([Known limits](docs/compatibility.md#known-limits)).
+- **It's built not to invent facts.** Anything only you know, such as your product name, prices or dates, becomes a `[[placeholder]]` to fill in, and the choices it makes for you are listed as assumptions you can change. Tests still find small values, such as a count, left off that list in some replies ([Known limits](docs/compatibility.md#known-limits)).
+- **It's built to explain itself.** It lists the main things it added, each with its reason and a tag saying whether it came from you, from your answers or from best practice.
 - **It follows current prompting guidance.** Prompts state their goal and success criteria and give reasons instead of shouting rules in capitals. They don't ask the model to show its reasoning, which the newest Claude models may refuse, and they don't rely on tricks that newer models reject.
 - **It knows the domain.** There are dedicated checklists for coding agents, writing and marketing, research and analysis, and image and video generation. Image and video prompts come out in the target tool's own syntax, such as Midjourney parameters or Veo sound cues.
-- **It's built so nothing runs until you choose.** You get the prompt first. You decide whether to run it, refine it or save it. In a rehearsal of the manual Claude Code check on 2026-11-09, a read-only shell command listed the folder's files before anything was chosen, though no file changed; the skill has been changed since, and no run since is recorded ([Known limits](docs/compatibility.md#known-limits)).
+- **It's built so nothing runs until you choose.** You get the prompt first. You decide whether to run it, refine it or save it. In the manual Claude Code check on 2026-11-16, read-only lookups such as `ls` or `git log` still ran before anything was chosen. Nothing changed your files before the pick ([Known limits](docs/compatibility.md#known-limits)).
 
 ## Install: pick one
 
@@ -71,13 +71,55 @@ In Claude Code, the questions and the "What next?" menu appear as clickable dial
 
 ## Real example
 
-From the test suite (quick mode), for "a cozy cabin in the snow at night" as a Midjourney prompt:
+From the test suite's full run on 2026-11-16, with Claude Sonnet 5.5: the whole reply to "Use prompt-engine (quick mode) to write a Midjourney prompt: a cozy cabin in the snow at night". It passed every check in that run.
 
+````markdown
+Here is a quick-mode Midjourney prompt for your snowy night cabin. It has no placeholders and no secrets.
+
+### Full prompt
 ```text
-small log cabin with warm glowing windows nestled in deep fresh snow at night, thin chimney smoke curling upward, three snow-laden pine trees beside it, clear sky full of stars with a crescent moon, soft blue moonlight on the snowdrifts, amber window light spilling across the snow, a single line of footprints leading to the front door, wide shot at eye level, photorealistic --ar 3:2 --no people text watermark
+cozy log cabin in deep snow at night, warm amber light glowing from two windows, thin smoke rising from a stone chimney, three snow-covered pine trees beside it, clear starry sky, soft blue moonlight on the snowdrifts, medium-wide shot at eye level, photorealistic --ar 3:2 --no text watermark people
 ```
 
-It explained the additions. For example, the amber window light against blue moonlight shows "cozy" through contrast, because a mood word alone gives the model nothing to draw. It also listed its choices as assumptions, such as the 3:2 ratio and the photorealistic style. It left out version flags because it didn't know which Midjourney version you use.
+### Short version
+```text
+cozy log cabin in snow at night, warm amber windows, chimney smoke, snowy pines, starry sky, blue moonlight, photorealistic --ar 3:2 --no text watermark people
+```
+Full version: when you want a specific composition. Short version: when you'd rather let Midjourney fill in more of the scene.
+
+### What I added & why
+- **Your subject and mood** [you] — "cozy", "cabin", "snow" and "night" are kept as you wrote them.
+- **Light sources** [best practice] — names a warm light and a cool light, so "cozy" comes from the lighting rather than from the word.
+- **Exact counts** [best practice] — "two windows" and "three pine trees" are more reliable in Midjourney than vague plurals.
+- **Parameters at the end, one-word `--no` items** [best practice] — this is Midjourney's syntax. Multi-word phrases in `--no` get read word by word.
+
+### Assumptions
+1. Log cabin with a stone chimney and thin smoke: you only said "cabin".
+2. Two glowing amber windows: this gives the cozy warmth.
+3. Three snow-covered pines, a starry sky and blue moonlight on the snowdrifts: these are the scene details.
+4. Medium-wide shot at eye level, photorealistic: you didn't name a framing or style.
+5. `--ar 3:2`: a landscape ratio suits a cabin scene.
+6. `--no text watermark people`: this keeps the image clean and the cabin as the only subject.
+7. Current Midjourney version, with no `--v`, `--stylize` or `--raw` set: you didn't name a version.
+
+Reply "change 2: …" to adjust any of these.
+
+### Score
+| | Original | Enhanced |
+|---|---|---|
+| Clear goal | 2 | 3 |
+| Context | 1 | 3 |
+| Constraints | 0 | 3 |
+| Output format | 1 | 3 |
+| Edge cases | 0 | 2 |
+
+Self-assessed coverage of five areas, not a prediction of output quality.
+
+### What next?
+1. Done ★ — paste the prompt into Midjourney. I can't generate images here.
+2. Refine — change any assumption, for example a different style such as watercolor or a different ratio.
+3. Save to file — `prompts/cozy-cabin-snow-night.md`
+````
 
 ## How it's tested
 
