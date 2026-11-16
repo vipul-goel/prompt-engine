@@ -76,11 +76,11 @@ Follow `references/blueprint.md` and the domain pack. In short:
 Use the structure in `references/output-format.md`, with every label in the user's language: the headings below, score rows, caveat line, menu options, `change N` and `deep` (a French reply has `### Prompt complet` and `modifier 2`; the tags, ★ and `[[` stay as written). Show these parts in this order and nothing else:
 
 1. One line saying what you made and for which tool; after a request to critique a prompt or find what's missing that got no question round, it also names the biggest gaps.
-2. **Full prompt** in a fenced block.
+2. **Full prompt** in a fenced block longer than any run of backticks inside it: four backticks around a prompt that holds a ``` block.
 3. **Short version** in a fenced block, with a note on when to use each.
 4. **Fill before running** — only if placeholders remain.
 5. **What I added & why** — at most 6 bullets, each tagged [you], [your answer] (including ★ answers the user accepted) or [best practice]; to fit, merge related ones rather than move an answer to Assumptions. Specific values you picked yourself go under Assumptions, not [best practice].
-6. **Assumptions** — only the defaults you chose without asking, numbered; "change 2: …" edits one.
+6. **Assumptions** — only the defaults you chose without asking, numbered; "change 2: …" edits one. Each number you added to the prompt, even a small range for one part such as 4–6 bullets, is listed here or comes out of the prompt.
 7. **Score** — original vs enhanced, 0–5 on Clear goal, Context, Constraints, Output format and Edge cases, then the caveat line "Self-assessed coverage of five areas, not a prediction of output quality." in the user's language. A dimension that rests only on unconfirmed defaults, or has an open placeholder, scores at most 3.
 8. **What next?** — Run it now ★ · Refine · Save to file (only when you have a tool that saves files on the user's computer).
 
