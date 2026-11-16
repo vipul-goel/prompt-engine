@@ -112,9 +112,9 @@ Run it before a release's pull request leaves draft. D25 required it before the 
 - Two repository rulesets apply (D16). "Protect main" requires a pull request and the four CI checks, and blocks force pushes and deletion, with no bypass. "Release tags" lets only repository admins create, move or delete `v*` tags.
 - Before merging to `main`, check that `npm view prompt-engine-mcp maintainers` lists `vipul-goel`. The docs' `npx -y prompt-engine-mcp` commands rely on the owner's claim of that name (finding 37, D20).
 - To squash the WIP commits, use "Squash and merge" on GitHub instead of rewriting the pushed branch.
-- Follow `docs/publishing.md` to cut a release. After the first release, do step 7 of its "Cut a release" list: delete the first-release notes in `README.md` and `docs/install.md`, the first-release sentence in step 3, and step 7 itself (finding 78).
+- Follow `docs/publishing.md` to cut a release.
 - Ask the owner before pushing any tag or publishing to npm.
-- Before the first tag, the owner adds npm's trusted publisher, no more than 2 days before pushing the first tag whose version isn't on npm (`docs/publishing.md`, One-time setup, step 1).
+- The owner added npm's trusted publisher on 2026-11-16 (`docs/publishing.md`, One-time setup, step 1).
 - CI needs no `NPM_TOKEN`. It publishes through trusted publishing (D15).
 
 ## Gotchas
