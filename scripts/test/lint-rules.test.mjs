@@ -360,7 +360,8 @@ test('fragments samples characters that two classes both match', () => {
 // step by step", "Think carefully, step by step" and "Let's work this out in a
 // step by step way", and so does the phrase written with an en, em or figure
 // dash. Whether to widen the rule to them is left to step 1e, whose list in
-// the review record's step_1d.follow_ups names these limits.
+// the review record's step_1d.follow_ups names these limits (the record is
+// handoff/repo-review-verified.json on the maintainer-notes branch).
 // The four rules that name words in a row, this one, magic-phrase ("take a
 // deep breath"), prefill-instruction ("prefill the response") and
 // vague-quality-words ("best quality"), write the space between two words as

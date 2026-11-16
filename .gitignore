@@ -13,3 +13,11 @@ desktop.ini
 # and any session folder beside them
 evals/**/????????-????-????-????-????????????.jsonl
 evals/**/????????-????-????-????-????????????/
+# Claude Code's folder at the repository root. It holds a maintainer's local notes
+# (.claude/CLAUDE.md, which imports docs/maintainers.md), a local copy of the handoff records
+# (.claude/handoff/), worktrees (.claude/worktrees/) and session state. None of it is committed:
+# every committed file ships with the plugin, and Claude Code can load these files as project
+# memory in a user's session (D39). validate.mjs refuses any tracked path under .claude/.
+# Status notes and handoff records live on the maintainer-notes branch. .claude-plugin/ is
+# another folder, and stays tracked.
+/.claude/

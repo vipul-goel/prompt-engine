@@ -15,7 +15,7 @@ This page is for maintainers. It covers where each part of Prompt Engine is publ
 | Anthropic's directory (optional) | A listing on claude.ai, in Cowork and in Claude Code | A submission in the developer portal | A paid Claude plan |
 | Hosted MCP server (optional) | A remote MCP URL | Your own deploy | A Cloudflare account or any Node host |
 
-The plugin's source is the repository root (`"source": "./"` in `.claude-plugin/marketplace.json`), so every file committed to `main` reaches every Claude Code user who installs it from GitHub, twice: in the marketplace clone and in the plugin cache. Keep handoff notes, review records and large files off `main`.
+The plugin's source is the repository root (`"source": "./"` in `.claude-plugin/marketplace.json`), so every file committed to `main` reaches every Claude Code user who installs it from GitHub, twice: in the marketplace clone and in the plugin cache. Keep handoff notes, review records and large files off `main`. Handoff notes and review records go on the `maintainer-notes` branch, which is never merged into `main` ([maintainers.md](maintainers.md)).
 
 ## One-time setup
 

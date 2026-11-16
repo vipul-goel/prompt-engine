@@ -1914,9 +1914,9 @@ test('the media no-invention rubrics count new things, not descriptive words, an
     "FAIL if a bullet under What I added tagged [best practice] names one of the prompt's new things",
   ]) assert.ok(text.includes(part), part);
   // D51 doesn't say whether what a named thing or action can't exist or be done without is a new
-  // thing. Until the owner answers (the handoff notes list the question), it comes with what the
-  // request names, and an item the judge can't place is left out, so a run fails only on a clear
-  // new thing (T1's second fix pass). The broader rule that the first fix pass took out (a part a
+  // thing. Until the owner answers (STATUS.md on the maintainer-notes branch lists the question),
+  // it comes with what the request names, and an item the judge can't place is left out, so a run
+  // fails only on a clear new thing (T1's second fix pass). The broader rule that the first fix pass took out (a part a
   // named thing normally has, what its action needs) stays out.
   for (const part of [
     "Some things come with what the request names, because it can't exist or be done without them.",

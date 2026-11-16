@@ -405,13 +405,23 @@ const tracked = trackedFiles();
 // working directory and a file it reads. So in a session started in a folder that contains
 // the plugin cache (as the home folder contains ~/.claude), the skill's first Read of a
 // reference can load such a file from the plugin root into the user's context. A run with
-// Claude Code 2.1.319 on 2026-11-07 showed it for .claude/CLAUDE.md; for AGENTS.md and
-// CLAUDE.local.md it rests on the documentation and code, not on a run. A root CLAUDE.md
-// is refused above. Tracked files only: a maintainer's untracked CLAUDE.local.md passes
-// here (`claude plugin validate . --strict` still flags one on disk).
+// Claude Code 2.1.319 on 2026-11-07 showed it for .claude/CLAUDE.md, which then held this
+// repository's maintainer notes (finding 73). D39 moved them: the rules to docs/maintainers.md,
+// the status notes and handoff records to the maintainer-notes branch. For AGENTS.md,
+// CLAUDE.local.md and the rest of .claude/ it rests on the documentation and code, not on a run.
+// A root CLAUDE.md is refused above. Tracked files only: a maintainer's untracked
+// CLAUDE.local.md, or the untracked .claude/CLAUDE.md that imports docs/maintainers.md, passes
+// here (`claude plugin validate . --strict` still flags a CLAUDE.local.md on disk).
 const MEMORY_FILES = anyCase(['AGENTS.md', 'CLAUDE.local.md']);
 for (const f of tracked ?? []) {
   if (MEMORY_FILES.has(f.toLowerCase())) err(`${f}: don't commit it at the plugin root: Claude Code can load it as project memory in a user's session`);
+}
+// Nothing under the root .claude/ folder is tracked, whatever the file and in any letter case
+// of the folder's name: Claude Code reads project memory there (CLAUDE.md, rules/), and the
+// rest is a maintainer's own. .gitignore lists the folder. git ls-files names paths with / on
+// every platform. .claude-plugin/ is another folder.
+for (const f of tracked ?? []) {
+  if (f.split('/')[0].toLowerCase() === '.claude') err(`${f}: don't commit files under .claude/ at the plugin root: they ship with the plugin, and Claude Code can load some of them, such as .claude/CLAUDE.md, as project memory in a user's session. Keep maintainer notes untracked, or on the maintainer-notes branch (see docs/maintainers.md)`);
 }
 // The walk of the skill folder above skips the files the operating system writes (isOsJunk) by name,
 // and the skill zip leaves them out, since git ignores them. One that git tracks all the same, such

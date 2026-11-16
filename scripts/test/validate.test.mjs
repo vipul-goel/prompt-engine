@@ -1113,6 +1113,18 @@ const GIT_ROWS = [
   ]),
   ...[['agents.md', 'AGENTS.md'], ['Claude.local.md', 'CLAUDE.local.md']].map(([f, name]) => [`rejects a tracked ${f} at the plugin root, which macOS and Windows open for ${name}`,
     (d, git) => { put(d, f, '# Notes\n'); git(['add', '-f', f]); }, new RegExp(`(^|\\n)error: ${reEsc(f)}: don't commit it at the plugin root: Claude Code can load it as project memory`), 1]),
+  // The root .claude/ folder (D39): every tracked path under it is refused, whatever the file and in
+  // any letter case of the folder's name. .gitignore lists the folder, so the rows add with -f. An
+  // untracked .claude/CLAUDE.md, the maintainers' import of docs/maintainers.md, passes, and so does
+  // .claude-plugin/, whose name starts the same way.
+  ...[['.claude/CLAUDE.md', '# Notes\n'], ['.claude/settings.json', '{}\n'], ['.Claude/x', 'x\n']].map(([f, text]) => [`rejects a tracked ${f} at the plugin root`,
+    (d, git) => { put(d, f, text); git(['add', '-f', f]); },
+    new RegExp(`(^|\\n)error: ${reEsc(f)}: don't commit files under \\.claude/ at the plugin root: they ship with the plugin, and Claude Code can load some of them`), 1]),
+  ['ignores an untracked .claude/CLAUDE.md at the plugin root', (d) => put(d, '.claude/CLAUDE.md', '@../docs/maintainers.md\n'), /validate: OK/, 0, /\.claude\/CLAUDE\.md/],
+  ['accepts a tracked .claude-plugin/plugin.json', (d, git) => {
+    git(['add', '-f', '.claude-plugin/plugin.json']);
+    assert.match(git(['ls-files', '.claude-plugin/plugin.json']), /^\.claude-plugin\/plugin\.json$/m);
+  }, /validate: OK/, 0, /don't commit files under/],
   // The skill folder's checks skip the files the operating system writes by name, and the skill zip
   // leaves them out. One that git tracks ships with the plugin all the same: a ._ name force-added
   // past .gitignore, here on Markdown that the checks would refuse, and a .DS_Store. Untracked, they
