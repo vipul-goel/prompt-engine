@@ -55,7 +55,7 @@ Run it with `/prompt-engine:prompt-engine <your prompt>`. The short form `/promp
 - **Headless use (`claude -p`).** Use the slash command (`claude -p "/prompt-engine:prompt-engine quick: …"`), or allow the Skill and Read tools (`--allowedTools Skill Read`). By default, headless runs deny the skill call that a plain-language request triggers.
 - **Questions.** In Claude Code they appear as clickable dialogs, at most four per dialog. The recommended answer comes first, so Enter accepts it.
 
-Status: tested here with Claude Code 2.1.312.
+Status: tested here with Claude Code 2.1.325 on 2026-11-16, where its no-shell checks failed; see the Claude Code row in [compatibility.md](compatibility.md).
 
 ## Claude.ai, Claude Desktop and the Claude mobile apps
 
