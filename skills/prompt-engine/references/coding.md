@@ -2,6 +2,8 @@
 
 Use this pack for prompts that ask a model or coding agent to write, change, review or explain code; to set up projects or scripts; or to run as an agent with tools. Signals: code, repos, files, bugs, errors, frameworks, APIs, tests, "build", "fix", "refactor", "agent", "Claude Code", "Cursor", "Codex".
 
+A coding prompt often holds code, so open its Full prompt and Short version fences with four backticks (````text) and close them with four, whatever the template shows: a ``` block inside then can't end the fence early.
+
 ## Must-haves in the enhanced prompt
 
 Coding agents take instructions literally and act on them, so these five items prevent most wasted or risky runs:
