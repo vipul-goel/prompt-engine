@@ -9,6 +9,7 @@ These notes are for the people who maintain Prompt Engine, and for the Claude Co
 - On that branch, `handoff/plan.md` is the approved build plan, with the owner's decisions. `handoff/repo-review-verified.json` holds the review findings and the owner's answers. The finding numbers and the D and K numbers in this repository's docs and code refer to that file. `STATUS.md` holds the release run's status notes.
 - `STATUS.md` is the shared copy of the status notes. A maintainer's untracked `.claude/CLAUDE.md` can hold the working copy. Each time you mark a step done there, copy its text, without the import line, into `STATUS.md` under that file's header, and commit it on `maintainer-notes`.
 - To read them without switching branches, run `git fetch origin maintainer-notes`, then `git show origin/maintainer-notes:STATUS.md`.
+- To look up a finding, a D or a K number, read the verified file with `jq`, one record at a time. Finding N is `.findings[N-1]`: for finding 13, run `git show origin/maintainer-notes:handoff/repo-review-verified.json | jq '.findings[12]'`. For a decision, pipe it to `jq '.owner_decisions[] | select(.id=="D39")'`. K1 and K2 are in `.step_1d.decisions`, and K3 is in `owner_decisions`.
 - To have Claude Code load this file in your sessions, keep an untracked `.claude/CLAUDE.md` whose first line is `@../docs/maintainers.md`. Claude Code resolves an import from the folder of the file that holds it. Git ignores that file.
 
 ## Hard rules
@@ -16,7 +17,7 @@ These notes are for the people who maintain Prompt Engine, and for the Claude Co
 - **The repo root is also the Claude Code plugin root.** Every file committed to `main` ships in every install.
   - Never add a root `package.json`, lockfile, `node_modules/`, `bin/`, root `CLAUDE.md`, `.mcp.json`, `commands/`, `agents/` or `hooks/`.
   - Never commit an `AGENTS.md` or a `CLAUDE.local.md` at the root, or anything under `.claude/`. Claude Code can load them as project memory in a user's session (finding 73).
-  - Maintainer notes and handoff records never go on `main`. They live on the `maintainer-notes` branch.
+  - Status notes and handoff records never go on `main`. They live on the `maintainer-notes` branch.
   - `node scripts/validate.mjs` enforces the names in this rule.
 - **Single source.** The method lives in `skills/prompt-engine/SKILL.md` and `references/`.
   - `universal/prompt-engine.md` is a hand-written mirror (at most 7,500 characters) that must stay in step with it, except for gaps accepted for lack of room, such as D46's rule for other people's private details; `docs/compatibility.md` lists the main ones under Known limits.
@@ -90,7 +91,7 @@ jq -e '[.cases[].arms.with[]?.graders[]? | select(.withOnly)] as $i | ($i | leng
 
 ## The interactive smoke test
 
-Run it before a release's pull request leaves draft (D25). Follow the Claude Code checklist, `docs/manual-checks.md#claude-code-interactive` (findings 43 and 74).
+Run it before a release's pull request leaves draft. D25 required it before the first release's pull request. Follow the Claude Code checklist, `docs/manual-checks.md#claude-code-interactive` (findings 43 and 74).
 
 - Use a new `CLAUDE_CONFIG_DIR` for every run, re-runs after a fix included. An installed copy changes only when the version in `plugin.json` changes and the plugin is updated. The version stays the same between releases (D41), so a configuration you used before can run an older copy.
 - Use one add form throughout: `claude plugin marketplace add "https://github.com/vipul-goel/prompt-engine.git#<branch>"`, then `claude plugin install prompt-engine@vipul-goel`.
@@ -109,7 +110,7 @@ Run it before a release's pull request leaves draft (D25). Follow the Claude Cod
 ## Merging and releasing
 
 - Two repository rulesets apply (D16). "Protect main" requires a pull request and the four CI checks, and blocks force pushes and deletion, with no bypass. "Release tags" lets only repository admins create, move or delete `v*` tags.
-- Before merging to `main`, check that `npm view prompt-engine-mcp maintainers` lists `vipul-goel` (finding 37, D20). The docs' `npx -y prompt-engine-mcp` commands rely on it.
+- Before merging to `main`, check that `npm view prompt-engine-mcp maintainers` lists `vipul-goel`. The docs' `npx -y prompt-engine-mcp` commands rely on the owner's claim of that name (finding 37, D20).
 - To squash the WIP commits, use "Squash and merge" on GitHub instead of rewriting the pushed branch.
 - Follow `docs/publishing.md` to cut a release. After the first release, do step 7 of its "Cut a release" list: delete the first-release notes in `README.md` and `docs/install.md`, the first-release sentence in step 3, and step 7 itself (finding 78).
 - Ask the owner before pushing any tag or publishing to npm.
