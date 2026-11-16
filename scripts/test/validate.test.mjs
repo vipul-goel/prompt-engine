@@ -1120,6 +1120,16 @@ const GIT_ROWS = [
   ...[['.claude/CLAUDE.md', '# Notes\n'], ['.claude/settings.json', '{}\n'], ['.Claude/x', 'x\n']].map(([f, text]) => [`rejects a tracked ${f} at the plugin root`,
     (d, git) => { put(d, f, text); git(['add', '-f', f]); },
     new RegExp(`(^|\\n)error: ${reEsc(f)}: don't commit files under \\.claude/ at the plugin root: they ship with the plugin, and Claude Code can load some of them`), 1]),
+  // A tracked file named .claude itself is refused too: a tracked symlink of that name, leading to a
+  // folder that holds CLAUDE.md, would give a clone a .claude/CLAUDE.md. A rule that looked only for
+  // the prefix ".claude/" would let it through. The copy can hold a maintainer's untracked .claude/
+  // folder, so the row removes it first.
+  ['rejects a tracked file named .claude at the plugin root', (d, git) => {
+    rmSync(join(d, '.claude'), { recursive: true, force: true });
+    put(d, '.claude', 'x\n');
+    git(['add', '-f', '.claude']);
+  },
+    /(^|\n)error: \.claude: don't commit files under \.claude\/ at the plugin root/, 1],
   ['ignores an untracked .claude/CLAUDE.md at the plugin root', (d) => put(d, '.claude/CLAUDE.md', '@../docs/maintainers.md\n'), /validate: OK/, 0, /\.claude\/CLAUDE\.md/],
   ['accepts a tracked .claude-plugin/plugin.json', (d, git) => {
     git(['add', '-f', '.claude-plugin/plugin.json']);
