@@ -15,7 +15,7 @@ import { KNOWLEDGE_ORDER, isEntryPoint, normalize, refreshHistory, renderKnowled
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Build output and tool state the checks don't read: copying them only slows the tests down.
-const SKIP = new Set(['.git', 'node_modules', 'results', 'dist', 'dist-mcpb', 'mcpb', '.wrangler']);
+const SKIP = new Set(['.git', 'node_modules', 'results', 'dist', 'dist-mcpb', 'mcpb', '.wrangler', '.venv', '.pytest_cache', '.ruff_cache', '__pycache__']);
 const copyTo = (dir) => cpSync(repo, dir, { recursive: true, filter: (src) => src === repo || !SKIP.has(basename(src)) });
 const MEDIA = 'skills/prompt-engine/references/media-targets.md';
 // The child finds its own root, as it does outside the tests.
