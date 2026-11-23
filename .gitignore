@@ -21,3 +21,8 @@ evals/**/????????-????-????-????-????????????/
 # Status notes and handoff records live on the maintainer-notes branch. .claude-plugin/ is
 # another folder, and stays tracked.
 /.claude/
+# Python tooling in evals/python: uv's environment and the tools' caches
+evals/python/.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/

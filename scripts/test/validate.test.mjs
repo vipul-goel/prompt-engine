@@ -17,7 +17,7 @@ import { LINT_GRADER_CASES } from '../build.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Build output and tool state the checks don't read: copying them only slows the tests down.
-const SKIP = new Set(['.git', 'node_modules', 'results', 'dist', 'dist-mcpb', 'mcpb', '.wrangler']);
+const SKIP = new Set(['.git', 'node_modules', 'results', 'dist', 'dist-mcpb', 'mcpb', '.wrangler', '.venv', '.pytest_cache', '.ruff_cache', '__pycache__']);
 
 function copyRepo(from = repo) {
   const dir = mkdtempSync(join(tmpdir(), 'pe-validate-'));

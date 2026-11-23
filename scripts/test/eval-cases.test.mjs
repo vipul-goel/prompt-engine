@@ -7,7 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -227,6 +227,49 @@ test('checkEvalCases returns each case with what it read', () => {
       { name: '02-judge', file: 'evals/demo/graders/02-judge.md', data: { type: 'llm' }, body: 'PASS if fine.' },
     ],
   }]);
+});
+
+// evals/python holds the Python tooling, not cases. claude plugin eval still walks it (2.1.330's
+// code), so a case.yaml or prompt.md there would run as a case.
+const RUNS_AS_CASE = (f) => `evals/python/${f}: claude plugin eval would run its folder as a case; evals/python holds the Python tooling, not cases, so give the file another name (repo rule)`;
+
+test('checkEvalCases reads evals/python as the Python tooling, not a case', () => {
+  const { errors, cases } = check({
+    'evals/demo/prompt.md': PROMPT,
+    'evals/demo/graders/01-x.md': REGEX,
+    'evals/python/pyproject.toml': '[project]\nname = "x"\n',
+    'evals/python/tests/test_smoke.py': 'def test_x():\n    pass\n',
+    // Folders that claude plugin eval doesn't walk either: .git in any letter case, node_modules.
+    'evals/python/.Git/x/case.yaml': 'name: x\n',
+    'evals/python/node_modules/x/prompt.md': PROMPT,
+  });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(cases.map((c) => c.name), ['demo']);
+});
+
+test('checkEvalCases refuses a case.yaml or prompt.md anywhere in evals/python, .venv included', () => {
+  const { errors, cases } = check({
+    'evals/python/tests/fixtures/case.yaml': 'name: x\n',
+    'evals/python/.venv/lib/pkg/prompt.md': PROMPT,
+  });
+  assert.deepEqual(errors, [RUNS_AS_CASE('.venv/lib/pkg/prompt.md'), RUNS_AS_CASE('tests/fixtures/case.yaml')]);
+  assert.deepEqual(cases, []);
+});
+
+test('checkEvalCases reports a folder in evals/python it can\'t read, rather than skipping it', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () => {
+  // Not through check(): its cleanup can't remove a folder it can't read, so the mode is put back first.
+  const dir = tree({ 'evals/python/pyproject.toml': '[project]\n' });
+  const locked = join(dir, 'evals/python/locked');
+  try {
+    mkdirSync(locked);
+    chmodSync(locked, 0o000);
+    const errors = [];
+    checkEvalCases(dir, (m) => errors.push(m));
+    assert.deepEqual(errors, ['evals/python/locked: can\'t be read (EACCES), so validate.mjs can\'t check it for a case.yaml or prompt.md, which claude plugin eval would run as a case']);
+  } finally {
+    if (existsSync(locked)) chmodSync(locked, 0o755);
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('checkEvalCases returns a case whose case.yaml does not parse, and still checks its graders', () => {

@@ -455,6 +455,28 @@ function checkGrader(err, where, g, abs, referenced, dir) {
   }
 }
 
+// evals/python holds the Python tooling (a uv project with its .venv), not cases (repo rule).
+// claude plugin eval still walks it, and runs any folder that holds a case.yaml or prompt.md as a
+// case: in 2.1.330's code, its walk passes over only .git (in any letter case), node_modules,
+// .claude, results and mocks. This walk passes over the same names and follows no link. It sorts
+// each folder's entries, so the messages come in one order on every file system, and it reports a
+// folder it can't read rather than skip it.
+const PYTHON_TOOLING = 'python';
+const WALK_SKIPS = new Set(['node_modules', '.claude', 'results', 'mocks']);
+function checkPythonTooling(abs, dir, err, rel = '') {
+  const at = rel ? `${dir}/${rel}` : dir;
+  let entries;
+  try { entries = readdirSync(join(abs, rel), { withFileTypes: true }); } catch (e) {
+    err(`${at}: can't be read (${e.code ?? e.message}), so validate.mjs can't check it for a case.yaml or prompt.md, which claude plugin eval would run as a case`);
+    return;
+  }
+  for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    const p = rel ? `${rel}/${e.name}` : e.name;
+    if (e.isDirectory()) { if (e.name.toLowerCase() !== '.git' && !WALK_SKIPS.has(e.name)) checkPythonTooling(abs, dir, err, p); }
+    else if (e.name === 'case.yaml' || e.name === 'prompt.md') err(`${dir}/${p}: claude plugin eval would run its folder as a case; evals/python holds the Python tooling, not cases, so give the file another name (repo rule)`);
+  }
+}
+
 // Checks every case under root/evals and calls err(message) for each problem. Returns the cases
 // it found, for other checks to reuse: { name, dir, caseYaml, prompt: { data, body }, graders:
 // [{ name, file, data, body }] }, where caseYaml or prompt is null when the file is missing or
@@ -472,6 +494,7 @@ export function checkEvalCases(root, err, warn = () => {}) {
     if (isLink(abs)) { err(linked(dir, `the case's files in ${dir} itself`)); continue; }
     if (!isDir(abs)) continue;
     if (name === 'mocks') { err(`${dir}: suite-wide mocks aren't used in this repo, and validate.mjs doesn't check them (repo rule)`); continue; }
+    if (name === PYTHON_TOOLING) { checkPythonTooling(abs, dir, err); continue; }
     // A case.yaml or prompt.md that is a link is there but not read, as one that doesn't parse.
     const caseLink = isLink(join(abs, 'case.yaml'));
     const promptLink = isLink(join(abs, 'prompt.md'));
